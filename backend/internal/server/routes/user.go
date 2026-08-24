@@ -72,6 +72,16 @@ func RegisterUserRoutes(
 			}
 		}
 
+		// Reward draw and redemption
+		authenticated.GET("/reward-draw", h.RewardDraw.GetOverview)
+		authenticated.POST("/reward-draw/draw", h.RewardDraw.Draw)
+		authenticated.GET("/reward-draw/components", h.RewardDraw.ListComponents)
+		authenticated.POST("/reward-draw/combine", h.RewardDraw.Combine)
+		authenticated.GET("/reward-draw/cards", h.RewardDraw.ListCards)
+		authenticated.GET("/reward-draw/history", h.RewardDraw.ListHistory)
+		authenticated.GET("/reward-draw/redemptions", h.RewardDraw.ListRedemptions)
+		authenticated.POST("/reward-draw/redeem", h.RewardDraw.Redeem)
+
 		// API Key管理
 		keys := authenticated.Group("/keys")
 		{

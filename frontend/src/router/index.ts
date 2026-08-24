@@ -204,6 +204,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/reward-draw',
+    name: 'RewardDraw',
+    component: () => import('@/views/user/RewardDrawView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Meemie Summon Machine',
+      titleKey: 'nav.rewardDraw'
+    }
+  },
+  {
     path: '/keys',
     name: 'Keys',
     component: () => import('@/views/user/KeysView.vue'),

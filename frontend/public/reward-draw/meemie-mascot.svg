@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 420" role="img" aria-labelledby="title description">
+  <title id="title">小羊咩咩</title>
+  <desc id="description">抱着金色羊铃的白色小羊吉祥物</desc>
+  <defs>
+    <linearGradient id="wool" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fffef8"/>
+      <stop offset="1" stop-color="#e8eee8"/>
+    </linearGradient>
+    <linearGradient id="bell" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8d875"/>
+      <stop offset="1" stop-color="#c98b22"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#13251e" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <ellipse cx="180" cy="386" rx="108" ry="20" fill="#173b30" opacity=".12"/>
+  <g filter="url(#shadow)">
+    <path d="M82 161c-35-17-50-48-33-67 17-20 52-4 70 32" fill="#dfe8e1" stroke="#173b30" stroke-width="8" stroke-linejoin="round"/>
+    <path d="M278 161c35-17 50-48 33-67-17-20-52-4-70 32" fill="#dfe8e1" stroke="#173b30" stroke-width="8" stroke-linejoin="round"/>
+    <circle cx="180" cy="137" r="91" fill="url(#wool)" stroke="#173b30" stroke-width="8"/>
+    <circle cx="112" cy="74" r="34" fill="url(#wool)" stroke="#173b30" stroke-width="8"/>
+    <circle cx="164" cy="54" r="37" fill="url(#wool)" stroke="#173b30" stroke-width="8"/>
+    <circle cx="216" cy="61" r="36" fill="url(#wool)" stroke="#173b30" stroke-width="8"/>
+    <circle cx="251" cy="93" r="31" fill="url(#wool)" stroke="#173b30" stroke-width="8"/>
+    <path d="M111 130c0-48 31-74 69-74s69 26 69 74v37c0 50-31 82-69 82s-69-32-69-82z" fill="#f2c9aa" stroke="#173b30" stroke-width="8"/>
+    <ellipse cx="151" cy="144" rx="8" ry="12" fill="#173b30"/>
+    <ellipse cx="209" cy="144" rx="8" ry="12" fill="#173b30"/>
+    <path d="M166 180c9 8 19 8 28 0" fill="none" stroke="#173b30" stroke-width="7" stroke-linecap="round"/>
+    <path d="M179 157l-8 12h16z" fill="#9f5c57" stroke="#173b30" stroke-width="5" stroke-linejoin="round"/>
+    <circle cx="117" cy="169" r="11" fill="#ea8e86" opacity=".45"/>
+    <circle cx="243" cy="169" r="11" fill="#ea8e86" opacity=".45"/>
+    <path d="M102 232c-30 25-41 69-29 111 11 38 48 55 107 55s96-17 107-55c12-42 1-86-29-111-18 20-45 31-78 31s-60-11-78-31z" fill="url(#wool)" stroke="#173b30" stroke-width="8" stroke-linejoin="round"/>
+    <path d="M106 284c-28 4-45 25-40 48 4 20 25 29 50 19" fill="none" stroke="#173b30" stroke-width="22" stroke-linecap="round"/>
+    <path d="M254 284c28 4 45 25 40 48-4 20-25 29-50 19" fill="none" stroke="#173b30" stroke-width="22" stroke-linecap="round"/>
+    <path d="M149 384l-5 20M211 384l5 20" stroke="#173b30" stroke-width="20" stroke-linecap="round"/>
+    <path d="M130 406h35M195 406h35" stroke="#173b30" stroke-width="16" stroke-linecap="round"/>
+    <path d="M180 263c34 0 58 27 58 62 0 29-18 51-58 51s-58-22-58-51c0-35 24-62 58-62z" fill="url(#bell)" stroke="#173b30" stroke-width="8"/>
+    <path d="M157 261c2-18 12-28 23-28s21 10 23 28" fill="none" stroke="#173b30" stroke-width="10" stroke-linecap="round"/>
+    <path d="M146 318h68" stroke="#173b30" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="180" cy="361" r="10" fill="#8f5a18" stroke="#173b30" stroke-width="6"/>
+  </g>
+</svg>

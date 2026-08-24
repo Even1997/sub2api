@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -163,6 +164,18 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 		result = &service.BatchImageBalanceHoldResult{}
 	}
 	result.Applied = true
+	if strings.HasPrefix(cmd.RequestID, "batch_image_capture:") {
+		if err := creditRewardDrawTickets(
+			ctx,
+			tx,
+			cmd.UserID,
+			"batch_image",
+			fmt.Sprintf("%d:%s", cmd.APIKeyID, cmd.RequestID),
+			cmd.ActualAmount,
+		); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -207,6 +220,18 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 			return err
 		}
 		result.QuotaState = quotaState
+	}
+	if cmd.RequestID != "" {
+		if err := creditRewardDrawTickets(
+			ctx,
+			tx,
+			cmd.UserID,
+			"usage",
+			fmt.Sprintf("%d:%s", cmd.APIKeyID, cmd.RequestID),
+			cmd.BalanceCost+cmd.SubscriptionCost,
+		); err != nil {
+			return err
+		}
 	}
 
 	return nil
