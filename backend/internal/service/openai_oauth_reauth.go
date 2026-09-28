@@ -108,6 +108,27 @@ type OpenAIOAuthReauthStatus struct {
 	Task   *OpenAIOAuthReauthTask   `json:"task,omitempty"`
 }
 
+type OpenAIOAuthReauthWorkerEvent struct {
+	ID        int64     `json:"id"`
+	Kind      string    `json:"kind"`
+	TaskID    *int64    `json:"task_id,omitempty"`
+	AccountID *int64    `json:"account_id,omitempty"`
+	WorkerID  string    `json:"worker_id"`
+	Status    string    `json:"status"`
+	Stage     string    `json:"stage"`
+	Attempt   int       `json:"attempt"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type OpenAIOAuthReauthWorkerStatus struct {
+	Enabled      bool                           `json:"enabled"`
+	LastSeenAt   *time.Time                     `json:"last_seen_at,omitempty"`
+	LastWorkerID string                         `json:"last_worker_id"`
+	Queued       int                            `json:"queued"`
+	Running      int                            `json:"running"`
+	Events       []OpenAIOAuthReauthWorkerEvent `json:"events"`
+}
+
 // OpenAIOAuthReauthRepository is deliberately small so the task state can be
 // tested without a live database. The production implementation uses raw SQL
 // because the task table is intentionally outside the generated Ent schema.
@@ -124,6 +145,8 @@ type OpenAIOAuthReauthRepository interface {
 	BeginDirectCallback(ctx context.Context, taskID int64, workerID string) (*OpenAIOAuthReauthTaskRecord, bool, error)
 	MarkSucceeded(ctx context.Context, taskID int64, workerID string) error
 	MarkFailed(ctx context.Context, taskID int64, workerID, reason string) error
+	GetWorkerStatus(ctx context.Context) (*OpenAIOAuthReauthWorkerStatus, error)
+	SetWorkerEnabled(ctx context.Context, enabled bool) error
 }
 
 type OpenAIOAuthReauthStoredConfig struct {
@@ -500,6 +523,27 @@ func (s *OpenAIOAuthReauthService) decryptReauthSecret(ciphertext, message strin
 		return "", infraerrors.New(http.StatusInternalServerError, "OPENAI_REAUTH_CONFIG_DECRYPT_FAILED", message)
 	}
 	return plain, nil
+}
+
+func (s *OpenAIOAuthReauthService) GetWorkerStatus(ctx context.Context) (*OpenAIOAuthReauthWorkerStatus, error) {
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.New(http.StatusServiceUnavailable, "OPENAI_REAUTH_UNAVAILABLE", "re-login worker control is unavailable")
+	}
+	status, err := s.repo.GetWorkerStatus(ctx)
+	if err != nil {
+		return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_REAUTH_WORKER_READ_FAILED", "failed to read worker state")
+	}
+	return status, nil
+}
+
+func (s *OpenAIOAuthReauthService) SetWorkerEnabled(ctx context.Context, enabled bool) (*OpenAIOAuthReauthWorkerStatus, error) {
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.New(http.StatusServiceUnavailable, "OPENAI_REAUTH_UNAVAILABLE", "re-login worker control is unavailable")
+	}
+	if err := s.repo.SetWorkerEnabled(ctx, enabled); err != nil {
+		return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_REAUTH_WORKER_UPDATE_FAILED", "failed to change worker state")
+	}
+	return s.GetWorkerStatus(ctx)
 }
 
 func (s *OpenAIOAuthReauthService) GetStatus(ctx context.Context, accountID int64) (*OpenAIOAuthReauthStatus, error) {

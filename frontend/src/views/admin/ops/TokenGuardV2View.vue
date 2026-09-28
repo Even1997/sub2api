@@ -29,6 +29,7 @@
       <nav class="section-tabs" :aria-label="t('tokenGuardV2.pageTabs')">
         <button type="button" role="tab" data-testid="guard-tab-accounts" :aria-selected="activeSection === 'accounts'" :class="{ active: activeSection === 'accounts' }" @click="activeSection = 'accounts'">{{ t('tokenGuardV2.accountsTab') }}</button>
         <button type="button" role="tab" data-testid="guard-tab-rules" :aria-selected="activeSection === 'rules'" :class="{ active: activeSection === 'rules' }" @click="activeSection = 'rules'">{{ t('tokenGuardV2.rulesTab') }}</button>
+        <button type="button" role="tab" data-testid="guard-tab-worker" :aria-selected="activeSection === 'worker'" :class="{ active: activeSection === 'worker' }" @click="activeSection = 'worker'">{{ t('tokenGuardV2.workerTab') }}</button>
       </nav>
 
       <section v-if="activeSection === 'accounts'" class="table-card">
@@ -95,7 +96,7 @@
         />
       </section>
 
-      <section v-else class="rules-card">
+      <section v-else-if="activeSection === 'rules'" class="rules-card">
         <div class="rules-heading">
           <div><h3>{{ t('tokenGuardV2.rulesTitle') }}</h3><p>{{ t('tokenGuardV2.rulesDescription') }}</p></div>
           <span class="badge" :class="{ ok: !rulesDirty }">{{ t(rulesDirty ? 'tokenGuardV2.rulesUnsaved' : 'tokenGuardV2.rulesConfigurable') }}</span>
@@ -115,6 +116,42 @@
           <article><span>3</span><div><strong>{{ t('tokenGuardV2.ruleAuthTitle') }}</strong><p>{{ t('tokenGuardV2.ruleAuthHint') }}</p></div></article>
           <article><span>4</span><div><strong>{{ t('tokenGuardV2.ruleTransientTitle') }}</strong><p>{{ t('tokenGuardV2.ruleTransientHint') }}</p></div></article>
           <article><span>5</span><div><strong>{{ t('tokenGuardV2.ruleReloginTitle') }}</strong><p>{{ t('tokenGuardV2.ruleReloginHint', { count: status.fail_streak_threshold }) }}</p></div></article>
+        </div>
+      </section>
+
+      <section v-else class="worker-card">
+        <div class="worker-heading">
+          <div>
+            <h3>{{ t('tokenGuardV2.workerTitle') }}</h3>
+            <p>{{ t('tokenGuardV2.workerDescription') }}</p>
+          </div>
+          <button type="button" data-testid="worker-toggle" class="btn" :class="worker.enabled ? 'btn-danger' : 'btn-primary'" :disabled="workerSaving" @click="toggleWorker">
+            {{ t(worker.enabled ? 'tokenGuardV2.pauseWorker' : 'tokenGuardV2.resumeWorker') }}
+          </button>
+        </div>
+        <div class="worker-metrics">
+          <div><span>{{ t('tokenGuardV2.workerState') }}</span><strong><span class="badge" :class="worker.enabled ? 'ok' : 'danger'">{{ t(worker.enabled ? 'tokenGuardV2.workerRunning' : 'tokenGuardV2.workerPaused') }}</span></strong></div>
+          <div><span>{{ t('tokenGuardV2.workerQueued') }}</span><strong>{{ worker.queued }}</strong></div>
+          <div><span>{{ t('tokenGuardV2.workerActive') }}</span><strong>{{ worker.running }}</strong></div>
+          <div><span>{{ t('tokenGuardV2.workerLastSeen') }}</span><strong>{{ date(worker.last_seen_at) }}</strong><small>{{ worker.last_worker_id || '-' }}</small></div>
+        </div>
+        <p class="worker-scope">{{ t('tokenGuardV2.workerPauseHint') }}</p>
+        <div class="worker-events-heading"><h4>{{ t('tokenGuardV2.workerEvents') }}</h4><span>{{ t('tokenGuardV2.workerEventsHint') }}</span></div>
+        <div class="table-wrap worker-events">
+          <table>
+            <thead><tr><th>{{ t('tokenGuardV2.eventTime') }}</th><th>{{ t('tokenGuardV2.eventType') }}</th><th>{{ t('tokenGuardV2.eventTask') }}</th><th>{{ t('tokenGuardV2.eventAccount') }}</th><th>{{ t('tokenGuardV2.eventWorker') }}</th><th>{{ t('tokenGuardV2.eventState') }}</th></tr></thead>
+            <tbody>
+              <tr v-for="event in worker.events" :key="event.id">
+                <td>{{ date(event.created_at) }}</td>
+                <td><span class="badge" :class="event.kind === 'paused' ? 'danger' : event.kind === 'resumed' ? 'ok' : ''">{{ t(`tokenGuardV2.eventKinds.${event.kind}`) }}</span></td>
+                <td>{{ event.task_id ? `#${event.task_id}` : '-' }}</td>
+                <td>{{ event.account_id ? `#${event.account_id}` : '-' }}</td>
+                <td>{{ event.worker_id || '-' }}</td>
+                <td>{{ event.status || '-' }}<small v-if="event.stage">{{ event.stage }} · {{ t('tokenGuardV2.eventAttempt', { count: event.attempt }) }}</small></td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="!worker.events.length" class="empty-state"><h3>{{ t('tokenGuardV2.noWorkerEvents') }}</h3><p>{{ t('tokenGuardV2.noWorkerEventsHint') }}</p></div>
         </div>
       </section>
 
@@ -191,10 +228,12 @@ import type { AccountListItem, AdminGroup, Proxy } from '@/types'
 import {
   createTokenGuardV2Account,
   deleteTokenGuardV2Account,
+  getTokenGuardV2Worker,
   listTokenGuardV2Accounts,
   probeTokenGuardV2Account,
   reloginTokenGuardV2Account,
   saveTokenGuardV2Rules,
+  setTokenGuardV2WorkerEnabled,
   updateTokenGuardV2Account,
   type SaveTokenGuardV2Account,
   type TokenGuardV2Account,
@@ -202,7 +241,8 @@ import {
   type TokenGuardV2ProxySource,
   type TokenGuardV2Rules,
   type TokenGuardV2Status,
-  type TokenGuardV2Task
+  type TokenGuardV2Task,
+  type TokenGuardV2WorkerStatus
 } from '@/api/admin/accountTokenGuardV2'
 
 const { t } = useI18n()
@@ -214,6 +254,7 @@ const emptyStatus = (): TokenGuardV2Status => ({
   fail_streak_threshold: 2
 })
 const status = reactive<TokenGuardV2Status>(emptyStatus())
+const worker = reactive<TokenGuardV2WorkerStatus>({ enabled: true, last_worker_id: '', queued: 0, running: 0, events: [] })
 const candidates = ref<AccountListItem[]>([])
 const groups = ref<AdminGroup[]>([])
 const accountGroup = ref('')
@@ -221,12 +262,13 @@ const accountSearch = ref('')
 const proxies = ref<Proxy[]>([])
 const loading = ref(false), saving = ref(false), busyId = ref(0), editorOpen = ref(false)
 const editing = ref<TokenGuardV2Account | null>(null)
-const activeSection = ref<'accounts' | 'rules'>('accounts')
+const activeSection = ref<'accounts' | 'rules' | 'worker'>('accounts')
 const accountFilter = ref<'all' | 'healthy' | 'attention' | 'paused'>('all')
 const searchQuery = ref('')
 const accountPage = ref(1)
 const accountPageSize = ref(20)
 const rulesSaving = ref(false)
+const workerSaving = ref(false)
 const rulesDirty = ref(false)
 const error = ref(''), notice = ref('')
 let timer: ReturnType<typeof setInterval> | undefined
@@ -268,7 +310,7 @@ const accounts = computed(() => status.accounts)
 const enabledCount = computed(() => accounts.value.filter(item => item.enabled).length)
 const healthyCount = computed(() => accounts.value.filter(item => item.probe_state === 'ok').length)
 const issueCount = computed(() => accounts.value.filter(item => item.probe_state === 'auth' || item.blocked_reason).length)
-const activeTaskCount = computed(() => accounts.value.filter(item => ['queued', 'running', 'callback_processing'].includes(item.latest_task?.status || '')).length)
+const activeTaskCount = computed(() => worker.queued + worker.running)
 const isHealthy = (item: TokenGuardV2Account) => item.enabled && item.probe_state === 'ok' && item.login_config?.configured && !item.blocked_reason
 const needsAttention = (item: TokenGuardV2Account) => Boolean(item.blocked_reason || !item.login_config?.configured || ['auth', 'transient'].includes(item.probe_state))
 const accountFilters = computed(() => [
@@ -382,13 +424,15 @@ async function load(silent = false) {
   loading.value = true
   if (!silent) error.value = ''
   try {
-    const [guard, accountPage, managedProxies, openAIGroups] = await Promise.all([
+    const [guard, workerState, accountPage, managedProxies, openAIGroups] = await Promise.all([
       listTokenGuardV2Accounts(),
+      getTokenGuardV2Worker(),
       listAccounts(1, 200, { platform: 'openai', type: 'oauth', lite: '1' }),
       listProxies(),
       listGroups('openai')
     ])
     Object.assign(status, guard)
+    Object.assign(worker, workerState)
     if (!rulesDirty.value) syncRulesDraft(guard)
     candidates.value = accountPage.items.filter(item => !item.parent_account_id)
     proxies.value = managedProxies
@@ -397,6 +441,20 @@ async function load(silent = false) {
     if (!silent) error.value = message(value)
   } finally {
     loading.value = false
+  }
+}
+
+async function toggleWorker() {
+  if (workerSaving.value) return
+  workerSaving.value = true; error.value = ''; notice.value = ''
+  try {
+    const nextEnabled = !worker.enabled
+    Object.assign(worker, await setTokenGuardV2WorkerEnabled(nextEnabled))
+    notice.value = t(nextEnabled ? 'tokenGuardV2.workerResumedNotice' : 'tokenGuardV2.workerPausedNotice')
+  } catch (value) {
+    error.value = message(value)
+  } finally {
+    workerSaving.value = false
   }
 }
 
@@ -486,7 +544,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 .page-heading h2 { @apply text-2xl font-semibold tracking-tight; }
 .subtitle { @apply mt-2 max-w-3xl text-sm leading-6 text-gray-500 dark:text-gray-400; }
 .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:20px; @apply mb-5; }
-.summary-card,.table-card,.rules-card { @apply overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-900; }
+.summary-card,.table-card,.rules-card,.worker-card { @apply overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-900; }
 .summary-card { @apply p-5; }
 .summary-card span { @apply block text-xs font-medium text-gray-400; }
 .summary-card strong { @apply mt-2 block text-2xl font-semibold tabular-nums; }
@@ -533,6 +591,22 @@ tbody tr:hover { @apply bg-gray-50/70 dark:bg-dark-800/50; }
 .rule-list article > span { @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-semibold text-primary-700 dark:bg-primary-950/30 dark:text-primary-300; }
 .rule-list strong { @apply text-sm font-medium; }
 .rule-list p { @apply mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400; }
+.worker-card { @apply p-5; }
+.worker-heading { @apply flex flex-wrap items-start justify-between gap-4; }
+.worker-heading h3 { @apply text-base font-semibold; }
+.worker-heading p { @apply mt-1 max-w-3xl text-xs leading-5 text-gray-500 dark:text-gray-400; }
+.worker-metrics { @apply mt-5 grid border-y border-gray-100 dark:border-dark-700 sm:grid-cols-2 xl:grid-cols-4; }
+.worker-metrics > div { @apply min-w-0 px-4 py-4 first:pl-0 last:pr-0; }
+.worker-metrics span { @apply block text-xs text-gray-400; }
+.worker-metrics strong { @apply mt-2 block text-lg font-semibold tabular-nums; }
+.worker-metrics strong .badge { @apply inline-flex; }
+.worker-metrics small { @apply mt-1 block truncate text-[11px] text-gray-400; }
+.worker-scope { @apply mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200; }
+.worker-events-heading { @apply mt-6 flex flex-wrap items-baseline justify-between gap-2; }
+.worker-events-heading h4 { @apply text-sm font-semibold; }
+.worker-events-heading span { @apply text-xs text-gray-400; }
+.worker-events { @apply mt-3 rounded-xl border border-gray-100 dark:border-dark-700; }
+.worker-events table { min-width:900px; }
 .editor-form { @apply space-y-5; }
 .field-label { @apply block text-xs font-medium text-gray-600 dark:text-gray-300; }
 .field-label .input { @apply mt-2; }

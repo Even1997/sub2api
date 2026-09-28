@@ -84,6 +84,31 @@ type reauthWorkerRequest struct {
 	WorkerID string `json:"worker_id"`
 }
 
+func (h *OpenAIOAuthReauthHandler) WorkerStatus(c *gin.Context) {
+	status, err := h.service.GetWorkerStatus(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
+func (h *OpenAIOAuthReauthHandler) SetWorkerEnabled(c *gin.Context) {
+	var req struct {
+		Enabled *bool `json:"enabled" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "enabled must be a boolean")
+		return
+	}
+	status, err := h.service.SetWorkerEnabled(c.Request.Context(), *req.Enabled)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
 type reauthWorkerProgressRequest struct {
 	WorkerID string `json:"worker_id"`
 	Stage    string `json:"stage" binding:"required"`

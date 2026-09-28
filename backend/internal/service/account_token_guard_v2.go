@@ -457,8 +457,13 @@ func (s *AccountTokenGuardV2Service) probeAccount(ctx context.Context, account *
 		return AccountTokenGuardV2ProbeOK, "credential accepted"
 	}
 	var upstreamErr *codexModelsManifestUpstreamError
-	if errors.As(err, &upstreamErr) && (upstreamErr.statusCode == http.StatusUnauthorized || upstreamErr.statusCode == http.StatusForbidden) {
-		return AccountTokenGuardV2ProbeAuth, fmt.Sprintf("upstream returned %d", upstreamErr.statusCode)
+	if errors.As(err, &upstreamErr) {
+		switch upstreamErr.statusCode {
+		case http.StatusTooManyRequests:
+			return AccountTokenGuardV2ProbeTransient, "upstream returned 429; rate limited"
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return AccountTokenGuardV2ProbeAuth, fmt.Sprintf("upstream returned %d", upstreamErr.statusCode)
+		}
 	}
 	text := strings.ToLower(err.Error())
 	for _, marker := range []string{"unauthorized", "invalid token", "invalid_token", "token expired", "invalid_grant", "requires re-login"} {

@@ -62,6 +62,8 @@ func TestAccountTokenGuardV2RepositoryLeasesAndReauth(t *testing.T) {
 	require.ErrorIs(t, guard.CompleteProbe(ctx, account.ID, "instance-b", completion), sql.ErrNoRows)
 
 	reauth := NewOpenAIOAuthReauthRepository(integrationDB)
+	require.NoError(t, reauth.SetWorkerEnabled(ctx, true))
+	t.Cleanup(func() { require.NoError(t, reauth.SetWorkerEnabled(context.Background(), true)) })
 	require.NoError(t, reauth.UpsertConfig(ctx, &service.OpenAIOAuthReauthStoredConfig{
 		AccountID: account.ID, LoginEmail: "guard@example.com", CredentialMode: service.OpenAIOAuthReauthModePasswordTOTP,
 		ProxySource: service.OpenAIOAuthReauthProxySourceAccount, PasswordCiphertext: "synthetic-ciphertext",
@@ -74,6 +76,34 @@ func TestAccountTokenGuardV2RepositoryLeasesAndReauth(t *testing.T) {
 	require.NoError(t, err)
 	_, err = reauth.CreateTask(ctx, account.ID, "another-hash")
 	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
+	require.NoError(t, reauth.SetWorkerEnabled(ctx, false))
+	paused, err := reauth.ClaimNextTask(ctx, "worker-paused", time.Minute)
+	require.NoError(t, err)
+	require.Nil(t, paused)
+	workerStatus, err := reauth.GetWorkerStatus(ctx)
+	require.NoError(t, err)
+	require.False(t, workerStatus.Enabled)
+	require.Equal(t, "worker-paused", workerStatus.LastWorkerID)
+	require.NotNil(t, workerStatus.LastSeenAt)
+	require.GreaterOrEqual(t, workerStatus.Queued, 1)
+	require.Zero(t, workerStatus.Running)
+	require.True(t, func() bool {
+		for _, event := range workerStatus.Events {
+			if event.Kind == "paused" {
+				return true
+			}
+		}
+		return false
+	}())
+	require.True(t, func() bool {
+		for _, event := range workerStatus.Events {
+			if event.TaskID != nil && *event.TaskID == task.ID && event.Kind == "task" {
+				return true
+			}
+		}
+		return false
+	}())
+	require.NoError(t, reauth.SetWorkerEnabled(ctx, true))
 	running, err := reauth.ClaimNextTask(ctx, "worker-a", time.Minute)
 	require.NoError(t, err)
 	require.Equal(t, task.ID, running.ID)

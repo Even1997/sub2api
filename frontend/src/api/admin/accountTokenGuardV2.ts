@@ -58,6 +58,27 @@ export interface TokenGuardV2Status extends TokenGuardV2Rules {
   accounts: TokenGuardV2Account[]
 }
 
+export interface TokenGuardV2WorkerEvent {
+  id: number
+  kind: 'task' | 'paused' | 'resumed'
+  task_id?: number
+  account_id?: number
+  worker_id: string
+  status: string
+  stage: string
+  attempt: number
+  created_at: string
+}
+
+export interface TokenGuardV2WorkerStatus {
+  enabled: boolean
+  last_seen_at?: string
+  last_worker_id: string
+  queued: number
+  running: number
+  events: TokenGuardV2WorkerEvent[]
+}
+
 export interface SaveTokenGuardV2Account {
   account_id?: number
   login_email: string
@@ -79,6 +100,14 @@ export async function listTokenGuardV2Accounts(): Promise<TokenGuardV2Status> {
 
 export async function saveTokenGuardV2Rules(input: TokenGuardV2Rules): Promise<TokenGuardV2Rules> {
   return (await apiClient.put('/admin/account-ops/token-guard-v2/rules', input)).data
+}
+
+export async function getTokenGuardV2Worker(): Promise<TokenGuardV2WorkerStatus> {
+  return (await apiClient.get('/admin/account-ops/token-guard-v2/worker')).data
+}
+
+export async function setTokenGuardV2WorkerEnabled(enabled: boolean): Promise<TokenGuardV2WorkerStatus> {
+  return (await apiClient.put('/admin/account-ops/token-guard-v2/worker', { enabled })).data
 }
 
 export async function createTokenGuardV2Account(input: SaveTokenGuardV2Account): Promise<TokenGuardV2Account> {

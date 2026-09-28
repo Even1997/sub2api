@@ -157,6 +157,28 @@ func TestAccountTokenGuardV2SecondAuthFailureQueuesRelogin(t *testing.T) {
 	require.NotNil(t, reauthRepo.task)
 }
 
+func TestAccountTokenGuardV2RateLimitNeverQueuesRelogin(t *testing.T) {
+	for _, message := range []string{"too many requests", "unauthorized: invalid_token", "token expired; requires re-login"} {
+		t.Run(message, func(t *testing.T) {
+			reauth, reader, reauthRepo, _, _, _ := newReauthTestService("acct-1")
+			require.NoError(t, reauthRepo.UpsertConfig(context.Background(), reauthEmailConfig(42, "user@example.com", "encrypted:https://mail.example.com/code")))
+			record := AccountTokenGuardV2Record{AccountID: 42, Enabled: true, AutoReloginEnabled: true, FailStreak: 1}
+			repo := &accountTokenGuardV2TestRepo{record: &record}
+			svc := NewAccountTokenGuardV2Service(repo, nil, reader, accountTokenGuardV2TestProber{err: &codexModelsManifestUpstreamError{
+				err: errors.New(message), statusCode: http.StatusTooManyRequests,
+			}}, reauth)
+
+			svc.runProbe(context.Background(), record)
+
+			require.Equal(t, AccountTokenGuardV2ProbeTransient, repo.completion.ProbeState)
+			require.Equal(t, 1, repo.completion.FailStreak)
+			require.Zero(t, reauthRepo.createCalls)
+			require.Nil(t, repo.completion.LastReauthAt)
+			require.Equal(t, repo.completion.LastProbeAt.Add(AccountTokenGuardV2ProbeInterval), repo.completion.NextProbeAt)
+		})
+	}
+}
+
 func TestAccountTokenGuardV2ActiveReloginTaskIsNotDuplicated(t *testing.T) {
 	reauth, reader, reauthRepo, _, _, _ := newReauthTestService("acct-1")
 	require.NoError(t, reauthRepo.UpsertConfig(context.Background(), reauthEmailConfig(42, "user@example.com", "encrypted:https://mail.example.com/code")))

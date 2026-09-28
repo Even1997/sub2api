@@ -95,6 +95,15 @@ type reauthTestRepo struct {
 	markSucceeded int
 	createCalls   int
 	createErr     error
+	workerPaused  bool
+}
+
+func (r *reauthTestRepo) GetWorkerStatus(context.Context) (*OpenAIOAuthReauthWorkerStatus, error) {
+	return &OpenAIOAuthReauthWorkerStatus{Enabled: !r.workerPaused, Events: []OpenAIOAuthReauthWorkerEvent{}}, nil
+}
+func (r *reauthTestRepo) SetWorkerEnabled(_ context.Context, enabled bool) error {
+	r.workerPaused = !enabled
+	return nil
 }
 
 func (r *reauthTestRepo) UpsertConfig(_ context.Context, config *OpenAIOAuthReauthStoredConfig) error {
@@ -127,7 +136,7 @@ func (r *reauthTestRepo) GetTask(context.Context, int64) (*OpenAIOAuthReauthTask
 	return r.task, nil
 }
 func (r *reauthTestRepo) ClaimNextTask(_ context.Context, workerID string, _ time.Duration) (*OpenAIOAuthReauthTaskRecord, error) {
-	if r.task == nil || r.task.Status != OpenAIOAuthReauthStatusQueued {
+	if r.workerPaused || r.task == nil || r.task.Status != OpenAIOAuthReauthStatusQueued {
 		return nil, nil
 	}
 	r.task.Status = OpenAIOAuthReauthStatusRunning

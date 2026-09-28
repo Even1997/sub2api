@@ -125,11 +125,28 @@ func (r *openAIOAuthReauthRepository) GetTask(ctx context.Context, taskID int64)
 }
 
 func (r *openAIOAuthReauthRepository) ClaimNextTask(ctx context.Context, workerID string, staleAfter time.Duration) (*service.OpenAIOAuthReauthTaskRecord, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	// Serialize task claims with pause updates through the singleton control row.
+	var enabled bool
+	if err := tx.QueryRowContext(ctx, `
+		UPDATE openai_oauth_reauth_worker_control
+		SET last_seen_at = clock_timestamp(), last_worker_id = $1
+		WHERE id = 1 RETURNING enabled
+	`, workerID).Scan(&enabled); err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, tx.Commit()
+	}
 	if staleAfter <= 0 {
 		staleAfter = 30 * time.Minute
 	}
 	staleSeconds := int64(staleAfter.Seconds())
-	row := r.db.QueryRowContext(ctx, `
+	row := tx.QueryRowContext(ctx, `
 		WITH expired_callbacks AS (
 			UPDATE openai_oauth_reauth_tasks
 			SET status = $1,
@@ -178,10 +195,65 @@ func (r *openAIOAuthReauthRepository) ClaimNextTask(ctx context.Context, workerI
 		workerID,
 	)
 	record, err := scanOpenAIOAuthReauthTask(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
 	}
-	return record, err
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
+func (r *openAIOAuthReauthRepository) GetWorkerStatus(ctx context.Context) (*service.OpenAIOAuthReauthWorkerStatus, error) {
+	status := &service.OpenAIOAuthReauthWorkerStatus{Events: []service.OpenAIOAuthReauthWorkerEvent{}}
+	var lastSeen sql.NullTime
+	err := r.db.QueryRowContext(ctx, `
+		SELECT enabled, last_seen_at, last_worker_id,
+			(SELECT COUNT(*) FROM openai_oauth_reauth_tasks WHERE status = 'queued'),
+			(SELECT COUNT(*) FROM openai_oauth_reauth_tasks WHERE status IN ('running', 'callback_processing'))
+		FROM openai_oauth_reauth_worker_control WHERE id = 1
+	`).Scan(&status.Enabled, &lastSeen, &status.LastWorkerID, &status.Queued, &status.Running)
+	if err != nil {
+		return nil, err
+	}
+	if lastSeen.Valid {
+		status.LastSeenAt = &lastSeen.Time
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, kind, task_id, account_id, worker_id, status, stage, attempt, created_at
+		FROM openai_oauth_reauth_events ORDER BY id DESC LIMIT 100
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var event service.OpenAIOAuthReauthWorkerEvent
+		var taskID, accountID sql.NullInt64
+		if err := rows.Scan(&event.ID, &event.Kind, &taskID, &accountID, &event.WorkerID, &event.Status, &event.Stage, &event.Attempt, &event.CreatedAt); err != nil {
+			return nil, err
+		}
+		if taskID.Valid {
+			event.TaskID = &taskID.Int64
+		}
+		if accountID.Valid {
+			event.AccountID = &accountID.Int64
+		}
+		status.Events = append(status.Events, event)
+	}
+	return status, rows.Err()
+}
+
+func (r *openAIOAuthReauthRepository) SetWorkerEnabled(ctx context.Context, enabled bool) error {
+	_, err := r.db.ExecContext(ctx, `
+		WITH changed AS (
+			UPDATE openai_oauth_reauth_worker_control SET enabled = $1
+			WHERE id = 1 AND enabled IS DISTINCT FROM $1 RETURNING enabled
+		)
+		INSERT INTO openai_oauth_reauth_events (kind)
+		SELECT CASE WHEN enabled THEN 'resumed' ELSE 'paused' END FROM changed
+	`, enabled)
+	return err
 }
 
 func (r *openAIOAuthReauthRepository) SetSession(ctx context.Context, taskID int64, workerID, sessionID string) error {

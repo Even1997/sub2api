@@ -11,6 +11,8 @@ const api = vi.hoisted(() => ({
   probeGuard: vi.fn(),
   reloginGuard: vi.fn(),
   saveRules: vi.fn(),
+  getWorker: vi.fn(),
+  setWorker: vi.fn(),
   listAccounts: vi.fn(),
   listGroups: vi.fn(),
   listProxies: vi.fn(),
@@ -24,6 +26,8 @@ vi.mock('@/api/admin/accountTokenGuardV2', () => ({
   probeTokenGuardV2Account: api.probeGuard,
   reloginTokenGuardV2Account: api.reloginGuard,
   saveTokenGuardV2Rules: api.saveRules,
+  getTokenGuardV2Worker: api.getWorker,
+  setTokenGuardV2WorkerEnabled: api.setWorker,
 }))
 vi.mock('@/api/admin/accounts', () => ({ list: api.listAccounts, default: { list: api.listAccounts } }))
 vi.mock('@/api/admin/groups', () => ({ getByPlatform: api.listGroups, default: { getByPlatform: api.listGroups } }))
@@ -92,6 +96,22 @@ beforeEach(() => {
     retry_interval_seconds: 300,
     relogin_cooldown_seconds: 1800,
     fail_streak_threshold: 2,
+  })
+  api.getWorker.mockResolvedValue({
+    enabled: true,
+    last_seen_at: '2026-09-28T10:01:00Z',
+    last_worker_id: 'worker-a',
+    queued: 1,
+    running: 2,
+    events: [{ id: 1, kind: 'task', task_id: 8, account_id: 42, worker_id: 'worker-a', status: 'running', stage: 'starting', attempt: 1, created_at: '2026-09-28T10:00:00Z' }],
+  })
+  api.setWorker.mockResolvedValue({
+    enabled: false,
+    last_seen_at: '2026-09-28T10:01:00Z',
+    last_worker_id: 'worker-a',
+    queued: 1,
+    running: 2,
+    events: [{ id: 2, kind: 'paused', worker_id: '', status: '', stage: '', attempt: 0, created_at: '2026-09-28T10:02:00Z' }],
   })
 })
 
@@ -340,6 +360,32 @@ describe('TokenGuardV2View', () => {
       fail_streak_threshold: 3,
     })
     expect(wrapper.text()).toContain('tokenGuardV2.rulesSaved')
+  })
+
+  it('shows worker state and persistently pauses new task claims', async () => {
+    wrapper = mount(TokenGuardV2View, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          SmartOpsNav: true,
+          Icon: true,
+          BaseDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(api.getWorker).toHaveBeenCalledOnce()
+    await wrapper.get('[data-testid="guard-tab-worker"]').trigger('click')
+    expect(wrapper.text()).toContain('worker-a')
+    expect(wrapper.text()).toContain('#8')
+    expect(wrapper.text()).toContain('running')
+
+    await wrapper.get('[data-testid="worker-toggle"]').trigger('click')
+    await flushPromises()
+    expect(api.setWorker).toHaveBeenCalledWith(false)
+    expect(wrapper.text()).toContain('tokenGuardV2.workerPausedNotice')
+    expect(wrapper.text()).toContain('tokenGuardV2.workerPaused')
   })
 
   it('paginates monitored accounts and resets to page one after searching', async () => {
