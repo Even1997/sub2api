@@ -86,6 +86,10 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 
 	created, err := h.scheduledTestSvc.CreatePlan(c.Request.Context(), plan)
 	if err != nil {
+		if infraerrors.Reason(err) == "QUALITY_MODEL_NOT_ALLOWED" || infraerrors.Reason(err) == "QUALITY_MODEL_CATALOG_UNKNOWN" || infraerrors.Reason(err) == "OPENAI_CODEX_MODELS_CREDENTIALS_INVALID" {
+			response.ErrorFrom(c, err)
+			return
+		}
 		response.BadRequest(c, err.Error())
 		return
 	}
@@ -151,7 +155,7 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 
 	updated, err := h.scheduledTestSvc.UpdatePlan(c.Request.Context(), existing)
 	if err != nil {
-		if infraerrors.Reason(err) == service.QualityScopeConflictReason {
+		if infraerrors.Reason(err) == service.QualityScopeConflictReason || infraerrors.Reason(err) == "QUALITY_MODEL_NOT_ALLOWED" || infraerrors.Reason(err) == "QUALITY_MODEL_CATALOG_UNKNOWN" || infraerrors.Reason(err) == "OPENAI_CODEX_MODELS_CREDENTIALS_INVALID" {
 			response.ErrorFrom(c, err)
 			return
 		}
@@ -181,6 +185,25 @@ func (h *ScheduledTestHandler) Delete(c *gin.Context) {
 	if err != nil {
 		response.BadRequest(c, "invalid plan id")
 		return
+	}
+
+	if c.Request.ContentLength != 0 {
+		var req service.QualityOwnershipRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.BadRequest(c, "invalid ownership deletion confirmation")
+			return
+		}
+		// Older clients send an empty JSON object on DELETE. Preserve their
+		// guarded path; only an explicit ownership confirmation selects fencing.
+		if req.Fence != "" || req.Confirm {
+			req.Delete = true
+			if _, err := h.scheduledTestSvc.QualityOwnership(c.Request.Context(), planID, &req); err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+			return
+		}
 	}
 
 	if err := h.scheduledTestSvc.DeletePlan(c.Request.Context(), planID); err != nil {
