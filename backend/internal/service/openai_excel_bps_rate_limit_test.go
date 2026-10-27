@@ -66,7 +66,7 @@ func TestBPSModelRateLimitDefaultCooldownAndSuccess(t *testing.T) {
 	expired := original
 	expired.until = time.Now().Add(-time.Second)
 	s.excelBPSModelRateLimits.Store(key, expired)
-	require.False(t, s.isExcelBPSCoolingDown(ctx, a, model), "the model is eligible after the restriction expires")
+	require.True(t, s.isExcelBPSCoolingDown(ctx, a, model), "expiry permits a probe, not unverified user traffic")
 	s.resetExcelBPSModelRateLimit(a, model, time.Now())
 	_, exists := s.excelBPSModelRateLimits.Load(key)
 	require.False(t, exists, "a post-expiry success clears the old streak")

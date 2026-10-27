@@ -13,6 +13,10 @@ type UpstreamFailure struct {
 	Type      string
 	Message   string
 	RateLimit *RateLimitHint `json:"-"`
+	// Whitelisted identifiers for internal recovery decisions. They never carry
+	// upstream messages and are not added to client error details.
+	SourceCode string `json:"-"`
+	SourceType string `json:"-"`
 }
 
 func (f *UpstreamFailure) Error() string { return f.Message }
@@ -81,11 +85,22 @@ func classifyUpstreamFailure(kind string, payload object) *UpstreamFailure {
 		}
 	}
 	failure := &UpstreamFailure{Status: status, Code: code, Type: errorType,
-		Message: "Excel BPS upstream failure: " + code + "; request was not replayed"}
+		Message:    "Excel BPS upstream failure: " + code + "; request was not replayed",
+		SourceCode: safeFailureIdentifier(text(detail["code"])), SourceType: safeFailureIdentifier(text(detail["type"]))}
 	if status == http.StatusTooManyRequests {
 		failure.RateLimit = rateLimitHint(payload)
 	}
 	return failure
+}
+
+func safeFailureIdentifier(value string) string {
+	if value == "" {
+		return "missing"
+	}
+	if failureIdentifierStatus(value) != 0 {
+		return value
+	}
+	return "unrecognized"
 }
 
 func failureStatus(value any) int {

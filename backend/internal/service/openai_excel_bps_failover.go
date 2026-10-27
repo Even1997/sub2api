@@ -3,20 +3,35 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 type excelBPSFailoverRouteKey struct{}
 type excelBPSRecoveryKey struct{}
+
+const ExcelBPSRecoveryFailureReason GatewayFailureReason = "excel_bps_recovery_exhausted"
+const ExcelBPSRecoveryClientMessage = "Upstream service is temporarily unavailable, please retry later"
+
+// Only errors tagged by the enabled BPS recovery path use this response. Never
+// infer the protocol from a status code or apply this to user authentication.
+func (e *UpstreamFailoverError) ExcelBPSRecoveryClientResponse() (int, string, bool) {
+	if e == nil || e.Reason != ExcelBPSRecoveryFailureReason {
+		return 0, "", false
+	}
+	status := http.StatusServiceUnavailable
+	if e.StatusCode == http.StatusTooManyRequests {
+		status = http.StatusTooManyRequests
+	}
+	return status, ExcelBPSRecoveryClientMessage, true
+}
 
 // Snapshot the opt-in switch once per BPS request, including its repair sends.
 // Unconfigured or unreadable settings preserve the pre-recovery behavior.
@@ -50,6 +65,7 @@ type excelBPSFailoverRoute struct {
 	recoveryOnce        sync.Once
 	recoveryEnabled     bool
 	rateLimitedAccounts map[int64]struct{}
+	fileTimeoutRetried  bool
 }
 
 func lockExcelBPSFailoverRoute(ctx context.Context, c *gin.Context, account *Account, model string) {
@@ -74,12 +90,50 @@ func lockExcelBPSFailoverRoute(ctx context.Context, c *gin.Context, account *Acc
 }
 
 func excelBPSFailoverRouteBlocked(ctx context.Context, account *Account, model string) bool {
+	return excelBPSFailoverFilterReason(ctx, account, model) != ""
+}
+
+func excelBPSFailoverFilterReason(ctx context.Context, account *Account, model string) string {
 	if route, ok := ctx.Value(excelBPSFailoverRouteKey{}).(*excelBPSFailoverRoute); ok {
 		route.mu.Lock()
 		defer route.mu.Unlock()
-		return route.model != "" && (!account.IsExcelBPSEnabledForModel(model) || account.GetMappedModel(model) != route.model)
+		if route.model != "" {
+			if account == nil || !account.IsExcelBPSEnabledForModel(model) {
+				return "excel_bps_protocol_mismatch"
+			}
+			if account.GetMappedModel(model) != route.model {
+				return "excel_bps_model_mismatch"
+			}
+		}
 	}
-	return false
+	return ""
+}
+
+func (s *OpenAIGatewayService) claimExcelBPSFileTimeoutRecovery(ctx context.Context, c *gin.Context, account *Account, model string, status int, raw []byte) bool {
+	if status != http.StatusBadRequest || account == nil || !account.IsExcelBPSEnabledForModel(model) ||
+		!s.excelBPSRecoveryEnabled(ctx) || isQualityObservation(ctx) || isControlledExperiment(ctx) || ctx.Err() != nil {
+		return false
+	}
+	if gjson.GetBytes(raw, "error.code").String() != "invalid_value" ||
+		gjson.GetBytes(raw, "error.param").String() != "url" ||
+		!strings.HasPrefix(gjson.GetBytes(raw, "error.message").String(), "Unable to download content from the provided URL before the timeout.") {
+		return false
+	}
+	lockExcelBPSFailoverRoute(ctx, c, account, model)
+	route, _ := ctx.Value(excelBPSFailoverRouteKey{}).(*excelBPSFailoverRoute)
+	if route == nil && c != nil && c.Request != nil {
+		route, _ = c.Request.Context().Value(excelBPSFailoverRouteKey{}).(*excelBPSFailoverRoute)
+	}
+	if route == nil {
+		return false
+	}
+	route.mu.Lock()
+	defer route.mu.Unlock()
+	if route.fileTimeoutRetried {
+		return false
+	}
+	route.fileTimeoutRetried = true
+	return true
 }
 
 func (s *OpenAIGatewayService) pauseExcelBPSCredentials(ctx context.Context, account *Account) {
@@ -99,35 +153,15 @@ func (s *OpenAIGatewayService) pauseExcelBPSCredentials(ctx context.Context, acc
 	}
 }
 
-func (s *OpenAIGatewayService) pauseExcelBPSCredentialError(ctx context.Context, account *Account, err error) {
-	// An authorization still in progress or a storage outage does not prove
-	// that the account's credentials are invalid. Fail over without disabling it.
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return
-	}
-	switch infraerrors.Reason(err) {
-	case "OPENAI_EXCEL_AUTH_PENDING", "OPENAI_EXCEL_AUTH_UNAVAILABLE":
-		return
-	case "OPENAI_EXCEL_AUTH_REQUIRED", "OPENAI_EXCEL_AUTH_CONFIG_REQUIRED", "OPENAI_EXCEL_AUTH_FAILED", "OPENAI_EXCEL_AUTH_VERIFICATION_REQUIRED":
-		s.pauseExcelBPSCredentials(ctx, account)
-		return
-	}
-	message := strings.ToLower(err.Error())
-	for _, marker := range []string{"access_token not found", "api_key not found", "invalid saved excel", "identity does not match the account", "refresh token is invalid", "invalid_grant", "token_revoked", "token_invalidated"} {
-		if strings.Contains(message, marker) {
-			s.pauseExcelBPSCredentials(ctx, account)
-			return
-		}
-	}
-}
-
 func excelBPSFailureCanRecover(failure *basispoints.UpstreamFailure) bool {
 	if failure == nil {
 		return false
 	}
-	switch failure.Code {
-	case "cyber_policy", "content_policy_violation", "invalid_prompt":
-		return false
+	for _, identifier := range []string{failure.Code, failure.SourceCode, failure.SourceType} {
+		switch identifier {
+		case "cyber_policy", "content_policy_violation", "invalid_prompt":
+			return false
+		}
 	}
 	switch failure.Status {
 	case http.StatusUnauthorized, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusServiceUnavailable, http.StatusGatewayTimeout, 529:
@@ -137,7 +171,8 @@ func excelBPSFailureCanRecover(failure *basispoints.UpstreamFailure) bool {
 	case http.StatusBadGateway:
 		// Unknown errors also normalize to 502. Require a recognized transient
 		// identifier rather than replaying arbitrary policy/protocol failures.
-		return failure.Code == "api_error"
+		return failure.Code == "api_error" ||
+			(failure.Code == "basispoints_upstream_error" && failure.SourceType == "api_error")
 	}
 	return false
 }

@@ -1717,12 +1717,20 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			filterStats.exclude("platform_mismatch")
 			continue
 		}
-		if s.service.isExcelBPSModelCoolingDown(ctx, account, req.RequestedModel) {
-			filterStats.exclude(excelBPSModelPermissionFilterReason)
+		if s.service.isExcelBPSCredentialCoolingDown(ctx, account, req.RequestedModel) {
+			filterStats.exclude(excelBPSCredentialFilterReason)
 			continue
 		}
 		if s.service.isExcelBPSCoolingDown(ctx, account, req.RequestedModel) {
 			filterStats.exclude(excelBPSRateLimitedFilterReason)
+			continue
+		}
+		if s.service.isExcelBPSModelCoolingDown(ctx, account, req.RequestedModel) {
+			filterStats.exclude(excelBPSModelPermissionFilterReason)
+			continue
+		}
+		if reason := excelBPSFailoverFilterReason(ctx, account, req.RequestedModel); reason != "" {
+			filterStats.exclude(reason)
 			continue
 		}
 		if s.service.isOpenAIAccountRequestRuntimeBlocked(ctx, account, req.RequestedModel, req.RequireCompact) {

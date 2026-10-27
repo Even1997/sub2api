@@ -125,6 +125,9 @@ func (s *OpenAIGatewayService) isExcelBPSCoolingDown(ctx context.Context, accoun
 		return false
 	}
 	key := excelBPSRateLimitKey{account.ID, account.GetMappedModel(requestedModel)}
+	if s.isExcelBPSRateLimitRecoveryPending(key.accountID, key.model) {
+		return true
+	}
 	if value, ok := s.excelBPSModelRateLimits.Load(key); ok {
 		state := value.(excelBPSRateLimitState)
 		if time.Now().Before(state.until) {
@@ -421,6 +424,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		failover.SkipOAuth429AttemptLimit = true
 		return nil, failover
 	}
+	// A queued/sticky selection may predate another request's credential
+	// failure. Recheck before preparation, compaction or any upstream send.
+	if isExcelBPSClientCancellation(c, ctx.Err()) {
+		return clientCanceled()
+	}
+	if s.isExcelBPSCredentialCoolingDown(ctx, account, originalModel) {
+		return nil, s.newExcelBPSFailover(ctx, c, account, originalModel, http.StatusBadGateway, nil, "basispoints_auth_cooling_down", false)
+	}
 	imageSettings, err := s.settingService.GetExcelBPSImageRelaySettings(ctx)
 	if err != nil {
 		if isExcelBPSClientCancellation(c, err) {
@@ -583,7 +594,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			}
 			return fail(502, "basispoints_auth_unavailable", "Excel OAuth credential is unavailable; see Credential Operations")
 		}
-		s.pauseExcelBPSCredentialError(ctx, account, err)
+		s.handleExcelBPSCredentialReadError(ctx, account, err)
 		return nil, s.newExcelBPSFailover(ctx, c, account, originalModel, http.StatusBadGateway, nil, "basispoints_auth_unavailable", false)
 	}
 	accountID := excelBPSAccountID(account, token)
@@ -872,6 +883,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			return nil, s.newExcelBPSFailover(ctx, c, account, originalModel, resp.StatusCode, resp.Header, code, false)
 		}
 		message := "Excel BPS rejected this request"
+		if s.claimExcelBPSFileTimeoutRecovery(ctx, c, account, originalModel, resp.StatusCode, raw) {
+			return nil, s.newExcelBPSFailover(ctx, c, account, originalModel, http.StatusServiceUnavailable, resp.Header, "basispoints_file_download_timeout", false)
+		}
 		if recoveryEnabled && resp.StatusCode >= 500 && s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMessage, raw) {
 			return nil, s.newExcelBPSFailover(ctx, c, account, originalModel, resp.StatusCode, resp.Header, "basispoints_server_error", true)
 		}
@@ -1081,6 +1095,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 	}
 	var completed []byte
+	diagnostics := excelBPSStreamDiagnostics{started: start}
 	var upstreamFailure *basispoints.UpstreamFailure
 	var bridgeFailure *basispoints.BridgeFailure
 	terminal := ""
@@ -1090,6 +1105,8 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	for scanner.Next(ctx, 0, heartbeat.C, keepalive) {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "data: ") {
+			diagnostics.events++
+			diagnostics.lastEvent = time.Now()
 			payload := []byte(strings.TrimPrefix(line, "data: "))
 			kind := gjson.GetBytes(payload, "type").String()
 			observeStreamFirstResponse(&result.FirstTokenMs, firstResponseEnabled, start, string(payload), kind)
@@ -1131,6 +1148,18 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 				result.UpstreamResponseModel = gjson.GetBytes(payload, "response.model").String()
 				upstreamFailure = basispoints.ParseUpstreamFailure(payload)
 				if recoveryEnabled && upstreamFailure != nil {
+					if observed := observedFailure.Load(); observed != nil && observed.Status == upstreamFailure.Status {
+						upstreamFailure.SourceCode, upstreamFailure.SourceType = observed.SourceCode, observed.SourceType
+					}
+					reason := "unclassified_or_nonretryable"
+					if !canRecover() {
+						reason = "output_or_request_committed"
+					} else if upstreamFailure.Status == http.StatusTooManyRequests && repairStarted.Load() {
+						reason = "tool_repair_started"
+					} else if excelBPSFailureCanRecover(upstreamFailure) {
+						reason = "retry_before_output"
+					}
+					diagnostics.record(c, account, upstreamFailure.Status, upstreamFailure, outputStarted, canRecover(), reason)
 					switch upstreamFailure.Status {
 					case http.StatusUnauthorized:
 						s.handleExcelBPSUnauthorized(ctx, account, upstreamFailure.Status, resp.Header, payload, token)
@@ -1217,6 +1246,13 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			}
 			result.ClientDisconnect = true
 			return result, ctx.Err()
+		}
+		if recoveryEnabled {
+			reason := "output_or_request_committed"
+			if canRecover() {
+				reason = "retry_before_output"
+			}
+			diagnostics.record(c, account, http.StatusBadGateway, nil, outputStarted, canRecover(), reason)
 		}
 		// An interrupted attempt can be replaced only before semantic output.
 		// Client cancellation never starts another attempt or penalizes the node.

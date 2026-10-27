@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -427,6 +428,19 @@ func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int
 
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.
 func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
+	if status, message, ok := lastErr.ExcelBPSRecoveryClientResponse(); ok {
+		copyFailoverRetryAfter(c, lastErr.ResponseHeaders)
+		service.SetOpsUpstreamError(c, lastErr.StatusCode, service.ExtractUpstreamErrorMessage(lastErr.ResponseBody), "")
+		if streamStarted {
+			service.MarkOpsStreamError(c, "server_error", message, status)
+			if gatewayStreamHasOnlyHeartbeats(c) {
+				writeChatCompletionFailedSSE(c, message)
+			}
+			return
+		}
+		h.chatCompletionsErrorResponse(c, status, "server_error", message)
+		return
+	}
 	if streamStarted {
 		return
 	}
@@ -456,4 +470,10 @@ func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *serv
 		return
 	}
 	h.chatCompletionsErrorResponse(c, statusCode, "server_error", "All available accounts exhausted")
+}
+
+func writeChatCompletionFailedSSE(c *gin.Context, message string) {
+	payload, _ := json.Marshal(gin.H{"error": gin.H{"type": "server_error", "message": message}})
+	_, _ = c.Writer.WriteString("data: " + string(payload) + "\n\ndata: [DONE]\n\n")
+	c.Writer.Flush()
 }
