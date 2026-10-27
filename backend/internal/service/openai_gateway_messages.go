@@ -33,6 +33,13 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (slotResult *OpenAIForwardResult, slotErr error) {
+	admittedCtx, admissionErr := s.beginPriorityLatencyTurn(ctx, c, account, gjson.GetBytes(body, "model").String())
+	if admissionErr != nil {
+		return nil, admissionErr
+	}
+	ctx = admittedCtx
+	ctx, scope := withPriorityAttemptScope(ctx, gjson.GetBytes(body, "model").String(), "/v1/messages")
+	defer func() { scope.finish(slotResult) }()
 	finishReservation := BeginAccountSlotReservation(ctx, account, c)
 	defer func() { finishReservation(slotErr, slotResult != nil && slotResult.SucceededForScheduling()) }()
 	rememberOpenCodeInboundBody(c, body)

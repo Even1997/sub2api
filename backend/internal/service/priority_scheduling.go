@@ -8,13 +8,20 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
 
 const prioritySchedulingSettingKey = "priority_scheduling_v1"
 
-// PrioritySchedulingConfig only controls freely selectable OpenAI text requests.
+const (
+	PriorityLatencyDeprioritize = "deprioritize"
+	PriorityLatencyStop         = "stop"
+)
+
+// PrioritySchedulingConfig controls OpenAI text routing and optional scoped
+// new-request stops. A stopped owner is rejected rather than reassigned.
 // Account eligibility, continuity, profit gates and concurrency acquisition stay authoritative.
 type PrioritySchedulingConfig struct {
 	Teams                      PriorityTeamsConfig `json:"teams"`
@@ -34,6 +41,7 @@ type PrioritySchedulingConfig struct {
 	LatencyPercentile          int                 `json:"latency_percentile"`
 	LatencyMeasurement         string              `json:"latency_measurement"`
 	RecoveryExplorationPercent int                 `json:"recovery_exploration_percent"`
+	LatencyPenaltyMode         string              `json:"latency_penalty_mode"`
 	LatencyPenaltyMinutes      int                 `json:"latency_penalty_minutes"`
 	MaxLoadPercent             int                 `json:"max_load_percent"`
 	MinQualityPercent          int                 `json:"min_quality_percent"`
@@ -45,7 +53,7 @@ type PrioritySchedulingConfig struct {
 }
 
 func DefaultPrioritySchedulingConfig() PrioritySchedulingConfig {
-	return PrioritySchedulingConfig{Teams: PriorityTeamsConfig{Enabled: false, CostCNY: 50, WindowHours: 4, CNYPerBillingUnit: 1, WindowSource: "first_usage"}, ErrorRateWeight: 25, ErrorRateWindowMinutes: 10, ErrorRatePriorSamples: 5, OAuthQuotaThreshold: 90, BalanceProtocols: true, Mode: "balanced", GroupIDs: []int64{}, Models: []string{}, WindowMinutes: 60, MinSamples: 5, TargetTTFTMs: 3000, LatencyPercentile: 90, LatencyMeasurement: "legacy_forward", RecoveryExplorationPercent: 0, LatencyPenaltyMinutes: 10, MaxLoadPercent: 80, MinQualityPercent: 90, QualityMaxAgeHours: 24, QualityWeight: 30, LatencyWeight: 25, LoadWeight: 25, CostWeight: 20}
+	return PrioritySchedulingConfig{Teams: PriorityTeamsConfig{Enabled: false, CostCNY: 50, WindowHours: 4, CNYPerBillingUnit: 1, WindowSource: "first_usage"}, ErrorRateWeight: 25, ErrorRateWindowMinutes: 10, ErrorRatePriorSamples: 5, OAuthQuotaThreshold: 90, BalanceProtocols: true, Mode: "balanced", GroupIDs: []int64{}, Models: []string{}, WindowMinutes: 60, MinSamples: 5, TargetTTFTMs: 3000, LatencyPercentile: 90, LatencyMeasurement: "legacy_forward", RecoveryExplorationPercent: 0, LatencyPenaltyMode: PriorityLatencyDeprioritize, LatencyPenaltyMinutes: 10, MaxLoadPercent: 80, MinQualityPercent: 90, QualityMaxAgeHours: 24, QualityWeight: 30, LatencyWeight: 25, LoadWeight: 25, CostWeight: 20}
 }
 
 func ValidatePrioritySchedulingConfig(c PrioritySchedulingConfig) error {
@@ -60,6 +68,9 @@ func ValidatePrioritySchedulingConfig(c PrioritySchedulingConfig) error {
 	}
 	if c.RecoveryExplorationPercent < 0 || c.RecoveryExplorationPercent > 10 {
 		return errors.New("recovery exploration must be between 0 and 10 percent")
+	}
+	if c.LatencyPenaltyMode != "" && c.LatencyPenaltyMode != PriorityLatencyDeprioritize && c.LatencyPenaltyMode != PriorityLatencyStop {
+		return errors.New("invalid latency penalty mode")
 	}
 	if c.Teams.Enabled {
 		if c.Teams.CostCNY <= 0 || c.Teams.CostCNY > 1000000 || math.IsNaN(c.Teams.CostCNY) || math.IsInf(c.Teams.CostCNY, 0) || c.Teams.CNYPerBillingUnit <= 0 || c.Teams.CNYPerBillingUnit > 10000 || math.IsNaN(c.Teams.CNYPerBillingUnit) || math.IsInf(c.Teams.CNYPerBillingUnit, 0) || c.Teams.WindowHours < 1 || c.Teams.WindowHours > 168 || !slices.Contains([]string{"explicit", "expiry", "first_usage"}, c.Teams.WindowSource) {
@@ -144,6 +155,9 @@ func (s *SettingService) GetPrioritySchedulingConfig(ctx context.Context) (Prior
 	return c, ValidatePrioritySchedulingConfig(c)
 }
 func (s *SettingService) SavePrioritySchedulingConfig(ctx context.Context, c PrioritySchedulingConfig) error {
+	if c.LatencyPenaltyMode == "" {
+		c.LatencyPenaltyMode = PriorityLatencyDeprioritize
+	}
 	if err := ValidatePrioritySchedulingConfig(c); err != nil {
 		return err
 	}
@@ -239,7 +253,8 @@ type PrioritySchedulingQuery struct {
 	LatencyMeasurement string
 	TargetTTFTMs       int
 	AccountIDs         []int64
-	Model              string
+	Model              string // public requested model in persisted usage
+	QualityModel       string // routing model used by account quality probes; defaults to Model
 	GroupID            *int64
 	UsageUntil         time.Time
 	UsageSince         time.Time
@@ -252,17 +267,22 @@ type PrioritySchedulingSignalReader interface {
 }
 
 type prioritySignalEntry struct {
-	signals    map[int64]PrioritySchedulingSignal
-	expires    time.Time
-	observed   time.Time
-	refreshing bool
+	windowEnd                              time.Time
+	signals                                map[int64]PrioritySchedulingSignal
+	accounts                               map[int64]time.Time
+	expires, observed, lastUsed, attempted time.Time
+	refreshing                             bool
+	failure                                string
 }
 
 type prioritySchedulingState struct {
-	mu      sync.Mutex
-	entries map[string]*prioritySignalEntry
-	active  int
-	latest  *PrioritySchedulingSnapshot
+	mu          sync.Mutex
+	entries     map[string]*prioritySignalEntry
+	launches    [2]time.Time
+	launchIndex int
+	active      int
+	latest      *PrioritySchedulingSnapshot
+	latestInput *prioritySnapshotInput
 }
 
 type PrioritySchedulingScore struct {
@@ -271,6 +291,7 @@ type PrioritySchedulingScore struct {
 	BaseScore           float64                `json:"base_score"`
 	TeamsRecovery       *PriorityTeamsRecovery `json:"teams_recovery"`
 	OAuthQuotaRole      string                 `json:"oauth_quota_role,omitempty"`
+	HistoryStatus       string                 `json:"history_status"`
 	CapacityBand        int                    `json:"capacity_band"`
 	BoundGroups         int                    `json:"bound_groups"`
 	SelectionWeight     float64                `json:"selection_weight"`
@@ -291,6 +312,7 @@ type PrioritySchedulingScore struct {
 	LoadPercent         *int                   `json:"load_percent"`
 	Waiting             int                    `json:"waiting"`
 	LatencyPenaltyUntil *time.Time             `json:"latency_penalty_until,omitempty"`
+	LatencyStopped      bool                   `json:"latency_stopped"`
 	LatencyRecovery     bool                   `json:"latency_recovery,omitempty"`
 	PrioritySchedulingSignal
 }
@@ -311,91 +333,42 @@ type PrioritySchedulingSnapshot struct {
 }
 
 func (s *OpenAIGatewayService) PrioritySchedulingSnapshot() *PrioritySchedulingSnapshot {
-	if s == nil || !s.prioritySchedulingRuntimeConfig().Enabled {
+	if s == nil {
 		return nil
 	}
 	s.priorityScheduling.mu.Lock()
-	defer s.priorityScheduling.mu.Unlock()
-	// Published snapshots are immutable.
-	return s.priorityScheduling.latest
+	input := s.priorityScheduling.latestInput
+	latest := s.priorityScheduling.latest
+	s.priorityScheduling.mu.Unlock()
+	if input != nil {
+		return s.prioritySnapshotFromInput(input)
+	}
+	if !s.prioritySchedulingRuntimeConfig().Enabled {
+		return nil
+	}
+	return latest
+}
+
+func (s *OpenAIGatewayService) prioritySnapshotFromInput(input *prioritySnapshotInput) *PrioritySchedulingSnapshot {
+	h := priorityHistoryResult{status: "limited"}
+	if !input.limited {
+		h = s.priorityHistory(input.request, input.config, input.candidates)
+	}
+	now := time.Now()
+	snapshot := &PrioritySchedulingSnapshot{At: input.at, Model: priorityHistoryModel(input.request), GroupID: input.request.GroupID, Mode: input.config.Mode, SelectionPolicy: "capacity_first", HistoryReady: h.ready(), LatencyPercentile: input.config.LatencyPercentile, LatencyMeasurement: input.config.LatencyMeasurement, MinSamples: input.config.MinSamples, WindowMinutes: input.config.WindowMinutes, HistoryWindowEnd: h.windowEnd, ConfigRevision: priorityConfigRevision(input.config), Candidates: make([]PrioritySchedulingScore, 0, len(input.candidates))}
+	for _, item := range input.candidates {
+		if s.openaiAccountStats != nil {
+			item.priorityErrors = s.openaiAccountStats.attempts.snapshot(priorityRequestAttemptKey(input.request, item.account.ID), now, input.config.ErrorRateWindowMinutes, input.config.ErrorRatePriorSamples)
+		}
+		signal := h.signals[item.account.ID]
+		snapshot.Candidates = append(snapshot.Candidates, applyPriorityCandidate(input.config, &item, signal, now))
+	}
+	return snapshot
 }
 
 func (s *OpenAIGatewayService) prioritySignals(req OpenAIAccountScheduleRequest, c PrioritySchedulingConfig, accounts []openAIAccountCandidateScore) (map[int64]PrioritySchedulingSignal, bool) {
-	reader, ok := s.usageLogRepo.(PrioritySchedulingSignalReader)
-	if !ok {
-		return nil, false
-	}
-	ids := make([]int64, 0, len(accounts))
-	for _, a := range accounts {
-		ids = append(ids, a.account.ID)
-	}
-	slices.Sort(ids)
-	// Bound both aggregation and the memory used by client-controlled model names.
-	if len(ids) > 2000 || len(req.RequestedModel) > 200 {
-		return nil, false
-	}
-	windows := priorityTeamsWindows(c.Teams, accounts)
-	slices.SortFunc(windows, func(a, b PriorityTeamsWindow) int {
-		if a.AccountID < b.AccountID {
-			return -1
-		}
-		if a.AccountID > b.AccountID {
-			return 1
-		}
-		return 0
-	})
-	windowKey, err := json.Marshal(windows)
-	if err != nil {
-		return nil, false
-	}
-	key := fmt.Sprintf("%q/%d/%d/%d/%v/%d/%s/%s", req.RequestedModel, derefGroupID(req.GroupID), c.WindowMinutes, c.QualityMaxAgeHours, ids, c.Teams.WindowHours, windowKey, priorityConfigRevision(c))
-	state := &s.priorityScheduling
-	state.mu.Lock()
-	defer state.mu.Unlock()
-	if state.entries == nil {
-		state.entries = make(map[string]*prioritySignalEntry)
-	}
-	now := time.Now()
-	entry := state.entries[key]
-	if entry == nil {
-		if len(state.entries) >= 32 {
-			for k, e := range state.entries {
-				if !e.refreshing && now.After(e.expires) {
-					delete(state.entries, k)
-				}
-			}
-			if len(state.entries) >= 32 {
-				return nil, false
-			}
-		}
-		entry = &prioritySignalEntry{}
-		state.entries[key] = entry
-	}
-	if !entry.refreshing && now.After(entry.expires) && state.active < 2 {
-		entry.refreshing = true
-		state.active++
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			signals, err := reader.ReadPrioritySchedulingSignals(ctx, PrioritySchedulingQuery{LatencyPercentile: c.LatencyPercentile, LatencyMeasurement: c.LatencyMeasurement, TargetTTFTMs: c.TargetTTFTMs, AccountIDs: ids, Model: req.RequestedModel, GroupID: req.GroupID, UsageUntil: now, UsageSince: now.Add(-time.Duration(c.WindowMinutes) * time.Minute), QualitySince: now.Add(-time.Duration(c.QualityMaxAgeHours) * time.Hour), TeamsWindows: windows, TeamsWindowHours: c.Teams.WindowHours})
-			state.mu.Lock()
-			defer state.mu.Unlock()
-			state.active--
-			entry.refreshing = false
-			entry.expires = time.Now().Add(30 * time.Second)
-			if err == nil {
-				entry.signals = signals
-				entry.observed = time.Now()
-			} else {
-				entry.signals = nil
-				entry.observed = time.Time{}
-			}
-		}()
-	}
-	if entry.observed.IsZero() || now.Sub(entry.observed) > time.Minute {
-		return nil, false
-	}
-	return entry.signals, true
+	h := s.priorityHistory(req, c, accounts)
+	return h.signals, h.ready()
 }
 
 func scorePriorityCandidate(c PrioritySchedulingConfig, item openAIAccountCandidateScore, signal PrioritySchedulingSignal, now time.Time) PrioritySchedulingScore {
@@ -424,7 +397,11 @@ func scorePriorityCandidateWithOAuthRate(c PrioritySchedulingConfig, item openAI
 	}
 	rate := item.account.CostMultiplier()
 	theoreticalCost := signal.BaseCost * rate
-	out := PrioritySchedulingScore{Rate: &rate, TheoreticalCost: theoreticalCost, AccountID: item.account.ID, AccountName: item.account.Name, Priority: openAIAccountSchedulingPriority(item.account), Concurrency: item.account.Concurrency, LoadFactor: item.account.EffectiveLoadFactor(), Tier: "eligible", Reasons: []string{}, PrioritySchedulingSignal: signal, Waiting: item.loadInfo.WaitingCount}
+	waiting := 0
+	if item.loadInfo != nil {
+		waiting = item.loadInfo.WaitingCount
+	}
+	out := PrioritySchedulingScore{Rate: &rate, TheoreticalCost: theoreticalCost, AccountID: item.account.ID, AccountName: item.account.Name, Priority: openAIAccountSchedulingPriority(item.account), Concurrency: item.account.Concurrency, LoadFactor: item.account.EffectiveLoadFactor(), Tier: "eligible", Reasons: []string{}, PrioritySchedulingSignal: signal, Waiting: waiting}
 	quality, latency, load, cost := 0.5, 0.5, 0.5, 0.5
 	degraded, unknown := false, false
 	if signal.QualitySamples > 0 {
@@ -454,6 +431,7 @@ func scorePriorityCandidateWithOAuthRate(c PrioritySchedulingConfig, item openAI
 			} else {
 				degraded = true
 				out.Reasons = append(out.Reasons, "latency_above_target")
+				out.LatencyStopped = c.LatencyPenaltyMode == PriorityLatencyStop
 			}
 		}
 	} else {
@@ -546,7 +524,7 @@ func scorePriorityCandidateWithOAuthRate(c PrioritySchedulingConfig, item openAI
 
 func (s *defaultOpenAIAccountScheduler) applyPriorityScheduling(req OpenAIAccountScheduleRequest, plan *openAIAccountLoadPlan) bool {
 	c := s.service.prioritySchedulingRuntimeConfig()
-	if req.Platform != PlatformOpenAI || req.RequiredImageCapability != "" || !req.UseUpstreamTokenCost || !c.applies(req.GroupID, req.RequestedModel) {
+	if req.Platform != PlatformOpenAI || req.RequiredImageCapability != "" || !req.UseUpstreamTokenCost || !priorityApplies(c, req) {
 		return false
 	}
 	signals, _ := s.service.prioritySignals(req, c, plan.candidates)
@@ -568,7 +546,7 @@ func (s *defaultOpenAIAccountScheduler) applyPriorityScheduling(req OpenAIAccoun
 
 func (s *defaultOpenAIAccountScheduler) recordPrioritySnapshot(req OpenAIAccountScheduleRequest, c PrioritySchedulingConfig, pool []openAIAccountCandidateScore, now time.Time) {
 	signals, ready := s.service.prioritySignals(req, c, pool)
-	snapshot := &PrioritySchedulingSnapshot{At: now, Model: req.RequestedModel, GroupID: req.GroupID, Mode: c.Mode, SelectionPolicy: "capacity_first", HistoryReady: ready, LatencyPercentile: c.LatencyPercentile, LatencyMeasurement: c.LatencyMeasurement, MinSamples: c.MinSamples, WindowMinutes: c.WindowMinutes, HistoryWindowEnd: &now, ConfigRevision: priorityConfigRevision(c), Candidates: []PrioritySchedulingScore{}}
+	snapshot := &PrioritySchedulingSnapshot{At: now, Model: priorityHistoryModel(req), GroupID: req.GroupID, Mode: c.Mode, SelectionPolicy: "capacity_first", HistoryReady: ready, LatencyPercentile: c.LatencyPercentile, LatencyMeasurement: c.LatencyMeasurement, MinSamples: c.MinSamples, WindowMinutes: c.WindowMinutes, HistoryWindowEnd: &now, ConfigRevision: priorityConfigRevision(c), Candidates: []PrioritySchedulingScore{}}
 	if c.OAuthQuotaPriority {
 		snapshot.SelectionPolicy = "oauth_quota_priority"
 	}
@@ -692,7 +670,9 @@ func applyPriorityCandidate(c PrioritySchedulingConfig, item *openAIAccountCandi
 }
 
 func priorityHistoryKey(req OpenAIAccountScheduleRequest, c PrioritySchedulingConfig) string {
-	return fmt.Sprintf("%q/%d/%t/%d/%d", req.RequestedModel, derefGroupID(req.GroupID), req.GroupID != nil, c.WindowMinutes, c.QualityMaxAgeHours) + "/" + priorityConfigRevision(c)
+	// Switching the penalty action must keep the measured population.
+	c.LatencyPenaltyMode = PriorityLatencyDeprioritize
+	return fmt.Sprintf("%q/%q/%d/%t/%d/%d", priorityHistoryModel(req), strings.TrimSpace(req.RequestedModel), derefGroupID(req.GroupID), req.GroupID != nil, c.WindowMinutes, c.QualityMaxAgeHours) + "/" + priorityConfigRevision(c)
 }
 
 func priorityConfigRevision(c PrioritySchedulingConfig) string {

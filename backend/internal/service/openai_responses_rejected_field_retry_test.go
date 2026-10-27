@@ -653,7 +653,8 @@ func newOpenAIRejectedFieldTestService(upstream *httpUpstreamRecorder) *OpenAIGa
 		cfg: &config.Config{Security: config.SecurityConfig{
 			URLAllowlist: config.URLAllowlistConfig{Enabled: false},
 		}},
-		httpUpstream: upstream,
+		httpUpstream:       upstream,
+		openaiAccountStats: newOpenAIAccountRuntimeStats(),
 	}
 }
 

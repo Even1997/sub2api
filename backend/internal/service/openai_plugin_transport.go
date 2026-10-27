@@ -110,13 +110,17 @@ func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL 
 			}
 		}
 	}()
+	observeAttempt := s.observePriorityAttempt(request, account)
 	if s.pluginManager != nil {
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)
 		if handled {
+			observeAttempt(response, err)
 			return response, err
 		}
 	}
-	return s.httpUpstream.Do(request, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.httpUpstream.Do(request, proxyURL, account.ID, account.Concurrency)
+	observeAttempt(resp, err)
+	return resp, err
 }
 
 // doOpenAIAccountTestUpstream applies the same stored ticket and transport lifecycle
