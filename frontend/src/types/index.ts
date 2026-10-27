@@ -2387,6 +2387,8 @@ export interface ObserverSetupOptions {
 }
 
 export interface UpdateUserRequest {
+  /** Optional operation reason recorded by the admin audit middleware, not user notes. */
+  reason?: string
   email?: string
   password?: string
   username?: string

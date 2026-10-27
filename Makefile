@@ -96,6 +96,8 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/account/__tests__/BulkEditAccountModal.spec.ts \
 	src/components/admin/user/__tests__/UserEditModal.spec.ts \
 	src/components/admin/moderation/__tests__/ModerationUsers.spec.ts \
+	src/components/admin/moderation/__tests__/ModerationUserQuickEnable.spec.ts \
+	src/api/__tests__/admin.users.spec.ts \
 	src/views/user/__tests__/KeysView.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
