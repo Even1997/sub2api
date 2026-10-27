@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
@@ -102,6 +103,8 @@ func (s *ScheduledTestService) accountQualityModels(ctx context.Context, id int6
 			models = append(models, publicID)
 			seen[publicID] = struct{}{}
 		}
+	} else if account.IsTypeSafe() {
+		models = []string{typesafe.JevLatestModel}
 	} else if mapping := account.GetModelMapping(); len(mapping) > 0 {
 		for model := range mapping {
 			models = append(models, model)

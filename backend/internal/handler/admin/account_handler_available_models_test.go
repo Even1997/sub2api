@@ -720,7 +720,7 @@ func TestQualityLiveAvailableModelsReturnsCredentialReasonInsteadOfLocalFallback
 	svc := &availableModelsAdminService{stubAdminService: newStubAdminService(), account: service.Account{ID: 44, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Credentials: map[string]any{"api_key": "synthetic-key", "base_url": "https://models.example/v1"}}}
 	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{StatusCode: 401, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":{"code":"token_revoked","message":"synthetic-private-provider-text"}}`))}}
 	cfg := &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}}
-	gateway := service.NewOpenAIGatewayService(nil, nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
+	gateway := service.NewOpenAIGatewayService(nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
 	tests := service.NewAccountTestService(nil, nil, nil, nil, nil, upstream, cfg, nil)
 	tests.SetOpenAIGatewayService(gateway)
 	h := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, tests, nil, nil, nil, nil, nil)
