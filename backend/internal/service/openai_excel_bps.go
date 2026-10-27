@@ -421,6 +421,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		failover.SkipOAuth429AttemptLimit = true
 		return nil, failover
 	}
+	// A queued/sticky selection may predate another request's credential
+	// failure. Recheck before preparation, compaction or any upstream send.
+	if isExcelBPSClientCancellation(c, ctx.Err()) {
+		return clientCanceled()
+	}
+	if s.isExcelBPSCredentialCoolingDown(ctx, account, originalModel) {
+		return nil, s.newExcelBPSFailover(ctx, c, account, originalModel, http.StatusBadGateway, nil, "basispoints_auth_cooling_down", false)
+	}
 	imageSettings, err := s.settingService.GetExcelBPSImageRelaySettings(ctx)
 	if err != nil {
 		if isExcelBPSClientCancellation(c, err) {
@@ -583,7 +591,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			}
 			return fail(502, "basispoints_auth_unavailable", "Excel OAuth credential is unavailable; see Credential Operations")
 		}
-		s.pauseExcelBPSCredentialError(ctx, account, err)
+		s.handleExcelBPSCredentialReadError(ctx, account, err)
 		return nil, s.newExcelBPSFailover(ctx, c, account, originalModel, http.StatusBadGateway, nil, "basispoints_auth_unavailable", false)
 	}
 	accountID := excelBPSAccountID(account, token)

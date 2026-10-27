@@ -1107,6 +1107,8 @@ describe("admin SettingsView payment visible method controls", () => {
     const toggle = card.get('#excel-bps-recovery-enabled');
     expect((toggle.element as HTMLInputElement).checked).toBe(enabled);
     expect(card.text()).toContain('BPS 凭证失效会暂停整个账号');
+    expect(card.get('#excel-bps-credential-cooldown-help').text()).toContain('同一开关还控制凭证临时避让');
+    expect(card.get('#excel-bps-credential-cooldown-help').text()).toContain('BPS 通道避让 30 秒');
     expect(card.text()).toContain('使用政策 HTTP 403 换号重试');
     expect(card.text()).toContain('180 分钟内连续 3 次');
     expect(card.text()).toContain('仅关闭 BPS');

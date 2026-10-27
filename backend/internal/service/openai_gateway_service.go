@@ -540,6 +540,7 @@ type OpenAIGatewayService struct {
 	openaiOAuth429RetryStartedAt        sync.Map // key: int64(accountID), value: time.Time
 	excelBPSRateLimitedUntil            sync.Map // account ID -> time.Time; legacy BPS cooldown
 	excelBPSModelRateLimits             sync.Map // excelBPSRateLimitKey -> immutable excelBPSRateLimitState
+	excelBPSCredentialCooldowns         excelBPSCredentialCooldowns
 	excelBPSRateLimitSweepAt            atomic.Int64
 	grokCredentialMutationLocks         sync.Map // key: int64(accountID), value: *sync.Mutex
 	openaiOAuth429WindowStartUnixNano   atomic.Int64

@@ -3,13 +3,10 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"github.com/gin-gonic/gin"
@@ -95,28 +92,6 @@ func (s *OpenAIGatewayService) pauseExcelBPSCredentials(ctx context.Context, acc
 		// scheduler change, and requires an explicit resume after repair.
 		if err := s.accountRepo.SetError(stateCtx, account.ID, reason); err != nil {
 			logger.LegacyPrintf("service.openai_excel_bps", "credential account pause failed: account_id=%d", account.ID)
-		}
-	}
-}
-
-func (s *OpenAIGatewayService) pauseExcelBPSCredentialError(ctx context.Context, account *Account, err error) {
-	// An authorization still in progress or a storage outage does not prove
-	// that the account's credentials are invalid. Fail over without disabling it.
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return
-	}
-	switch infraerrors.Reason(err) {
-	case "OPENAI_EXCEL_AUTH_PENDING", "OPENAI_EXCEL_AUTH_UNAVAILABLE":
-		return
-	case "OPENAI_EXCEL_AUTH_REQUIRED", "OPENAI_EXCEL_AUTH_CONFIG_REQUIRED", "OPENAI_EXCEL_AUTH_FAILED", "OPENAI_EXCEL_AUTH_VERIFICATION_REQUIRED":
-		s.pauseExcelBPSCredentials(ctx, account)
-		return
-	}
-	message := strings.ToLower(err.Error())
-	for _, marker := range []string{"access_token not found", "api_key not found", "invalid saved excel", "identity does not match the account", "refresh token is invalid", "invalid_grant", "token_revoked", "token_invalidated"} {
-		if strings.Contains(message, marker) {
-			s.pauseExcelBPSCredentials(ctx, account)
-			return
 		}
 	}
 }
