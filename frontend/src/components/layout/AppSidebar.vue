@@ -348,6 +348,7 @@ const MoonIcon = { render: () => h(Icon, { name: 'moon' }) }
 const ChevronDoubleLeftIcon = { render: () => h(Icon, { name: 'chevronsLeft' }) }
 const OrderIcon = { render: () => h(Icon, { name: 'receipt' }) }
 const OrderListIcon = { render: () => h(Icon, { name: 'list' }) }
+const BillIcon = { render: () => h(Icon, { name: 'document' }) }
 const ChevronDoubleRightIcon = { render: () => h(Icon, { name: 'chevronsRight' }) }
 const SignalIcon = { render: () => h(Icon, { name: 'radio' }) }
 const FlowIcon = { render: () => h(Icon, { name: 'route' }) }
@@ -411,7 +412,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/pelican-showcase', label: t('nav.pelicanShowcase'), icon: GalleryIcon, featureFlag: flagPelicanShowcase },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
-    { path: '/bills', label: t('bills.title'), icon: OrderListIcon, hideInSimpleMode: true },
+    { path: '/bills', label: t('bills.title'), icon: BillIcon, hideInSimpleMode: true },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },

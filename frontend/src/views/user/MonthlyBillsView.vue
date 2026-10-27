@@ -3,7 +3,7 @@
     <div class="bill-page">
       <div class="bill-toolbar">
         <h1>{{ t('bills.title') }}</h1>
-        <label class="bill-month"><span class="sr-only">{{ t('bills.month') }}</span><input v-model="month" type="month" min="2000-01" :max="currentMonth" :disabled="busy" data-test="bill-month" class="input" /></label>
+        <Select v-model="month" class="bill-month" :options="monthOptions" :disabled="busy" :aria-label="t('bills.month')" data-test="bill-month" />
         <span class="bill-manual">{{ t('bills.manual') }}</span>
         <button class="btn btn-primary" :disabled="busy || !validMonth || !!loadError" data-test="bill-generate" @click="versions.length ? confirmRegenerate = true : generate()">{{ generating ? t('bills.generating') : versions.length ? t('bills.regenerate') : t('bills.generate') }}</button>
         <button class="btn btn-secondary" :disabled="!bill || busy" data-test="bill-print" @click="printBill">{{ t('bills.print') }}</button>
@@ -15,7 +15,7 @@
       </div>
       <template v-else-if="bill">
         <div class="bill-options">
-          <label>{{ t('bills.version') }} <select v-model="version" :disabled="busy" class="input" data-test="bill-version" @change="loadVersion"><option v-for="v in versions" :key="v.version" :value="v.version">v{{ v.version }} · {{ dateTime(v.generated_at) }}</option></select></label>
+          <label class="bill-version-field">{{ t('bills.version') }} <Select v-model="version" class="bill-version" :options="versionOptions" :disabled="busy" :aria-label="t('bills.version')" data-test="bill-version" @change="loadVersion" /></label>
           <label><input v-model="exact" type="checkbox" /> {{ t('bills.exact') }}</label>
         </div>
         <article class="bill-paper" data-test="bill-paper">
@@ -81,6 +81,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select from '@/components/common/Select.vue'
 import BillModelTable from '@/components/billing/BillModelTable.vue'
 import { useAppStore } from '@/stores/app'
 import { monthlyBillsAPI, type BillVersion, type MonthlyBill } from '@/api/monthlyBills'
@@ -91,9 +92,19 @@ const { t, locale } = useI18n()
 const app = useAppStore()
 const currentMonth = shanghaiMonth()
 const month = ref(previousMonth(currentMonth))
+const monthOptions = computed(() => {
+  const options: { value: string; label: string }[] = []
+  let cursor = currentMonth
+  while (cursor >= '2000-01') {
+    options.push({ value: cursor, label: cursor })
+    cursor = previousMonth(cursor)
+  }
+  return options
+})
 const validMonth = computed(() => /^\d{4}-(0[1-9]|1[0-2])$/.test(month.value) && month.value <= shanghaiMonth() && month.value >= '2000-01')
 const versions = ref<BillVersion[]>([])
 const version = ref(0)
+const versionOptions = computed(() => versions.value.map(item => ({ value: item.version, label: `v${item.version} · ${dateTime(item.generated_at)}` })))
 const bill = ref<MonthlyBill | null>(null)
 const loading = ref(false)
 const generating = ref(false)
@@ -160,11 +171,11 @@ watch(month, loadMonth, { immediate: true })
 .bill-scroll-hint { display: none; }
 .bill-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .bill-toolbar h1 { font-size: 18px; font-weight: 650; margin-right: auto; }
-.bill-month { width: 158px; }.bill-month input { width: 100%; }
+.bill-month { width: 168px; }
 .bill-manual { font-size: 12px; color: var(--bill-muted); }
 .bill-toolbar .btn { min-height: 42px; font-size: 12px; }
 .bill-options { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 12px 0; color: var(--bill-muted); font-size: 12px; }
-.bill-options label { display: flex; align-items: center; gap: 8px; }.bill-options select { width: auto; font-size: 12px; }
+.bill-options label { display: flex; align-items: center; gap: 8px; }.bill-version { width: 280px; max-width: 100%; }
 .bill-paper { padding: 48px 52px 32px; background: #fff; border: 1px solid #e6e9ee; border-radius: 6px; box-shadow: 0 8px 28px #182b4b06; }
 .bill-heading { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }.bill-heading > div:last-child { text-align: right; }
 .bill-brand { display: flex; align-items: center; gap: 12px; font-size: 26px; font-weight: 750; overflow-wrap: anywhere; }.bill-brand img { width: 40px; height: 40px; object-fit: contain; }
@@ -184,7 +195,7 @@ watch(month, loadMonth, { immediate: true })
   .bill-toolbar { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .bill-toolbar h1 { grid-column: 1 / -1; }.bill-month { grid-column: span 3; width: auto; }.bill-manual { grid-column: span 3; }
   .bill-toolbar .btn { grid-column: span 3; white-space: nowrap; padding-left: 6px; padding-right: 6px; font-size: 11px; }
-  .bill-paper { padding: 24px 18px; }.bill-toolbar { gap: 8px; }.bill-toolbar h1 { flex-basis: 100%; }.bill-manual { margin-right: auto; }.bill-toolbar .btn { flex: 1; }.bill-brand { font-size: 18px; gap: 6px; }.bill-brand img { width: 28px; height: 28px; }.bill-heading h2 { font-size: 21px; }.bill-eyebrow { font-size: 9px; }.bill-meta { grid-template-columns: 1fr; gap: 18px; margin-top: 26px; }.bill-meta dl { justify-self: start; }.bill-hero { grid-template-columns: 1fr; gap: 20px; margin: 28px 0; }.bill-ratio { padding: 0 0 0 16px; }.bill-settlement { grid-template-columns: 1fr; gap: 20px; }.bill-settlement > p { max-width: none; }.bill-section > h3 { font-size: 18px; }.bill-models { min-width: 320px; }.bill-table td,.bill-table th { padding-left: 6px; padding-right: 6px; }.bill-options select { max-width: 210px; }.bill-amount { font-size: 38px; }
+  .bill-paper { padding: 24px 18px; }.bill-toolbar { gap: 8px; }.bill-toolbar h1 { flex-basis: 100%; }.bill-manual { margin-right: auto; }.bill-toolbar .btn { flex: 1; }.bill-brand { font-size: 18px; gap: 6px; }.bill-brand img { width: 28px; height: 28px; }.bill-heading h2 { font-size: 21px; }.bill-eyebrow { font-size: 9px; }.bill-meta { grid-template-columns: 1fr; gap: 18px; margin-top: 26px; }.bill-meta dl { justify-self: start; }.bill-hero { grid-template-columns: 1fr; gap: 20px; margin: 28px 0; }.bill-ratio { padding: 0 0 0 16px; }.bill-settlement { grid-template-columns: 1fr; gap: 20px; }.bill-settlement > p { max-width: none; }.bill-section > h3 { font-size: 18px; }.bill-models { min-width: 320px; }.bill-table td,.bill-table th { padding-left: 6px; padding-right: 6px; }.bill-version { width: 100%; }.bill-amount { font-size: 38px; }
 }
 @media print {
   @page { size: A4; margin: 14mm; @bottom-right { content: counter(page) " / " counter(pages); font-family: sans-serif; font-size: 9px; color: #657493; } }

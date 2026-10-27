@@ -21,6 +21,12 @@ const fixture: MonthlyBill = {
   days: Array.from({ length: 30 }, (_, i) => ({ date: `2026-09-${String(i + 1).padStart(2, '0')}`, consumption: i === 0 ? '0.1000000001' : '0', rebate: i === 0 ? '1' : '0', net: i === 0 ? '-0.8999999999' : '0', models: i === 0 ? [model] : [], transfers: i === 0 ? [{ id: 7, at: '2026-09-01T00:00:00Z', amount: '1' }] : [] })),
 }
 let wrapper: ReturnType<typeof mount> | undefined
+async function choose(w: NonNullable<typeof wrapper>, selector: string, value: string | number) {
+  const select = w.getComponent(selector)
+  select.vm.$emit('update:modelValue', value)
+  select.vm.$emit('change', value)
+  await flushPromises()
+}
 function render() {
   wrapper = mount(MonthlyBillsView, { global: { plugins: [createI18n({ legacy: false, locale: 'zh', messages: { zh: { bills, common: { cancel: '取消' } } } })] } })
   return wrapper
@@ -41,7 +47,7 @@ describe('monthly statements', () => {
   it('does not generate on entry, month selection or remount; double clicks issue one request', async () => {
     const w = render(); await flushPromises()
     expect(api.generate).not.toHaveBeenCalled()
-    await w.get('[data-test="bill-month"]').setValue('2026-08'); await flushPromises()
+    await choose(w, '[data-test="bill-month"]', '2026-08')
     expect(api.generate).not.toHaveBeenCalled()
     let resolve!: (b: MonthlyBill) => void
     api.generate.mockImplementation(() => new Promise(r => { resolve = r }))
@@ -63,13 +69,13 @@ describe('monthly statements', () => {
     api.get.mockResolvedValue({ ...fixture, version: 2 })
     api.generate.mockResolvedValue({ ...fixture, version: 3 })
     const w = render(); await flushPromises()
-    await w.get('[data-test="bill-version"]').setValue(1); await flushPromises()
+    await choose(w, '[data-test="bill-version"]', 1)
     expect(api.generate).not.toHaveBeenCalled()
     await w.get('[data-test="bill-generate"]').trigger('click'); await flushPromises()
     expect(api.generate).not.toHaveBeenCalled(); expect(w.find('[role="dialog"]').exists()).toBe(true)
     await w.get('[data-test="bill-confirm-regenerate"]').trigger('click'); await flushPromises()
     expect(api.generate).toHaveBeenCalledWith(expect.any(String), 2)
-    expect(w.findAll('[data-test="bill-version"] option')).toHaveLength(3)
+    expect(w.getComponent('[data-test="bill-version"]').props('options')).toHaveLength(3)
     await w.get('.bill-day-button').trigger('click')
     expect(w.get('.bill-day-button').attributes('aria-expanded')).toBe('true')
     await w.get('input[type="checkbox"]').setValue(true)
