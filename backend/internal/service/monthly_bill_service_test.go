@@ -79,11 +79,17 @@ func TestMonthlyBillPostgres(t *testing.T) {
     CREATE TABLE usage_logs(id BIGSERIAL PRIMARY KEY,user_id BIGINT,model TEXT,billing_type SMALLINT DEFAULT 0,created_at TIMESTAMPTZ,
     input_tokens INTEGER DEFAULT 0,output_tokens INTEGER DEFAULT 0,cache_creation_tokens INTEGER DEFAULT 0,cache_read_tokens INTEGER DEFAULT 0,
     image_input_tokens INTEGER DEFAULT 0,image_output_tokens INTEGER DEFAULT 0,image_count INTEGER DEFAULT 0,video_count INTEGER DEFAULT 0,video_duration_seconds INTEGER,
+    api_key_id BIGINT,group_id BIGINT,requested_model TEXT,billing_mode TEXT,request_type SMALLINT,stream BOOLEAN,openai_ws_mode BOOLEAN,native_compaction_v2 BOOLEAN,total_cost NUMERIC DEFAULT 0,
     actual_cost NUMERIC(20,10),rate_multiplier NUMERIC DEFAULT 1);
     CREATE INDEX usage_user_time ON usage_logs(user_id,created_at);
     CREATE TABLE user_affiliate_ledger(id BIGSERIAL PRIMARY KEY,user_id BIGINT,action TEXT,amount NUMERIC(20,10),created_at TIMESTAMPTZ);
     CREATE TABLE usage_billing_events(observed_at TIMESTAMPTZ,state TEXT,payload JSONB);`)
 	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "318_user_monthly_bills.sql"))
+	require.NoError(t, err)
+	exec(string(migration))
+	exec(`INSERT INTO users(id,email,created_at) VALUES(4,'legacy@example.test','2020-01-01');
+    INSERT INTO usage_logs(user_id,model,created_at,actual_cost) VALUES(4,'legacy-model',date_trunc('month',NOW() AT TIME ZONE 'Asia/Shanghai') AT TIME ZONE 'Asia/Shanghai',0.75)`)
+	migration, err = os.ReadFile(filepath.Join("..", "..", "migrations", "321_permanent_hourly_usage.sql"))
 	require.NoError(t, err)
 	exec(string(migration))
 	month := time.Now().In(billZone).AddDate(0, -1, 0).Format("2006-01")
@@ -95,6 +101,13 @@ func TestMonthlyBillPostgres(t *testing.T) {
 	_, err = s.Generate(ctx, 1, month, 0)
 	require.ErrorIs(t, err, errBillIncomplete)
 	exec(`UPDATE monthly_bill_coverage SET complete_from=$1`, start)
+	currentMonth := time.Now().In(billZone).Format("2006-01")
+	_, err = s.Generate(ctx, 4, currentMonth, 0)
+	require.ErrorContains(t, err, "BILL_BACKFILL_PENDING")
+	exec(`SELECT backfill_user_usage_hourly(1000)`)
+	legacy, err := s.Generate(ctx, 4, currentMonth, 0)
+	require.NoError(t, err)
+	require.Equal(t, "0.75", legacy.Consumption)
 	exec(`INSERT INTO usage_logs(user_id,model,created_at,input_tokens,actual_cost,rate_multiplier) VALUES
     (1,'text-model',$1,100,0.1000000001,0.5),(1,'text-model',$1,200,0.2,2),
     (1,'text-model',$2,900,99,1),(1,'text-model',$3,900,99,1),(2,'private-model',$1,900,99,1)`, start, start.Add(-time.Microsecond), end)
@@ -166,10 +179,11 @@ func TestMonthlyBillPostgres(t *testing.T) {
 	require.Equal(t, "2", saved.Rebate)
 	_, err = s.Generate(ctx, 1, month, 9)
 	require.ErrorContains(t, err, "BILL_VERSION_STALE")
-	// Deleted source history blocks new versions but never erases old snapshots.
+	// Retention deletes source history without changing regenerated bills.
 	exec(`DELETE FROM usage_logs WHERE user_id=1 AND created_at=$1`, start)
-	_, err = s.Generate(ctx, 1, month, 2)
-	require.ErrorIs(t, err, errBillIncomplete)
+	retained, err := s.Generate(ctx, 1, month, 2)
+	require.NoError(t, err)
+	require.Equal(t, v2.Consumption, retained.Consumption)
 	saved, err = s.Generate(ctx, 1, month, 0)
 	require.NoError(t, err)
 	require.Equal(t, "1.0000000001", saved.Consumption)
@@ -182,7 +196,10 @@ func TestMonthlyBillPostgres(t *testing.T) {
 	require.Equal(t, empty.GeneratedAt.In(billZone).Day(), len(empty.Days))
 	// Database aggregation, not individual-request snapshots, keeps large bills small.
 	exec(`INSERT INTO users(id,email,created_at) VALUES(3,'load@example.test',$1)`, start)
-	exec(`INSERT INTO usage_logs(user_id,model,created_at,input_tokens,actual_cost) SELECT 3,'load-model',$1,1000,0.0001 FROM generate_series(1,100000)`, start)
+	// Match production's bounded insert batches; avoid one 100k-row transaction.
+	for i := 0; i < 100; i++ {
+		exec(`INSERT INTO usage_logs(user_id,model,created_at,input_tokens,actual_cost) SELECT 3,'load-model',$1,1000,0.0001 FROM generate_series(1,1000)`, start)
+	}
 	began := time.Now()
 	large, err := s.Generate(ctx, 3, month, 0)
 	require.NoError(t, err)
@@ -196,7 +213,7 @@ func TestMonthlyBillPostgres(t *testing.T) {
 	t.Logf("100,000 usage records: %s generation, %d-byte snapshot", elapsed, len(raw))
 	exec(`TRUNCATE usage_logs`)
 	_, err = s.Generate(ctx, 2, current, 1)
-	require.ErrorIs(t, err, errBillIncomplete)
+	require.NoError(t, err)
 	_, err = s.Get(ctx, 2, current, 1)
 	require.NoError(t, err)
 	// Store a sanitized fixture only when the local visual QA harness requests it.

@@ -13,7 +13,7 @@ const {
   getStats,
   getDashboardModels,
   getDashboardSnapshotV2,
-  getDashboardTrend,
+  getHourlySummary,
   listMyErrorRequests,
   list,
   getAvailable,
@@ -26,7 +26,7 @@ const {
   getStats: vi.fn(),
   getDashboardModels: vi.fn(),
   getDashboardSnapshotV2: vi.fn(),
-  getDashboardTrend: vi.fn(),
+  getHourlySummary: vi.fn(),
   listMyErrorRequests: vi.fn(),
   list: vi.fn(),
   getAvailable: vi.fn(),
@@ -89,7 +89,7 @@ vi.mock('@/api', () => ({
     getStats,
     getDashboardModels,
     getDashboardSnapshotV2,
-    getDashboardTrend,
+    getHourlySummary,
     listMyErrorRequests,
   },
   keysAPI: {
@@ -191,7 +191,7 @@ describe('user UsageView', () => {
     getStats.mockReset()
     getDashboardModels.mockReset()
     getDashboardSnapshotV2.mockReset()
-    getDashboardTrend.mockReset()
+    getHourlySummary.mockReset()
     listMyErrorRequests.mockReset()
     list.mockReset()
     getAvailable.mockReset()
@@ -227,7 +227,7 @@ describe('user UsageView', () => {
       trend: [],
       groups: [],
     })
-    getDashboardTrend.mockResolvedValue({ trend: [] })
+    getHourlySummary.mockResolvedValue({ trend: [], complete_from: '2025-01-01T00:00:00Z', missing_months: [], backfill_pending: false })
     listMyErrorRequests.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
     list.mockResolvedValue({ items: [{ id: 1, name: 'demo-key' }], total: 1, page: 1, page_size: 100, pages: 1 })
     getAvailable.mockResolvedValue([{ id: 1, name: 'default' }])
@@ -258,7 +258,7 @@ describe('user UsageView', () => {
     expect(list).toHaveBeenCalledTimes(1)
     expect(list).toHaveBeenCalledWith(1, 100)
     expect(getAvailable).toHaveBeenCalled()
-    expect(getDashboardTrend).toHaveBeenCalledWith(expect.objectContaining({ granularity: 'day' }))
+    expect(getHourlySummary).toHaveBeenCalledWith(expect.objectContaining({ granularity: 'day' }))
     expect(wrapper.findComponent(UsageHeatmap).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'UsageTrendChart' }).exists()).toBe(false)
     wrapper.unmount()
@@ -302,21 +302,21 @@ describe('user UsageView', () => {
     ;(wrapper.vm as any).filters.api_key_id = 1
     const heatmap = wrapper.findComponent(UsageHeatmap)
     const annualRange = { startDate: heatmap.props('startDate'), endDate: heatmap.props('endDate') }
-    getDashboardTrend.mockClear()
+    getHourlySummary.mockClear()
     expect(wrapper.find('[data-testid="usage-all-dates"]').exists()).toBe(false)
     expect(wrapper.findComponent(UsageHeatmap).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'UsageTrendChart' }).exists()).toBe(false)
     wrapper.findComponent(DateRangePicker).vm.$emit('change', { startDate: '2026-10-13', endDate: '2026-10-13', preset: 'today' })
     await flushPromises()
     expect(heatmap.props()).toMatchObject(annualRange)
-    expect(getDashboardTrend).not.toHaveBeenCalled()
+    expect(getHourlySummary).not.toHaveBeenCalled()
     expect(wrapper.findComponent({ name: 'UsageTrendChart' }).props('granularity')).toBe('hour')
     expect(getDashboardSnapshotV2).toHaveBeenLastCalledWith(expect.objectContaining({ granularity: 'hour', start_date: '2026-10-13', end_date: '2026-10-13', api_key_id: 1 }))
 
     wrapper.findComponent(DateRangePicker).vm.$emit('change', { startDate: '2026-10-01', endDate: '2026-10-13', preset: null })
     await flushPromises()
     expect(heatmap.props()).toMatchObject(annualRange)
-    expect(getDashboardTrend).not.toHaveBeenCalled()
+    expect(getHourlySummary).not.toHaveBeenCalled()
     expect(wrapper.findComponent({ name: 'UsageTrendChart' }).exists()).toBe(false)
     wrapper.unmount()
   })
@@ -356,7 +356,7 @@ describe('user UsageView', () => {
     await flushPromises()
     const expected = { model_provider: 'anthropic', group_id: 3, model: undefined }
     expect(query).toHaveBeenLastCalledWith(expect.objectContaining(expected), expect.anything())
-    for (const endpoint of [getStats, getDashboardModels, getDashboardTrend]) {
+    for (const endpoint of [getStats, getDashboardModels, getHourlySummary]) {
       expect(endpoint).toHaveBeenLastCalledWith(expect.objectContaining(expected))
     }
     expect(wrapper.find('.usage-group-tabs button[aria-label="Claude"]').attributes('aria-pressed')).toBe('true')
@@ -371,7 +371,7 @@ describe('user UsageView', () => {
     await flushPromises()
     const picker = wrapper.findComponent(DateRangePicker)
     expect(picker.props('allowAll')).toBe(true)
-    getDashboardTrend.mockClear()
+    getHourlySummary.mockClear()
     picker.vm.$emit('change', { startDate: '', endDate: '', preset: 'all' })
     await flushPromises()
     const expected = { period: 'all', start_date: undefined, end_date: undefined }
@@ -381,10 +381,10 @@ describe('user UsageView', () => {
     }
     expect(wrapper.findComponent({ name: 'UsageTrendChart' }).exists()).toBe(false)
     expect(wrapper.findAll('.usage-stat')[0].attributes('title')).toContain('All')
-    expect(getDashboardTrend).not.toHaveBeenCalled()
+    expect(getHourlySummary).not.toHaveBeenCalled()
     await wrapper.find('.usage-group-tabs button[aria-label="Grok"]').trigger('click')
     await flushPromises()
-    expect(getDashboardTrend).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(getHourlySummary).toHaveBeenLastCalledWith(expect.objectContaining({
       period: undefined, model_provider: 'grok',
       start_date: wrapper.findComponent(UsageHeatmap).props('startDate'),
       end_date: wrapper.findComponent(UsageHeatmap).props('endDate'),
@@ -444,7 +444,7 @@ describe('user UsageView', () => {
   it('updates all summary cards for the selected dates and ignores older statistics', async () => {
     const wrapper = mountUsageView()
     await flushPromises()
-    getDashboardTrend.mockClear()
+    getHourlySummary.mockClear()
     let resolveOld!: (value: unknown) => void
     getStats.mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve }))
     const picker = wrapper.findComponent(DateRangePicker)
@@ -467,7 +467,7 @@ describe('user UsageView', () => {
     expect(wrapper.findAll('.usage-stat')[1].text()).toContain('Standard Cost')
     expect(wrapper.findAll('.usage-stat')[2].text()).toContain('Total Requests')
     expect(wrapper.findAll('.usage-stat')[2].attributes('title')).toContain('2026-10-13 ~ 2026-10-13')
-    expect(getDashboardTrend).not.toHaveBeenCalled()
+    expect(getHourlySummary).not.toHaveBeenCalled()
     resolveOld({ ...latest, total_requests: 999 })
     await flushPromises()
     expect(wrapper.findAll('.usage-stat-value')[2].text()).toBe('12')
@@ -525,12 +525,12 @@ describe('user UsageView', () => {
     ;(wrapper.vm as any).filters.api_key_id = 1
     query.mockClear()
     getStats.mockClear()
-    getDashboardTrend.mockClear()
+    getHourlySummary.mockClear()
     wrapper.findComponent(UsageHeatmap).vm.$emit('select', '2026-03-08')
     await flushPromises()
     expect(query).toHaveBeenCalledWith(expect.objectContaining({ start_date: '2026-03-08', end_date: '2026-03-08', api_key_id: 1, page: 1 }), expect.anything())
     expect(getStats).toHaveBeenCalledWith(expect.objectContaining({ start_date: '2026-03-08', end_date: '2026-03-08', api_key_id: 1 }))
-    expect(getDashboardTrend).not.toHaveBeenCalled()
+    expect(getHourlySummary).not.toHaveBeenCalled()
     expect(wrapper.findComponent(UsageHeatmap).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'UsageTrendChart' }).props()).toMatchObject({ startDate: '2026-03-08', endDate: '2026-03-08', granularity: 'hour' })
     wrapper.unmount()
@@ -555,11 +555,11 @@ describe('user UsageView', () => {
 
   it('ignores a stale heatmap response after filters change', async () => {
     let resolveFirst!: (value: { trend: unknown[] }) => void
-    getDashboardTrend.mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve }))
+    getHourlySummary.mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve }))
     const wrapper = mountUsageView()
     await flushPromises()
     const latest = [{ date: '2026-03-08', requests: 2 }]
-    getDashboardTrend.mockResolvedValueOnce({ trend: latest })
+    getHourlySummary.mockResolvedValueOnce({ trend: latest, complete_from: '2025-01-01T00:00:00Z', missing_months: [], backfill_pending: false })
     ;(wrapper.vm as any).filters.model = 'gpt-5.4'
     ;(wrapper.vm as any).applyFilters()
     await flushPromises()
@@ -570,7 +570,7 @@ describe('user UsageView', () => {
   })
 
   it('exposes a retry state on heatmap failure and clears it after retrying', async () => {
-    getDashboardTrend.mockRejectedValueOnce(new Error('offline'))
+    getHourlySummary.mockRejectedValueOnce(new Error('offline'))
     const wrapper = mountUsageView()
     await flushPromises()
     expect(wrapper.findComponent(UsageHeatmap).props('error')).toBe(true)

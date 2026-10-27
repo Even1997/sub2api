@@ -14,8 +14,10 @@
           :class="{ selected: metric === option.value }"
           @click="metric = option.value"
         >{{ option.label }}</button>
+        <button type="button" class="heatmap-details" @click="$emit('details')">{{ t('usage.hourly.details') }}</button>
       </div>
     </div>
+    <p v-if="coverage" class="heatmap-coverage" role="status">{{ coverage.backfill_pending ? t('usage.hourly.backfill') : t('usage.hourly.coverageNote') }}</p>
     <div class="heatmap-summary">
       <span class="heatmap-date">{{ startDate }} ~ {{ endDate }}</span>
       <span v-if="(!loading || data.length > 0) && !error">{{ formatCompactNumber(totals.tokens) }} Tokens · {{ totals.requests.toLocaleString() }} {{ t('usage.personal.requests') }} · ${{ totals.cost.toFixed(2) }}</span>
@@ -44,7 +46,7 @@
               :key="day.date"
               type="button"
               class="heatmap-day"
-              :class="[`level-${day.level}`, { 'is-future': day.future, 'is-selected': day.date === selectedDate }]"
+              :class="[`level-${day.level}`, { 'is-future': day.future, 'is-selected': day.date === selectedDate, 'is-incomplete': isIncomplete(day.date) }]"
               :disabled="loading || day.future"
               :data-date="day.date"
               :aria-label="day.label"
@@ -64,13 +66,14 @@
       </div>
       <div v-if="tooltip" id="usage-heatmap-day-tooltip" class="heatmap-day-tooltip" role="tooltip" :style="{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }">
         <strong>{{ tooltip.date }}</strong>
-        <dl>
+        <p v-if="isIncomplete(tooltip.date)">{{ t('usage.hourly.unknown') }}</p>
+        <dl v-if="tooltipPoint || !isIncomplete(tooltip.date)">
           <div><dt>{{ t('usage.totalCost') }}</dt><dd>${{ (tooltipPoint?.actual_cost ?? 0).toFixed(4) }}</dd></div>
           <div><dt>{{ t('usage.totalTokens') }}</dt><dd>{{ (tooltipPoint?.total_tokens ?? 0).toLocaleString(locale) }}</dd></div>
         </dl>
       </div>
       <div class="heatmap-footer">
-        <span v-if="!loading && totals.requests === 0">{{ t('usage.personal.noActivity') }}</span>
+        <span v-if="!loading && totals.requests === 0 && !days.some(day => isIncomplete(day.date))">{{ t('usage.personal.noActivity') }}</span>
         <div class="heatmap-legend" :aria-label="t('usage.personal.intensity')">
           <span>{{ t('usage.personal.less') }}</span>
           <span v-for="level in 5" :key="level" class="heatmap-swatch" :class="`level-${level - 1}`" aria-hidden="true" />
@@ -86,6 +89,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { formatCompactNumber } from '@/utils/format'
+import type { HourlyUsageReport } from '@/api/usage'
 import type { TrendDataPoint } from '@/types'
 
 const props = withDefaults(defineProps<{
@@ -96,9 +100,11 @@ const props = withDefaults(defineProps<{
   error?: boolean
   canGoNext?: boolean
   selectedDate?: string
+  coverage?: HourlyUsageReport | null
 }>(), { loading: false, error: false, canGoNext: false, selectedDate: '' })
-defineEmits<{ select: [date: string]; navigate: [direction: number]; retry: [] }>()
+defineEmits<{ select: [date: string]; navigate: [direction: number]; retry: []; details: [] }>()
 const { t, locale } = useI18n()
+const isIncomplete = (date: string) => !!props.coverage && date <= props.endDate && (props.coverage.backfill_pending || new Date(`${date}T00:00:00+08:00`) < new Date(props.coverage.complete_from) || props.coverage.missing_months.includes(date.slice(0, 7)))
 const focusedDate = ref('')
 const activeDate = computed(() => {
   const date = focusedDate.value || props.selectedDate
@@ -180,13 +186,16 @@ const days = computed(() => {
       date: day.date,
       future: day.date > props.endDate,
       level: value > 0 && max > 0 ? Math.min(4, Math.ceil(value / max * 4)) : 0,
-      label: `${day.date}: ${display} ${label}; ${t('usage.totalCost')}: $${(point?.actual_cost ?? 0).toFixed(4)}; ${t('usage.totalTokens')}: ${(point?.total_tokens ?? 0).toLocaleString(locale.value)}`,
+      label: isIncomplete(day.date) && !point ? `${day.date}: ${t('usage.hourly.unknown')}` : `${day.date}: ${isIncomplete(day.date) ? t('usage.hourly.unknown') + '; ' : ''}${display} ${label}; ${t('usage.totalCost')}: $${(point?.actual_cost ?? 0).toFixed(4)}; ${t('usage.totalTokens')}: ${(point?.total_tokens ?? 0).toLocaleString(locale.value)}`,
     }
   })
 })
 </script>
 
 <style scoped>
+.heatmap-metrics .heatmap-details { margin-left: 4px; border-left: 1px solid var(--usage-line, #e1e2e8); border-radius: 0; color: var(--usage-text, #17171d); }
+.heatmap-day.is-incomplete { background-image: repeating-linear-gradient(135deg, transparent, transparent 2px, #71717a66 2px, #71717a66 3px); }
+.heatmap-coverage { font-size: 11px; margin-top: 10px; }
 .usage-heatmap { border: 1px solid var(--usage-line, #e1e2e8); border-radius: var(--console-radius, 12px); padding: 18px 20px 16px; background: var(--usage-surface, #fff); color: var(--usage-text, #17171d); box-shadow: var(--console-shadow); }
 .heatmap-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 h2 { margin: 0; font-size: 16px; font-weight: 650; line-height: 22px; }

@@ -54,6 +54,7 @@
 
       <UsageHeatmap
         :data="heatmapData"
+        :coverage="heatmapCoverage"
         :start-date="heatmapStartDate"
         :end-date="heatmapEndDate"
         :loading="heatmapLoading"
@@ -63,6 +64,7 @@
         @select="selectHeatmapDate"
         @navigate="navigateHeatmap"
         @retry="loadHeatmap"
+        @details="hourlyOpen = true"
       />
       <UsageTrendChart
         v-if="startDate && startDate === endDate"
@@ -230,6 +232,7 @@
       <TrafficPanel v-else-if="activeTab === 'traffic'" :api-key-options="apiKeyOptions" />
       </div>
     </div>
+    <HourlyUsageDrawer :show="hourlyOpen" :initial-date="startDate === endDate ? startDate : today" :filters="normalizedFilters" @close="hourlyOpen = false" />
   </AppLayout>
 
 </template>
@@ -246,6 +249,8 @@ import Select, { type SelectOption } from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import HourlyUsageDrawer from '@/components/user/HourlyUsageDrawer.vue'
+import type { HourlyUsageReport } from '@/api/usage'
 import UsageHeatmap from '@/components/user/UsageHeatmap.vue'
 import TrafficPanel from '@/components/usage/TrafficPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -309,6 +314,8 @@ const exporting = ref(false)
 const statsLoading = ref(true)
 const showMoreMetrics = ref(false)
 const showAdvancedFilters = ref(false)
+const hourlyOpen = ref(false)
+const heatmapCoverage = ref<HourlyUsageReport | null>(null)
 const heatmapData = ref<TrendDataPoint[]>([])
 const heatmapLoading = ref(false)
 const heatmapError = ref(false)
@@ -536,14 +543,14 @@ const loadHeatmap = async () => {
   heatmapLoading.value = true
   heatmapError.value = false
   try {
-    const response = await usageAPI.getDashboardTrend({
+    const response = await usageAPI.getHourlySummary({
       ...normalizedFilters.value,
       start_date: heatmapStartDate.value,
       end_date: heatmapEndDate.value,
       period: undefined,
       granularity: 'day',
     })
-    if (seq === heatmapReqSeq) heatmapData.value = response.trend || []
+    if (seq === heatmapReqSeq) { heatmapData.value = response.trend || []; heatmapCoverage.value = response }
   } catch {
     if (seq === heatmapReqSeq) {
       heatmapData.value = []

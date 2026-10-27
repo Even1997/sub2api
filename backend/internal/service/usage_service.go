@@ -317,6 +317,16 @@ func (s *UsageService) GetUserUsageTrendByUserID(ctx context.Context, userID int
 }
 
 // GetUsageTrendWithFilters returns trend data using the shared usage filter shape.
+func (s *UsageService) GetHourlyUsage(ctx context.Context, start, end time.Time, granularity string, filters usagestats.UsageLogFilters) (*usagestats.HourlyUsageReport, error) {
+	repo, ok := s.usageRepo.(interface {
+		GetHourlyUsage(context.Context, time.Time, time.Time, string, usagestats.UsageLogFilters) (*usagestats.HourlyUsageReport, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("hourly usage repository unavailable")
+	}
+	return repo.GetHourlyUsage(ctx, start, end, granularity, filters)
+}
+
 func (s *UsageService) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error) {
 	type usageTrendWithFiltersRepo interface {
 		GetUsageTrendWithUsageFilters(ctx context.Context, startTime, endTime time.Time, granularity string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error)

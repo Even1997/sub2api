@@ -249,3 +249,5 @@ output/
 /docs/screenshots/**/*.webp
 /docs/screenshots/**/*.avif
 /docs/screenshots/**/*.svg
+
+!docs/hourly-usage.md

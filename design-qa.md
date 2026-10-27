@@ -479,3 +479,10 @@ final result: passed
 保留以上既有验收记录。本次月账单的三列模型汇总、动态站点名称、仅 PDF 导出，以及桌面/手机/打印与金额权限验证详见 [月账单验收](docs/monthly-bills-qa.md)。
 
 final result: passed
+
+
+## 2026-10-27 永久小时消费汇总
+
+已新增热力图旁的详情抽屉、永久小时汇总及月账单汇总数据源。PostgreSQL 真实事务/去重/回填/清理验证、54 项前端相关测试、编译构建与桌面/手机/深浅色检查记录详见 [小时汇总验收](docs/hourly-usage.md)。未部署；上线需协调迁移与旧实例停用。
+
+final result: deliverable; production-scale migration and hot-row load validation remain.

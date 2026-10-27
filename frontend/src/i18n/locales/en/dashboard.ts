@@ -376,6 +376,31 @@ export default {
 
   // Usage
   usage: {
+    hourly: {
+      retainedUsage: 'Retained usage',
+      retainedCost: 'Retained cost',
+      scrollHint: 'Scroll the table horizontally to see all costs',
+
+      title: 'Hourly consumption',
+      details: 'View details',
+      description: 'Retained permanently · Beijing time (UTC+8) · Updated on billing',
+      date: 'Date',
+      totalUsage: 'Daily usage',
+      totalCost: 'Daily cost',
+      beforeRebate: 'Billing multiplier included; rebates excluded',
+      billingBreakdown: 'Balance ${balance} · Subscription ${subscription}',
+      hour: 'Hour',
+      usage: 'Usage',
+      inProgress: 'In progress',
+      subscription: 'Subscription',
+      backfill: 'Historical usage is being summarized. These totals are incomplete; refresh shortly.',
+      incomplete: 'History is incomplete for this period. Only retained usage is shown; blanks do not mean zero usage.',
+      unavailable: 'No summary available; zero consumption cannot be confirmed',
+      empty: 'No consumption matching these filters on this day',
+      updatedAt: 'Updated at {at} (Beijing time)',
+      unknown: 'Incomplete history',
+      coverageNote: 'Hatched cells indicate incomplete history. Summaries use Beijing time.',
+    },
     personal: {
       modelProvider: 'Model provider',
       retainedHistory: 'This range includes removed historical records. Costs, requests and tokens above only include records retained since {date}; earlier spending is excluded.',

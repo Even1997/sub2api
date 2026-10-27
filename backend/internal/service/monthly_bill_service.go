@@ -214,16 +214,23 @@ func (s *MonthlyBillService) generate(ctx context.Context, userID int64, month s
 // Token totals follow UsageLog.TotalTokens: image detail counters may overlap
 // with input/output totals and must not be added a second time.
 func readBillUsage(ctx context.Context, tx *sql.Tx, b *MonthlyBill) error {
+	var pending bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM usage_logs WHERE user_id=$1 AND created_at >= $2 AND created_at < $3 AND NOT hourly_summary_recorded)`, b.UserID, b.Start, b.End).Scan(&pending); err != nil {
+		return err
+	}
+	if pending {
+		return apperrors.Conflict("BILL_BACKFILL_PENDING", "历史消费正在汇总，请稍后生成账单")
+	}
 	for day := b.Start; day.Before(b.End); day = day.AddDate(0, 0, 1) {
 		b.Days = append(b.Days, BillDay{Date: day.Format("2006-01-02"), Consumption: "0", Rebate: "0", Net: "0", Models: []BillModel{}, Transfers: []BillTransfer{}})
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT to_char(created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD'), model, billing_type,
-        COUNT(*)::text,
+	rows, err := tx.QueryContext(ctx, `SELECT to_char(hour AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD'), requested_model, billing_type,
+        SUM(requests)::text,
         SUM(input_tokens::bigint+output_tokens+cache_creation_tokens+cache_read_tokens)::text,
-        SUM(image_count)::text, SUM(COALESCE(video_duration_seconds,0)::bigint * video_count)::text, SUM(video_count)::text,
+        SUM(image_count)::text, SUM(video_seconds)::text, SUM(video_count)::text,
         SUM(actual_cost)::text
-        FROM usage_logs WHERE user_id=$1 AND created_at >= $2 AND created_at < $3
-        GROUP BY 1,2,3 ORDER BY 1,2,3`, b.UserID, b.Start, b.End)
+        FROM user_usage_hourly WHERE user_id=$1 AND hour >= $2 AND hour < $3
+        GROUP BY 1,2,3 HAVING SUM(requests)>0 ORDER BY 1,2,3`, b.UserID, b.Start, b.End)
 	if err != nil {
 		return err
 	}

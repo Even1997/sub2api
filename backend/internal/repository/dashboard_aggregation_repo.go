@@ -581,11 +581,6 @@ func (r *dashboardAggregationRepository) isUsageLogsPartitioned(ctx context.Cont
 }
 
 func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Context, cutoff time.Time) error {
-	// DROP PARTITION bypasses row deletion triggers. Advance the conservative
-	// completeness boundary before cleanup; saved bill snapshots stay readable.
-	if _, err := r.sql.ExecContext(ctx, `UPDATE monthly_bill_coverage SET complete_from=GREATEST(complete_from,$1) WHERE singleton=TRUE`, truncateToMonthUTC(cutoff)); err != nil {
-		return err
-	}
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT c.relname
 		FROM pg_inherits
@@ -640,10 +635,8 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 		}
 		return nil
 	}
-	for _, partition := range partitions {
-		if _, err := r.sql.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(partition.name))); err != nil {
-			return err
-		}
+	if len(partitions) > 0 {
+		return fmt.Errorf("partition retention requires a transaction-capable database")
 	}
 	return nil
 }
@@ -656,6 +649,17 @@ func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.D
 	rollback := func(err error) error {
 		_ = tx.Rollback()
 		return err
+	}
+	// DROP bypasses row triggers. Lock out writes and require completed archival.
+	if _, err := tx.ExecContext(ctx, "LOCK TABLE "+pq.QuoteIdentifier(name)+" IN ACCESS EXCLUSIVE MODE"); err != nil {
+		return rollback(err)
+	}
+	var pending bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM "+pq.QuoteIdentifier(name)+" WHERE NOT hourly_summary_recorded)").Scan(&pending); err != nil {
+		return rollback(err)
+	}
+	if pending {
+		return rollback(fmt.Errorf("hourly usage backfill pending for partition %s", name))
 	}
 
 	if err := lockGroupUsageRollupState(ctx, tx); err != nil {

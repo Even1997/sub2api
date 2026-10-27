@@ -381,6 +381,31 @@ export default {
 
   // Usage
   usage: {
+    hourly: {
+      retainedUsage: '已留存用量',
+      retainedCost: '已留存费用',
+      scrollHint: '横向滑动表格查看完整费用',
+
+      title: '每小时消费汇总',
+      details: '查看详情',
+      description: '永久保留 · 北京时间（UTC+8） · 随消费入账更新',
+      date: '日期',
+      totalUsage: '当日总用量',
+      totalCost: '当日总费用',
+      beforeRebate: '已含计费倍率，未扣返佣',
+      billingBreakdown: '余额消费 ${balance} · 订阅消费 ${subscription}',
+      hour: '小时',
+      usage: '用量',
+      inProgress: '统计中',
+      subscription: '订阅',
+      backfill: '历史消费正在汇总，当前显示的用量和费用尚不完整，请稍后刷新。',
+      incomplete: '该时段历史记录不完整。以下仅为已留存汇总，空白不代表零消费。',
+      unavailable: '暂无可用汇总，不能确认此时段没有消费',
+      empty: '当日没有符合筛选条件的消费',
+      updatedAt: '更新于 {at}（北京时间）',
+      unknown: '历史不完整',
+      coverageNote: '阴影格为历史不完整的日期；汇总按北京时间统计。',
+    },
     personal: {
       modelProvider: '模型厂商',
       retainedHistory: '所选时间包含已清理的历史明细。以上金额、请求数与 Token 仅统计 {date} 起保留的记录，更早消费未计入。',

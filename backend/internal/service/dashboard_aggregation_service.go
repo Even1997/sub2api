@@ -93,6 +93,11 @@ func (s *DashboardAggregationService) Start() {
 	if s == nil || s.repo == nil || s.timingWheel == nil {
 		return
 	}
+	// Permanent financial history must backfill even when dashboard jobs are disabled.
+	if s.db != nil {
+		go s.backfillHourlyUsage()
+		s.timingWheel.ScheduleRecurring("usage:hourly-backfill", time.Minute, s.backfillHourlyUsage)
+	}
 	if !s.cfg.Enabled {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业已禁用")
 		return
@@ -114,6 +119,23 @@ func (s *DashboardAggregationService) Start() {
 	logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业启动 (interval=%v, lookback=%ds)", interval, s.cfg.LookbackSeconds)
 	if !s.cfg.BackfillEnabled {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 回填已禁用，如需补齐保留窗口以外历史数据请手动回填")
+	}
+}
+
+func (s *DashboardAggregationService) backfillHourlyUsage() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	for ctx.Err() == nil {
+		var count int64
+		if err := s.db.QueryRowContext(ctx, `SELECT backfill_user_usage_hourly(1000)`).Scan(&count); err != nil {
+			if ctx.Err() == nil {
+				slog.Error("Hourly usage backfill failed; will retry", "error", err)
+			}
+			return
+		}
+		if count == 0 {
+			return
+		}
 	}
 }
 

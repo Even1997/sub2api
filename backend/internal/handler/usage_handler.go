@@ -538,6 +538,29 @@ func (h *UsageHandler) DashboardStats(c *gin.Context) {
 }
 
 // DashboardTrend handles getting user usage trend data
+// HourlySummary serves retained, owner-scoped aggregates in the billing timezone.
+func (h *UsageHandler) HourlySummary(c *gin.Context) {
+	query := c.Request.URL.Query()
+	query.Set("timezone", "Asia/Shanghai")
+	c.Request.URL.RawQuery = query.Encode()
+	parsed, ok := h.parseUserUsageFilters(c, true)
+	if !ok {
+		return
+	}
+	granularity := c.DefaultQuery("granularity", "hour")
+	span := parsed.EndTime.Sub(parsed.StartTime)
+	if span <= 0 || span > 400*24*time.Hour || (granularity != "day" && granularity != "hour") || (granularity == "hour" && span > 31*24*time.Hour) {
+		response.BadRequest(c, "小时汇总最多查询31天，热力图最多查询400天")
+		return
+	}
+	report, err := h.usageService.GetHourlyUsage(c.Request.Context(), parsed.StartTime, parsed.EndTime, granularity, parsed.Filters)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, report)
+}
+
 // GET /api/v1/usage/dashboard/trend
 func (h *UsageHandler) DashboardTrend(c *gin.Context) {
 	parsed, ok := h.parseUserUsageFilters(c, true)

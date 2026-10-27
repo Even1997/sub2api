@@ -79,6 +79,37 @@ export interface TrendResponse {
   granularity: string
 }
 
+export interface HourlyUsageValues {
+  requests: string
+  tokens: string
+  images: string
+  videos: string
+  video_seconds: string
+  cost: string
+}
+export interface HourlyUsageItem extends HourlyUsageValues {
+  hour: string
+  model: string
+  billing_type: number
+}
+export interface HourlyUsageReport {
+  items: HourlyUsageItem[]
+  trend: TrendDataPoint[]
+  totals: HourlyUsageValues
+  balance_cost: string
+  subscription_cost: string
+  complete_from: string
+  missing_months: string[]
+  backfill_pending: boolean
+  generated_at: string
+  timezone: string
+}
+
+export async function getHourlySummary(params: TrendParams, signal?: AbortSignal): Promise<HourlyUsageReport> {
+  const { data } = await apiClient.get<HourlyUsageReport>('/usage/hourly-summary', { params, signal })
+  return data
+}
+
 export interface ModelStatsResponse {
   models: ModelStat[]
   start_date: string
@@ -375,6 +406,7 @@ export async function getMyErrorDetail(id: number): Promise<UserErrorRequestDeta
 }
 
 export const usageAPI = {
+  getHourlySummary,
   list,
   query,
   getStats,
