@@ -1083,12 +1083,16 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 			filterStats.exclude(excelBPSCredentialFilterReason)
 			continue
 		}
-		if s.isExcelBPSModelCoolingDown(ctx, acc, requestedModel) {
-			filterStats.exclude(excelBPSModelPermissionFilterReason)
+		if reason := excelBPSFailoverFilterReason(ctx, acc, requestedModel); reason != "" {
+			filterStats.exclude(reason)
 			continue
 		}
 		if s.isExcelBPSCoolingDown(ctx, acc, requestedModel) {
 			filterStats.exclude(excelBPSRateLimitedFilterReason)
+			continue
+		}
+		if s.isExcelBPSModelCoolingDown(ctx, acc, requestedModel) {
+			filterStats.exclude(excelBPSModelPermissionFilterReason)
 			continue
 		}
 
@@ -1380,12 +1384,16 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			filterStats.exclude(excelBPSCredentialFilterReason)
 			continue
 		}
+		if s.isExcelBPSCoolingDown(ctx, acc, requestedModel) {
+			filterStats.exclude(excelBPSRateLimitedFilterReason)
+			continue
+		}
 		if s.isExcelBPSModelCoolingDown(ctx, acc, requestedModel) {
 			filterStats.exclude(excelBPSModelPermissionFilterReason)
 			continue
 		}
-		if s.isExcelBPSCoolingDown(ctx, acc, requestedModel) {
-			filterStats.exclude(excelBPSRateLimitedFilterReason)
+		if reason := excelBPSFailoverFilterReason(ctx, acc, requestedModel); reason != "" {
+			filterStats.exclude(reason)
 			continue
 		}
 		if s.isOpenAIAccountRequestRuntimeBlocked(ctx, acc, requestedModel, requireCompact) {

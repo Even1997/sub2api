@@ -268,7 +268,7 @@ func TestExcelBPSModelRecoveryProbeKeepsRateLimitPolicy(t *testing.T) {
 			before := time.Now()
 			s.syncExcelBPSModelRecovery(t.Context())
 			require.WithinDuration(t, before.Add(90*time.Minute), bpsRateLimitState(t, s, a, "gpt-6-astra").until, time.Second)
-			require.True(t, s.isExcelBPSModelCoolingDown(t.Context(), a, "gpt-6-astra"))
+			require.True(t, s.isExcelBPSCoolingDown(t.Context(), a, "gpt-6-astra"))
 			s.excelBPSModelCooldowns.entries[excelBPSModelKey{a.ID, "gpt-6-astra"}].nextProbeAt = time.Now().Add(-time.Second)
 			upstream := &bpsProbeUpstream{}
 			s.httpUpstream = upstream

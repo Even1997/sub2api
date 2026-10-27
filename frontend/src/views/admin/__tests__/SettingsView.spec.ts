@@ -1110,6 +1110,8 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(card.get('#excel-bps-credential-cooldown-help').text()).toContain('同一开关还控制凭证恢复等待');
     expect(card.get('#excel-bps-credential-cooldown-help').text()).toContain('授权完成且凭证读取校验成功后才恢复');
     expect(card.get('#excel-bps-credential-cooldown-help').text()).toContain('不会仅因时间到期放行');
+    expect(card.get('#excel-bps-recovery-failover-help').text()).toContain('明确的文件下载超时最多换号一次');
+    expect(card.get('#excel-bps-model-rate-limit-cooldown-help').text()).toContain('模型限流或不可用后隔离对应账号和模型');
     expect(card.text()).toContain('使用政策 HTTP 403 换号重试');
     expect(card.text()).toContain('180 分钟内连续 3 次');
     expect(card.text()).toContain('仅关闭 BPS');

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ type excelBPSModelKey struct {
 type excelBPSModelCooldown struct {
 	nextProbeAt time.Time
 	probing     bool
+	rateLimited bool
 }
 type excelBPSModelCooldowns struct {
 	mu      sync.Mutex
@@ -45,12 +47,18 @@ func isExcelBPSModelPermissionError(status int, code string) bool {
 
 // Expiry makes a model due for background testing, not eligible for user traffic.
 func (s *OpenAIGatewayService) coolDownExcelBPSModel(ctx context.Context, account *Account, upstreamModel string) {
+	if s == nil {
+		return
+	}
+	s.scheduleExcelBPSModelRecovery(ctx, account, upstreamModel, time.Now().Add(s.settingService.GetExcelBPSModelRateLimitCooldown(ctx)), false)
+}
+
+func (s *OpenAIGatewayService) scheduleExcelBPSModelRecovery(ctx context.Context, account *Account, upstreamModel string, next time.Time, rateLimited bool) {
 	if s == nil || account == nil || !account.IsOpenAI() || strings.TrimSpace(upstreamModel) == "" ||
 		!account.isExcelBPSUpstreamModelEnabled(upstreamModel) || isQualityObservation(ctx) ||
 		isControlledExperiment(ctx) || !s.excelBPSRecoveryEnabled(ctx) {
 		return
 	}
-	next := time.Now().Add(s.settingService.GetExcelBPSModelRateLimitCooldown(ctx))
 	key := excelBPSModelKey{account.ID, upstreamModel}
 	cache := &s.excelBPSModelCooldowns
 	cache.mu.Lock()
@@ -68,9 +76,9 @@ func (s *OpenAIGatewayService) coolDownExcelBPSModel(ctx context.Context, accoun
 		next = previous.nextProbeAt
 	}
 	// Replacing the entry invalidates any older in-flight probe result.
-	cache.entries[key] = &excelBPSModelCooldown{nextProbeAt: next}
+	cache.entries[key] = &excelBPSModelCooldown{nextProbeAt: next, rateLimited: rateLimited}
 	cache.mu.Unlock()
-	logger.FromContext(ctx).Info("excel_bps.model_recovery_scheduled", zap.Int64("account_id", account.ID), zap.String("model", upstreamModel), zap.Time("next_probe_at", next))
+	logger.FromContext(ctx).Info("excel_bps.model_recovery_scheduled", zap.Int64("account_id", account.ID), zap.String("model", upstreamModel), zap.Time("next_probe_at", next), zap.Bool("rate_limited", rateLimited))
 }
 
 func (s *OpenAIGatewayService) isExcelBPSModelCoolingDown(ctx context.Context, account *Account, requestedModel string) bool {
@@ -83,10 +91,19 @@ func (s *OpenAIGatewayService) isExcelBPSModelCoolingDown(ctx context.Context, a
 	key := excelBPSModelKey{account.ID, account.GetMappedModel(requestedModel)}
 	cache := &s.excelBPSModelCooldowns
 	cache.mu.Lock()
-	cooling := cache.entries[key] != nil
+	entry := cache.entries[key]
+	cooling := entry != nil
 	cache.mu.Unlock()
 	// Healthy candidates need no additional settings/database read.
 	return cooling && s.excelBPSRecoveryEnabled(ctx)
+}
+
+func (s *OpenAIGatewayService) isExcelBPSRateLimitRecoveryPending(accountID int64, upstreamModel string) bool {
+	cache := &s.excelBPSModelCooldowns
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	entry := cache.entries[excelBPSModelKey{accountID, upstreamModel}]
+	return entry != nil && entry.rateLimited
 }
 
 func (s *OpenAIGatewayService) StartBPSModelRecovery() {
@@ -158,14 +175,27 @@ func (s *OpenAIGatewayService) syncExcelBPSModelRecovery(ctx context.Context) {
 	cache.mu.Lock()
 	claimed := make(map[excelBPSModelKey]*excelBPSModelCooldown)
 	now := time.Now()
+	var due []excelBPSModelKey
 	for key, entry := range cache.entries {
 		if !entry.probing && !now.Before(entry.nextProbeAt) {
-			entry.probing = true
-			claimed[key] = entry
-			if len(claimed) == excelBPS403RecoveryConcurrency {
-				break
-			}
+			due = append(due, key)
 		}
+	}
+	// Oldest deadlines first: a busy pool must not starve older isolated models.
+	sort.Slice(due, func(i, j int) bool {
+		a, b := cache.entries[due[i]], cache.entries[due[j]]
+		if !a.nextProbeAt.Equal(b.nextProbeAt) {
+			return a.nextProbeAt.Before(b.nextProbeAt)
+		}
+		if due[i].accountID != due[j].accountID {
+			return due[i].accountID < due[j].accountID
+		}
+		return due[i].model < due[j].model
+	})
+	for _, key := range due[:min(len(due), excelBPS403RecoveryConcurrency)] {
+		entry := cache.entries[key]
+		entry.probing = true
+		claimed[key] = entry
 	}
 	cache.mu.Unlock()
 	var wg sync.WaitGroup

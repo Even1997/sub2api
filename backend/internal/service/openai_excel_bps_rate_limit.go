@@ -94,6 +94,10 @@ func (s *OpenAIGatewayService) coolDownExcelBPSAttempt(ctx context.Context, acco
 			break
 		}
 	}
+	// A cooldown deadline permits a background probe, never unverified user
+	// traffic. Reuse model recovery so permission and quota failures share the
+	// configured interval, bounded worker and stale-result protection.
+	s.scheduleExcelBPSModelRecovery(ctx, account, model, stored.until, true)
 	// Bounded idle retention, including models no longer selected by the scheduler.
 	lastSweep := s.excelBPSRateLimitSweepAt.Load()
 	if now.Unix()-lastSweep >= 60 && s.excelBPSRateLimitSweepAt.CompareAndSwap(lastSweep, now.Unix()) {
@@ -129,8 +133,12 @@ func (s *OpenAIGatewayService) resetExcelBPSModelRateLimit(account *Account, ups
 }
 
 func (s *OpenAIGatewayService) limitExcelBPS429Failover(ctx context.Context, c *gin.Context, account *Account, model string, failure *UpstreamFailoverError) {
-	if failure == nil || !s.excelBPSRecoveryEnabled(ctx) {
+	if failure == nil || account == nil || !account.IsExcelBPSEnabledForModel(model) || !s.excelBPSRecoveryEnabled(ctx) {
 		return
+	}
+	if !isQualityObservation(ctx) && !isControlledExperiment(ctx) {
+		failure.Reason = ExcelBPSRecoveryFailureReason
+		failure.ClientStatusCode, failure.ClientMessage, _ = failure.ExcelBPSRecoveryClientResponse()
 	}
 	route, _ := ctx.Value(excelBPSFailoverRouteKey{}).(*excelBPSFailoverRoute)
 	if route == nil && c != nil && c.Request != nil {

@@ -3,7 +3,7 @@
 The existing **System settings → Gateway service → BPS error recovery** switch
 (`excel_bps_recovery_enabled`) controls this behavior. No new switch, duration field,
 API setting, or database migration is added. The existing configurable model
-rate-limit/unavailable-model cooldown is unchanged.
+rate-limit/unavailable-model cooldown setting is reused.
 
 ## Behavior
 
@@ -51,3 +51,40 @@ This change does not increase retry budgets, choose a different model, replay
 delivered content/tool calls, relax tool-history validation, or bypass user balance
 checks. It addresses repeated selection of temporarily unreadable BPS credentials;
 it does not guarantee recovery when every eligible account is unavailable.
+
+## BPS recovery hardening
+
+The same switch also gates these changes, without altering native OpenAI/Codex
+retries or user billing/authentication checks:
+
+- A typed BPS recovery failure returns a safe temporary-unavailable response
+  after failover is exhausted: HTTP 503, or HTTP 429 for rate limits. All four
+  gateway error-format adapters use the same mapping; the original upstream
+  status and attempt chain remain in administrator diagnostics. An already
+  committed stream retains its HTTP status and gets its supported error frame.
+- Model-scoped 429 cooldowns now enter the existing background model recovery
+  queue. Expiry makes the account/model pair due for a test, not eligible for
+  user traffic. A successful test releases it; failed checks repeat after the
+  configured interval. Account-wide quota limits and manual pauses remain
+  enforced. Checks process the oldest due entries first with existing bounded
+  concurrency. New failures invalidate older in-flight results.
+- Failover selection reports protocol/model mismatches separately from generic
+  runtime blocks. It still preserves the requested BPS protocol and mapped model.
+- Stream failures record elapsed time, event count, last-event age, whether
+  client output started, the recovery decision and allowlisted source error
+  identifiers. No request content, arbitrary upstream error code or upstream
+  message is added. Empty TTFT alone is never evidence that replay is safe.
+- An in-band error with a recognized transient api_error type can recover before
+  output even when its code is absent/unknown. Unknown errors without that
+  evidence, policy refusals and failures after output retain their protections.
+- The exact upstream HTTP 400 invalid_value/url download-timeout rejection gets
+  at most one additional same-model account attempt per client request. General
+  invalid URLs, unknown download errors, switched-off recovery and client
+  cancellations do not qualify. Attachments are never removed from the request.
+
+This does not increase the existing three-account 429 budget, impose a shorter
+timeout on legitimate long reasoning, disable safety checks on tool corrections,
+or change image compression policy. Long stream interruptions become diagnosable;
+they are not all assumed safe to retry. Background model tests use small synthetic
+requests and can consume upstream quota; credential readiness checks do not.
+Model isolation is process-local and bounded to 4096 pairs, as before.

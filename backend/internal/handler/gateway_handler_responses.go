@@ -417,7 +417,10 @@ func (h *GatewayHandler) handleResponsesFailoverExhausted(c *gin.Context, lastEr
 		statusCode = lastErr.StatusCode
 	}
 	status, code, message := statusCode, "server_error", "All available accounts exhausted"
-	if lastErr != nil && lastErr.IsCredentialFailure() {
+	if bpsStatus, bpsMessage, ok := lastErr.ExcelBPSRecoveryClientResponse(); ok {
+		service.SetOpsUpstreamError(c, lastErr.StatusCode, service.ExtractUpstreamErrorMessage(lastErr.ResponseBody), "")
+		status, message = bpsStatus, bpsMessage
+	} else if lastErr != nil && lastErr.IsCredentialFailure() {
 		status, message = credentialFailoverClientResponse(lastErr)
 	} else if lastErr != nil && lastErr.IsOpenAICapacityShed() {
 		status = lastErr.ClientStatusCode
