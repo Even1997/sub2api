@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"math"
+	"slices"
 	"sort"
 	"time"
 )
@@ -34,7 +35,7 @@ func (s *OpenAIGatewayService) balancesPriorityProtocols(req OpenAIAccountSchedu
 		return false
 	}
 	cfg := s.prioritySchedulingRuntimeConfig()
-	return cfg.BalanceProtocols && cfg.applies(req.GroupID, req.RequestedModel)
+	return cfg.BalanceProtocols && priorityApplies(cfg, req)
 }
 
 // Count distinct bindings, not group price/name or an inferred account class.
@@ -98,7 +99,7 @@ func (s *defaultOpenAIAccountScheduler) shouldRebalancePrioritySticky(ctx contex
 		return false
 	}
 	cfg := s.service.prioritySchedulingRuntimeConfig()
-	if !cfg.applies(req.GroupID, req.RequestedModel) {
+	if !priorityApplies(cfg, req) {
 		return false
 	}
 	quotaSticky := cfg.OAuthQuotaPriority && sticky.IsOpenAIApiKey()
@@ -173,9 +174,19 @@ func (s *defaultOpenAIAccountScheduler) shouldRebalancePrioritySticky(ctx contex
 	utilization := float64(current.CurrentConcurrency) / float64(max(1, sticky.Concurrency))
 	now := time.Now()
 	weight := prioritySelectionWeight(openAIAccountCandidateScore{account: sticky, loadInfo: current, loadKnown: true, score: 50}, now)
+	signalPool := make([]openAIAccountCandidateScore, 0, len(eligible))
+	for _, account := range eligible {
+		signalPool = append(signalPool, openAIAccountCandidateScore{account: account})
+	}
+	rebalanceSignals, _ := s.service.prioritySignals(req, cfg, signalPool)
 	for _, account := range eligible {
 		load := loadMap[account.ID]
 		if load == nil || load.WaitingCount > 0 || load.CurrentConcurrency >= account.Concurrency {
+			continue
+		}
+		candidate := openAIAccountCandidateScore{account: account, loadKnown: true, loadInfo: load}
+		score := applyPriorityCandidate(cfg, &candidate, rebalanceSignals[account.ID], now)
+		if candidate.priorityUnhealthy || slices.Contains(score.Reasons, "latency_above_target") {
 			continue
 		}
 		otherUtilization := float64(load.CurrentConcurrency) / float64(max(1, account.Concurrency))

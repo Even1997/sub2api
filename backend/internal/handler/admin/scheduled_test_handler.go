@@ -65,6 +65,9 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
+	if !qualityJudgeAccess(c, req.PelicanConfig) {
+		return
+	}
 
 	plan := &service.ScheduledTestPlan{
 		AccountID:      req.AccountID,
@@ -102,10 +105,12 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 		response.NotFound(c, "plan not found")
 		return
 	}
-
 	var req updateScheduledTestPlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, err.Error())
+		return
+	}
+	if !qualityJudgeAccess(c, existing.PelicanConfig, req.PelicanConfig) {
 		return
 	}
 	existing.PreserveQualityState = req.PreserveQualityState
@@ -154,6 +159,20 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, updated)
+}
+
+// Observers may manage scoped connectivity tests, but cannot opt accounts into
+// shared audit credentials or enable a saved Jev rule through that older API.
+func qualityJudgeAccess(c *gin.Context, configs ...*service.PelicanTestConfig) bool {
+	if _, observer := service.ObserverGroupIDs(c.Request.Context()); observer {
+		for _, cfg := range configs {
+			if cfg != nil && cfg.Quality != nil && cfg.Quality.Judge != nil && cfg.Quality.Judge.Kind == "jev" {
+				response.ErrorFrom(c, service.ErrObserverScope)
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Delete DELETE /admin/scheduled-test-plans/:id

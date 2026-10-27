@@ -31,7 +31,7 @@ func TestOpenAIOAuthReauthEngineLegacyClaimFiltersBeforeLocking(t *testing.T) {
 	repo := NewOpenAIOAuthReauthRepository(db)
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE openai_oauth_reauth_worker_control").WithArgs("old-worker").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
-	mock.ExpectQuery("(?s)WITH expired_callbacks.*engine.*ANY.*FOR UPDATE SKIP LOCKED").WithArgs("failed", "failed", "callback_processing", int64(1800), "queued", "running", "starting", "old-worker", "", `{"local_worker"}`, "").WillReturnRows(sqlmock.NewRows([]string{"id"}))
+	mock.ExpectQuery("(?s)WITH expired_callbacks.*engine.*ANY.*FOR UPDATE SKIP LOCKED").WithArgs("failed", "failed", "callback_processing", int64(1800), "queued", "running", "starting", "old-worker", "", `{"local_worker"}`, "", service.OpenAIOAuthReauthPasswordLoginCap).WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectCommit()
 	claim, err := repo.ClaimNextTask(context.Background(), "old-worker", 30*time.Minute)
 	require.NoError(t, err)

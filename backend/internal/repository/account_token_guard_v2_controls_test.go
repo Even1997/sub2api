@@ -31,7 +31,7 @@ func TestOpenAIOAuthReauthRuntimeEngineFiltersBeforeClaim(t *testing.T) {
 	repo := &openAIOAuthReauthRepository{db: db}
 	mock.ExpectBegin()
 	mock.ExpectQuery("UPDATE openai_oauth_reauth_worker_control").WithArgs("worker").WillReturnRows(sqlmock.NewRows([]string{"enabled"}).AddRow(true))
-	mock.ExpectQuery("(?s)WITH expired_callbacks.*CASE WHEN.*credential_mode.*ELSE engine END.*ANY.*FOR UPDATE SKIP LOCKED").WithArgs("failed", "failed", "callback_processing", int64(1800), "queued", "running", "starting", "worker", "", sqlmock.AnyArg(), "session_studio").WillReturnRows(sqlmock.NewRows([]string{"id"}))
+	mock.ExpectQuery("(?s)WITH expired_callbacks.*CASE WHEN.*credential_mode.*ELSE engine END.*ANY.*FOR UPDATE SKIP LOCKED").WithArgs("failed", "failed", "callback_processing", int64(1800), "queued", "running", "starting", "worker", "", sqlmock.AnyArg(), "session_studio", service.OpenAIOAuthReauthPasswordLoginCap).WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectCommit()
 	claim, err := repo.ClaimNextTaskForRuntime(context.Background(), "worker", 30*time.Minute, "", []string{service.OpenAIOAuthReauthEngineLocal}, service.OpenAIOAuthReauthEngineSessionStudio)
 	require.NoError(t, err)

@@ -136,6 +136,62 @@ func (p accountTokenGuardV2TestProber) FetchOpenAIModelsList(context.Context, *A
 	return nil, p.err
 }
 
+func TestAccountTokenGuardV2Explicit403PolicyDoesNotQueueRelogin(t *testing.T) {
+	for _, body := range []string{
+		`{"error":{"code":"session_blocked_by_cyber_policy","message":"synthetic-private"}}`,
+		`{"error":{"code":"cyber_policy","message":"synthetic-private"}}`,
+		`{"error":{"type":"content_policy_violation","message":"synthetic-private"}}`,
+		`{"error":{"code":"upstream_error","type":"upstream_error","message":"failed to WebSocket dial: expected handshake response status code 101 but got 403"}}`,
+	} {
+		for _, exhausted := range []bool{false, true} {
+			t.Run(fmt.Sprintf("exhausted=%t/%s", exhausted, body[:min(len(body), 65)]), func(t *testing.T) {
+				reauth, reader, reauthRepo, updater, _, _ := newReauthTestService("acct-1")
+				require.NoError(t, reauthRepo.UpsertConfig(context.Background(), reauthEmailConfig(42, "user@example.test", "encrypted:https://mail.example.test/code")))
+				cooldown := time.Now().Add(-time.Hour)
+				failures := 0
+				if exhausted {
+					failures = 3
+				}
+				guardRepo := &accountTokenGuardV2TestRepo{record: &AccountTokenGuardV2Record{
+					AccountID: 42, Enabled: true, AutoReloginEnabled: true, FailStreak: 390,
+					ReloginFailStreak: failures, AutoReloginExhausted: exhausted, CooldownUntil: &cooldown,
+				}}
+				guardRepo.createTask = reauthRepo.CreateTask
+				svc := NewAccountTokenGuardV2Service(guardRepo, nil, reader, accountTokenGuardV2TestProber{err: fmt.Errorf("wrapped: %w", &codexModelsManifestUpstreamError{
+					err: errors.New("unauthorized synthetic-private"), statusCode: http.StatusForbidden, body: []byte(body),
+				})}, reauth)
+				svc.runProbe(context.Background(), *guardRepo.record)
+				require.NotNil(t, guardRepo.completion)
+				require.Equal(t, AccountTokenGuardV2ProbeTransient, guardRepo.completion.ProbeState)
+				require.Equal(t, accountTokenGuardV2PolicyBlocked, guardRepo.completion.BlockedReason)
+				require.NotContains(t, guardRepo.completion.ProbeDetail, "synthetic-private")
+				require.Equal(t, 390, guardRepo.completion.FailStreak)
+				require.Equal(t, &cooldown, guardRepo.completion.CooldownUntil)
+				require.Zero(t, reauthRepo.createCalls)
+				require.False(t, updater.applied)
+				require.Equal(t, failures, guardRepo.record.ReloginFailStreak)
+				require.Equal(t, exhausted, guardRepo.record.AutoReloginExhausted)
+			})
+		}
+	}
+}
+
+func TestAccountTokenGuardV2PolicyClassifierDoesNotTrustMessagesOrEchoes(t *testing.T) {
+	for _, body := range []string{
+		`{"error":{"code":"account_deactivated","message":"session_blocked_by_cyber_policy"}}`,
+		`{"error":{"code":"account_deactivated"},"input":{"error":{"code":"cyber_policy"}}}`,
+		`{"error":{"code":"account_deactivated","message":"synthetic-private"}}`,
+	} {
+		svc := &AccountTokenGuardV2Service{prober: accountTokenGuardV2TestProber{err: &codexModelsManifestUpstreamError{
+			err: errors.New("synthetic-private"), statusCode: http.StatusForbidden, body: []byte(body),
+		}}}
+		state, detail := svc.probeAccount(context.Background(), &Account{Platform: PlatformOpenAI, Credentials: map[string]any{"access_token": "synthetic"}})
+		require.Equal(t, AccountTokenGuardV2ProbeTransient, state)
+		require.Equal(t, credentialOperationDetail("account_deactivated"), detail)
+		require.Equal(t, "account_deactivated", probeOperationFailure(state, detail, nil).Code)
+	}
+}
+
 func TestAccountTokenGuardV2SecondAuthFailureQueuesRelogin(t *testing.T) {
 	reauth, reader, reauthRepo, _, _, _ := newReauthTestService("acct-1")
 	require.NoError(t, reauthRepo.UpsertConfig(context.Background(), reauthEmailConfig(42, "user@example.com", "encrypted:https://mail.example.com/code")))

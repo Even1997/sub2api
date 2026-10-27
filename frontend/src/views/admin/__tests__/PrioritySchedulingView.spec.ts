@@ -11,7 +11,7 @@ vi.mock('@/components/admin/operations/SmartOpsNav.vue', () => ({ default: { tem
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/api/admin/priorityScheduling', () => ({ getPriorityConfig: vi.fn(), getPrioritySnapshot: vi.fn(), savePriorityConfig: vi.fn(), defaultPriorityTeamsConfig: () => ({ enabled: false, cost_cny: 50, window_hours: 4, cny_per_billing_unit: 1, window_source: 'explicit' }) }))
 const config: PrioritySchedulingConfig = { teams: { enabled: false, cost_cny: 50, window_hours: 4, cny_per_billing_unit: 1, window_source: 'explicit' }, error_rate_weight: 25, error_rate_window_minutes: 10, error_rate_prior_samples: 5, oauth_quota_priority: false, oauth_quota_threshold: 90, balance_protocols: true, enabled: false, mode: 'balanced', group_ids: [], models: [], window_minutes: 60, min_samples: 5, target_ttft_ms: 3000, max_load_percent: 80, min_quality_percent: 90, quality_max_age_hours: 24, quality_weight: 30, latency_weight: 25, load_weight: 25, cost_weight: 20 }
-const savedDefaults = { latency_percentile: 90 as const, latency_measurement: 'legacy_forward' as const, recovery_exploration_percent: 0, latency_penalty_minutes: 10 }
+const savedDefaults = { latency_percentile: 90 as const, latency_measurement: 'legacy_forward' as const, recovery_exploration_percent: 0, latency_penalty_mode: 'deprioritize' as const, latency_penalty_minutes: 10 }
 beforeEach(() => { vi.resetAllMocks(); state.auth = reactive({ user: { id: 1, role: 'admin' } }); vi.mocked(getPriorityConfig).mockResolvedValue({ ...config, teams: { ...config.teams } }); vi.mocked(getPrioritySnapshot).mockResolvedValue(null); vi.mocked(savePriorityConfig).mockImplementation(async c => c) })
 describe('priority scheduling', () => {
   it('shows scoped error evidence and unknown samples, and saves an explicit zero weight', async () => {
@@ -159,5 +159,21 @@ describe('priority scheduling', () => {
     vi.mocked(getPriorityConfig).mockReturnValueOnce(new Promise(r => { resolve = r }))
     const wrapper = mount(PrioritySchedulingView); state.auth.user = null; resolve(config); await flushPromises()
     expect(wrapper.find('form').exists()).toBe(false); wrapper.unmount()
+  })
+
+  it('defaults legacy penalty action to soft and saves either explicit action', async () => {
+    const legacy = { ...config, ...savedDefaults }
+    delete legacy.latency_penalty_mode
+    vi.mocked(getPriorityConfig).mockResolvedValue(legacy)
+    const wrapper = mount(PrioritySchedulingView); await flushPromises()
+    expect((wrapper.get('[data-testid="latency-penalty-mode"]').element as HTMLSelectElement).value).toBe('deprioritize')
+    await wrapper.get('[data-testid="latency-penalty-mode"]').setValue('stop')
+    await wrapper.get('[data-testid="latency_penalty_minutes"]').setValue(10)
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(savePriorityConfig).toHaveBeenLastCalledWith({ ...config, ...savedDefaults, latency_penalty_mode: 'stop', latency_penalty_minutes: 10 })
+    await wrapper.get('[data-testid="latency-penalty-mode"]').setValue('deprioritize')
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(savePriorityConfig).toHaveBeenLastCalledWith({ ...config, ...savedDefaults })
+    wrapper.unmount()
   })
 })

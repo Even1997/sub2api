@@ -36,6 +36,9 @@ func jsonNumber(n int) string { b, _ := json.Marshal(n); return string(b) }
 func TestPrioritySelectedQuantileDoesNotRelabelP90(t *testing.T) {
 	cfg := DefaultPrioritySchedulingConfig()
 	require.NoError(t, json.Unmarshal([]byte(`{"latency_percentile":70}`), &cfg))
+	// Local production default is 3000ms. This fixture only checks that the
+	// selected 9000ms sample is scored instead of the 30000ms P90 field.
+	cfg.TargetTTFTMs = 15000
 	var signal PrioritySchedulingSignal
 	require.NoError(t, json.Unmarshal([]byte(`{"samples":20,"p90_ttft_ms":30000,"selected_ttft_ms":9000,"latency_percentile":70,"latency_measurement":"legacy_forward","latency_evidence_version":1,"quality_samples":10,"quality_passed":10}`), &signal))
 	score := scorePriorityCandidate(cfg, priorityCandidate(1, .1, 0), signal, time.Now())

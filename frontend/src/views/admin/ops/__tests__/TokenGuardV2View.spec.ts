@@ -612,6 +612,24 @@ const dialogStubs = {
   BaseDialog: { props: ['show'], template: '<section v-if="show"><slot /><footer><slot name="footer" /></footer></section>' },
 }
 
+async function mountControls() {
+  wrapper = mount(TokenGuardV2View, { global: { stubs: dialogStubs } })
+  await flushPromises()
+  return wrapper
+}
+
+it('rolls controls back when saving fails', async () => {
+  const view = await mountControls()
+  api.saveRuntime.mockRejectedValueOnce(new Error('save failed'))
+  await view.get('#token-guard-v2-engine').setValue('session_studio'); await flushPromises()
+  expect((view.get('#token-guard-v2-engine').element as HTMLSelectElement).value).toBe('local_worker')
+  api.updateSwitches.mockRejectedValueOnce(new Error('save failed'))
+  await view.get('[data-testid="auto-inspect-42"]').setValue(false); await flushPromises()
+  expect((view.get('[data-testid="auto-inspect-42"]').element as HTMLInputElement).checked).toBe(true)
+  expect(view.text()).toContain('tokenGuardV2.error')
+  expect(view.text()).not.toContain('save failed')
+})
+
 it('rejects the whole batch when an email has no account and replaces an existing email', async () => {
   api.createGuard.mockResolvedValue({})
   wrapper = mount(TokenGuardV2View, { global: { stubs: dialogStubs } })
