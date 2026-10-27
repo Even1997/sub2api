@@ -1283,6 +1283,30 @@ describe('quality operations', () => {
     expect(wrapper.find('[role="alert"]').text()).toContain('qualityOps.configureJudge')
     wrapper.unmount()
   })
+  it('explicitly selects Jev, clears ordinary routing and saves without loading audit secrets', async () => {
+    const wrapper = mountView(); await flushPromises(); const vm = wrapper.vm as any
+    vm.newPlan(); vm.accountScope = 'manual'; vm.selectedAccounts = [1]; vm.form.model_id = 'test-model'
+    vm.form.pelican_config.quality.action = 'disable_scheduling'
+    vm.form.pelican_config.quality.judge = { group_id: 21, model_id: 'test-judge', prompt: 'Compare values' }
+    await flushPromises()
+    expect(wrapper.get('[data-testid="quality-judge-kind"]').element).toHaveProperty('value', 'llm')
+    await wrapper.get('[data-testid="quality-judge-kind"]').setValue('jev')
+    expect(wrapper.get('[data-testid="quality-jev-hint"]').text()).toContain('qualityOps.judgeJevHint')
+    expect(wrapper.find('#quality-judge-models').exists()).toBe(false)
+    expect(vm.form.pelican_config.quality.judge).toEqual({ kind: 'jev', group_id: 0, model_id: '', prompt: 'Compare values' })
+    vi.mocked(scheduledTests.create).mockResolvedValue({ id: 8 } as any)
+    await vm.save()
+    expect(scheduledTests.create).toHaveBeenCalledWith(expect.objectContaining({ pelican_config: expect.objectContaining({ quality: expect.objectContaining({ judge: { kind: 'jev', group_id: 0, model_id: '', prompt: 'Compare values' } }) }) }))
+    wrapper.unmount()
+  })
+  it('renders Jev safe reason codes and separate latency without showing an upstream reason', async () => {
+    const wrapper = mountView(); await flushPromises(); const vm = wrapper.vm as any
+    const result = { quality_judgment: { kind: 'jev', verdict: 'unknown', reason: 'judge_jev_credentials_rejected' } }
+    expect(vm.judgmentReason(result)).toBe('qualityOps.jevReasons.credentials_rejected')
+    result.quality_judgment.reason = 'SYNTHETIC_PROVIDER_SECRET'
+    expect(vm.judgmentReason(result)).toBe('qualityOps.jevReasons.uncertain')
+    wrapper.unmount()
+  })
   it('saves a state probe rule without a question, reference answer, judge or parallel runs', async () => {
     const wrapper = mountView(); await flushPromises(); const vm = wrapper.vm as any
     vm.newPlan(); vm.accountScope = 'manual'; await flushPromises()

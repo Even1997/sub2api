@@ -335,7 +335,9 @@ func (s *ScheduledTestRunnerService) runPelicanSample(ctx context.Context, plan 
 		}
 		applyQualityJudgment(result, judgment)
 		result.FinishedAt = time.Now()
-		result.LatencyMs = result.FinishedAt.Sub(result.StartedAt).Milliseconds()
+		if judgment == nil || judgment.Kind != "jev" {
+			result.LatencyMs = result.FinishedAt.Sub(result.StartedAt).Milliseconds()
+		}
 	}
 	return result
 }
