@@ -1,3 +1,4 @@
+import bills from './bills'
 import ipAudit from './ipAudit'
 import traffic from './traffic'
 import connections from './connections'
@@ -26,6 +27,7 @@ import misc from './misc'
 import autoConfig from './autoConfig'
 
 export default {
+  bills,
   traffic,
   ipAudit,
   connections,

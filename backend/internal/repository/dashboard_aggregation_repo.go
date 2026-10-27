@@ -581,6 +581,11 @@ func (r *dashboardAggregationRepository) isUsageLogsPartitioned(ctx context.Cont
 }
 
 func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Context, cutoff time.Time) error {
+	// DROP PARTITION bypasses row deletion triggers. Advance the conservative
+	// completeness boundary before cleanup; saved bill snapshots stay readable.
+	if _, err := r.sql.ExecContext(ctx, `UPDATE monthly_bill_coverage SET complete_from=GREATEST(complete_from,$1) WHERE singleton=TRUE`, truncateToMonthUTC(cutoff)); err != nil {
+		return err
+	}
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT c.relname
 		FROM pg_inherits

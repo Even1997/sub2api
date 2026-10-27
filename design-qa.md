@@ -472,3 +472,10 @@ not perform an unrelated bundling refactor.
 - [x] Remaining performance limitation stated.
 
 final result: passed
+
+
+## 2026-10-27 月账单补充验收
+
+保留以上既有验收记录。本次月账单的三列模型汇总、动态站点名称、仅 PDF 导出，以及桌面/手机/打印与金额权限验证详见 [月账单验收](docs/monthly-bills-qa.md)。
+
+final result: passed

@@ -32,6 +32,11 @@ func RegisterUserRoutes(
 		user := authenticated.Group("/user")
 		{
 			user.GET("/profile", h.User.GetProfile)
+			if h.MonthlyBill != nil {
+				user.GET("/bills", h.MonthlyBill.List)
+				user.GET("/bills/:month/:version", h.MonthlyBill.Get)
+				user.POST("/bills", panelRateLimiter.Heavy(), h.MonthlyBill.Generate)
+			}
 			if h.Admin != nil && h.Admin.PromptAudit != nil {
 				user.GET("/security/summary", h.Admin.PromptAudit.MyPenaltySummary)
 				user.GET("/security/events", h.Admin.PromptAudit.MyPenaltyEvents)

@@ -373,6 +373,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/bills',
+    name: 'MonthlyBills',
+    component: () => import('@/views/user/MonthlyBillsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'My statements', titleKey: 'bills.title' }
+  },
+  {
     path: '/orders',
     name: 'OrderList',
     component: () => import('@/views/user/UserOrdersView.vue'),

@@ -59,6 +59,7 @@ type Handlers struct {
 	APIKey           *APIKeyHandler
 	APIKeyPackage    *APIKeyPackageHandler
 	Usage            *UsageHandler
+	MonthlyBill      *MonthlyBillHandler
 	Redeem           *RedeemHandler
 	Subscription     *SubscriptionHandler
 	Announcement     *AnnouncementHandler

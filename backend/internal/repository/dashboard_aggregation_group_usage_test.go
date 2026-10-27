@@ -225,6 +225,8 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionedSortsAndInvali
 
 	mock.ExpectQuery(`SELECT EXISTS`).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectExec(`UPDATE monthly_bill_coverage`).
+		WithArgs(truncateToMonthUTC(cutoff)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(`SELECT c.relname`).
 		WillReturnRows(sqlmock.NewRows([]string{"relname"}).
 			AddRow("usage_logs_202606").
@@ -294,6 +296,8 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionFailureRollsBack
 
 	mock.ExpectQuery(`SELECT EXISTS`).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectExec(`UPDATE monthly_bill_coverage`).
+		WithArgs(truncateToMonthUTC(cutoff)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(`SELECT c.relname`).
 		WillReturnRows(sqlmock.NewRows([]string{"relname"}).
 			AddRow("usage_logs_202606").
