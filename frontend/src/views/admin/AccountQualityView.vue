@@ -22,7 +22,7 @@
             <span aria-live="polite">{{ t('qualityOps.rulesSelected', { count: selectedRuleIds.length }) }}</span>
             <button v-if="selectedRuleIds.length" :disabled="busy || bulkRunning" data-testid="quality-clear-rules" @click="selectedRuleIds = []">{{ t('qualityOps.clearAccountSelection') }}</button>
             <div class="bulk-rule-actions">
-              <button class="btn btn-secondary" data-testid="quality-bulk-edit" :disabled="!selectedRuleIds.length || busy || bulkRunning || selectedRulesPending" @click="editSelectedRules"><Icon name="edit" size="sm" />{{ t('qualityOps.bulkEdit') }}</button>
+              <button class="btn btn-secondary" data-testid="quality-bulk-edit" :disabled="!plans.length || busy || bulkRunning || selectedRulesPending" @click="editSelectedRules"><Icon name="edit" size="sm" />{{ t('qualityOps.bulkEdit') }}</button>
               <button class="btn btn-primary bulk-run-button" data-testid="quality-bulk-run" :disabled="!selectedRuleIds.length || busy || bulkRunning" @click="runSelectedRules"><Icon name="play" size="sm" />{{ bulkRunning ? t('qualityOps.bulkRunProgress', { completed: bulkRunCompleted, total: bulkRunTotal }) : t('qualityOps.bulkRun') }}</button>
               <button class="btn bulk-delete-button" data-testid="quality-bulk-delete" :disabled="!selectedRuleIds.length || busy || selectedRulesPending" @click="requestDelete(selectedRuleIds)">{{ t('qualityOps.bulkDelete') }}</button>
             </div>
@@ -779,10 +779,10 @@ function editTemplate(tpl: QualityRuleTemplate) {
 function editSelectedRules() {
   if (busy.value || bulkRunning.value || selectedRulesPending.value) return
   const selected = plans.value.filter(plan => selectedRuleIds.value.includes(plan.id) && plan.pelican_config?.quality?.action !== 'openai_two_fa_admission')
-  if (!selected.length) return
   // Start from the first selected rule for convenience, but no field is applied
   // until explicitly checked. The request builder preserves each other value.
-  edit(selected[0])
+  if (selected.length) edit(selected[0])
+  else newPlan()
   bulkSourceScope.value = ruleScope(form.value.pelican_config.quality.action)
   editing.value = null; bulkEditing.value = true
   bulkRuleIds.value = selected.map(plan => plan.id)

@@ -1052,7 +1052,7 @@ describe('quality operations', () => {
     expect(wrapper.get('[data-plan-id="2"] .rule-checkbox input').element).toHaveProperty('checked', true)
     expect(wrapper.get('[data-plan-id="3"] .rule-checkbox input').element).toHaveProperty('checked', false)
     await wrapper.get('[data-testid="quality-clear-rules"]').trigger('click')
-    expect(wrapper.get('[data-testid="quality-bulk-edit"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="quality-bulk-edit"]').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 
