@@ -61,6 +61,9 @@ jobs:
           test "$result" -ne 0
           grep -q 'FAIL: TestQualityScopeConflictsUse409ForUpdateAndDelete' "$RUNNER_TEMP/quality-red.log"
           grep -Eq 'actual.*(400|500)' "$RUNNER_TEMP/quality-red.log"
+      - name: Usage trend local bucket regressions
+        working-directory: backend
+        run: go test -tags=integration ./internal/repository -run '^TestUsageTrendAggregateTimezone' -count=1 -v
       - name: Unit tests
         working-directory: backend
         run: make test-unit
