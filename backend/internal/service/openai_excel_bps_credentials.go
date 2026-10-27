@@ -12,14 +12,18 @@ import (
 	"go.uber.org/zap"
 )
 
-const excelBPSCredentialCooldown = 30 * time.Second
+const excelBPSCredentialCheckInterval = 30 * time.Second
 const excelBPSCredentialMaxEntries = 4096
 const excelBPSCredentialFilterReason = "excel_bps_credentials_unavailable"
 
 type excelBPSCredentialCooldowns struct {
-	mu        sync.Mutex
-	entries   map[int64]time.Time
-	lastSweep time.Time
+	mu      sync.Mutex
+	entries map[int64]*excelBPSCredentialWait
+}
+
+type excelBPSCredentialWait struct {
+	nextCheckAt time.Time
+	checking    bool
 }
 
 // Reasons are an allowlist: never put provider messages, credentials or storage
@@ -88,19 +92,11 @@ func (s *OpenAIGatewayService) applyExcelBPSCredentialFailure(ctx context.Contex
 		return
 	}
 	now := time.Now()
-	until := now.Add(excelBPSCredentialCooldown)
+	next := now.Add(excelBPSCredentialCheckInterval)
 	cache := &s.excelBPSCredentialCooldowns
 	cache.mu.Lock()
 	if cache.entries == nil {
-		cache.entries = make(map[int64]time.Time)
-	}
-	if now.Sub(cache.lastSweep) >= excelBPSCredentialCooldown || len(cache.entries) >= excelBPSCredentialMaxEntries {
-		for id, deadline := range cache.entries {
-			if !now.Before(deadline) {
-				delete(cache.entries, id)
-			}
-		}
-		cache.lastSweep = now
+		cache.entries = make(map[int64]*excelBPSCredentialWait)
 	}
 	previous, exists := cache.entries[account.ID]
 	if !exists && len(cache.entries) >= excelBPSCredentialMaxEntries {
@@ -108,14 +104,16 @@ func (s *OpenAIGatewayService) applyExcelBPSCredentialFailure(ctx context.Contex
 		logger.FromContext(ctx).Warn("openai.excel_bps_credential_cooldown_capacity_reached", fields...)
 		return
 	}
-	if previous.After(until) {
-		until = previous
+	if previous != nil && previous.nextCheckAt.After(next) {
+		next = previous.nextCheckAt
 	}
-	cache.entries[account.ID] = until
+	// A new failure invalidates any older in-flight check. Time alone must
+	// never make an unreadable credential eligible for user traffic.
+	cache.entries[account.ID] = &excelBPSCredentialWait{nextCheckAt: next}
 	cache.mu.Unlock()
 	logger.FromContext(ctx).Warn("openai.excel_bps_credential_failure", append(fields,
-		zap.String("action", "cooldown_bps"), zap.String("scope", "bps_account"),
-		zap.Time("retry_at", until), zap.Int64("cooldown_seconds", int64(excelBPSCredentialCooldown/time.Second)))...)
+		zap.String("action", "wait_for_credentials"), zap.String("scope", "bps_account"),
+		zap.Time("next_check_at", next), zap.Int64("check_interval_seconds", int64(excelBPSCredentialCheckInterval/time.Second)))...)
 }
 
 func (s *OpenAIGatewayService) isExcelBPSCredentialCoolingDown(ctx context.Context, account *Account, model string) bool {
@@ -127,11 +125,7 @@ func (s *OpenAIGatewayService) isExcelBPSCredentialCoolingDown(ctx context.Conte
 	}
 	cache := &s.excelBPSCredentialCooldowns
 	cache.mu.Lock()
-	until, exists := cache.entries[account.ID]
-	cooling := exists && time.Now().Before(until)
-	if exists && !cooling {
-		delete(cache.entries, account.ID)
-	}
+	cooling := cache.entries[account.ID] != nil
 	cache.mu.Unlock()
 	// No extra settings/database read for healthy candidates. Turning recovery
 	// off bypasses this transient BPS state; it never resumes a paused account.

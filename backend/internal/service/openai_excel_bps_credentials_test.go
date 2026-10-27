@@ -31,7 +31,7 @@ func TestExcelBPSCredentialPendingAvoidsRepeatedSelection(t *testing.T) {
 	require.True(t, s.isOpenAIAccountRequestRuntimeBlocked(ctx, a, "gpt-6-astra", false), "new BPS requests must temporarily skip the pending grant")
 }
 
-func TestExcelBPSCredentialCooldownScopeSwitchAndExpiry(t *testing.T) {
+func TestExcelBPSCredentialCooldownScopeSwitchAndCheckDeadline(t *testing.T) {
 	s := openAIExcelBPSRecoveryTestService(nil)
 	repo, _ := setupExcelBPSAuth(s)
 	a := excelAccount()
@@ -51,7 +51,7 @@ func TestExcelBPSCredentialCooldownScopeSwitchAndExpiry(t *testing.T) {
 	require.True(t, a.IsSchedulable())
 
 	saved := s.excelBPSCredentialCooldowns.entries[a.ID]
-	require.WithinDuration(t, time.Now().Add(30*time.Second), saved, time.Second)
+	require.WithinDuration(t, time.Now().Add(30*time.Second), saved.nextCheckAt, time.Second)
 	settings := s.settingService.settingRepo.(*excelBPSImageSettingsRepo)
 	settings.values[SettingKeyExcelBPSRecoveryEnabled] = "false"
 	require.False(t, s.isExcelBPSCredentialCoolingDown(WithExcelBPSScheduling(t.Context(), nil), a, "gpt-6-astra"))
@@ -59,9 +59,9 @@ func TestExcelBPSCredentialCooldownScopeSwitchAndExpiry(t *testing.T) {
 	require.Equal(t, saved, s.excelBPSCredentialCooldowns.entries[a.ID], "disabled recovery neither uses nor extends the cooldown")
 	settings.values[SettingKeyExcelBPSRecoveryEnabled] = "true"
 	require.True(t, s.isExcelBPSCredentialCoolingDown(t.Context(), a, "gpt-6-astra"))
-	s.excelBPSCredentialCooldowns.entries[a.ID] = time.Now().Add(-time.Second)
-	require.False(t, s.isExcelBPSCredentialCoolingDown(t.Context(), a, "gpt-6-astra"))
-	require.Empty(t, s.excelBPSCredentialCooldowns.entries)
+	s.excelBPSCredentialCooldowns.entries[a.ID].nextCheckAt = time.Now().Add(-time.Second)
+	require.True(t, s.isExcelBPSCredentialCoolingDown(t.Context(), a, "gpt-6-astra"), "the deadline only schedules a background check; user traffic must keep waiting")
+	require.Len(t, s.excelBPSCredentialCooldowns.entries, 1)
 }
 
 func TestExcelBPSCredentialFailureClassificationAndIsolation(t *testing.T) {
@@ -141,22 +141,26 @@ func TestExcelBPSCredentialCooldownDiagnosticsAreSafe(t *testing.T) {
 	require.Len(t, entries, 1)
 	fields := entries[0].ContextMap()
 	require.Equal(t, "credential_read_failed", fields["reason"])
-	require.Equal(t, "cooldown_bps", fields["action"])
+	require.Equal(t, "wait_for_credentials", fields["action"])
 	require.Equal(t, "bps_account", fields["scope"])
-	require.Equal(t, int64(30), fields["cooldown_seconds"])
+	require.Equal(t, int64(30), fields["check_interval_seconds"])
 	require.Equal(t, "request_fixture", fields["request_id"])
-	require.NotNil(t, fields["retry_at"])
+	require.NotNil(t, fields["next_check_at"])
 	require.NotContains(t, fmt.Sprint(fields), "PRIVATE_TOKEN_DB_RESPONSE")
 }
 
 type excelBPSCredentialReadTestRepo struct {
 	*excelReauthTestRepo
-	reads int
-	err   error
+	reads      int
+	err        error
+	beforeRead func()
 }
 
 func (r *excelBPSCredentialReadTestRepo) GetExcelCredentials(ctx context.Context, id int64) (string, error) {
 	r.reads++
+	if r.beforeRead != nil {
+		r.beforeRead()
+	}
 	if r.err != nil {
 		return "", r.err
 	}
@@ -281,14 +285,14 @@ func TestExcelBPSCredentialCooldownConcurrentAndBounded(t *testing.T) {
 	require.Len(t, s.excelBPSCredentialCooldowns.entries, 1)
 	cache := &s.excelBPSCredentialCooldowns
 	for id := range int64(excelBPSCredentialMaxEntries) {
-		cache.entries[id+10000] = time.Now().Add(time.Minute)
+		cache.entries[id+10000] = &excelBPSCredentialWait{nextCheckAt: time.Now().Add(time.Minute)}
 	}
 	delete(cache.entries, a.ID)
 	s.handleExcelBPSCredentialReadError(ctx, a, errors.New("read failed"))
 	require.Len(t, cache.entries, excelBPSCredentialMaxEntries)
 	require.NotContains(t, cache.entries, a.ID, "active cooldowns are not evicted at capacity")
-	cache.entries[10000] = time.Now().Add(-time.Second)
+	cache.entries[10000].nextCheckAt = time.Now().Add(-time.Second)
 	s.handleExcelBPSCredentialReadError(ctx, a, errors.New("read failed"))
 	require.Len(t, cache.entries, excelBPSCredentialMaxEntries)
-	require.Contains(t, cache.entries, a.ID, "expired entries free capacity")
+	require.NotContains(t, cache.entries, a.ID, "a due check must never evict an unverified credential wait")
 }

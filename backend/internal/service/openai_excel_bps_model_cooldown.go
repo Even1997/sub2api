@@ -110,7 +110,12 @@ func (s *OpenAIGatewayService) StartBPSModelRecovery() {
 			if ctx.Err() != nil {
 				return
 			}
-			s.syncExcelBPSModelRecovery(ctx)
+			// Credential waits and model isolation share cancellation and joining,
+			// but neither scan blocks the other from starting.
+			var scans sync.WaitGroup
+			scans.Go(func() { s.syncExcelBPSCredentialRecovery(ctx) })
+			scans.Go(func() { s.syncExcelBPSModelRecovery(ctx) })
+			scans.Wait()
 			select {
 			case <-ctx.Done():
 				return
