@@ -20,6 +20,7 @@ describe('SmartOpsNav', () => {
     expect(wrapper.findAll('a').map((link) => link.attributes('href'))).toEqual([
       '/admin/auto-config',
       '/admin/priority-scheduling',
+      '/admin/channel-operations',
       '/admin/account-quality',
       '/admin/controlled-experiments',
       '/admin/account-ops',
