@@ -32207,6 +32207,7 @@ type PaymentOrderMutation struct {
 	op                        Op
 	typ                       string
 	id                        *int64
+	remark                    *string
 	user_email                *string
 	user_name                 *string
 	user_notes                *string
@@ -32395,6 +32396,42 @@ func (m *PaymentOrderMutation) OldUserID(ctx context.Context) (v int64, err erro
 // ResetUserID resets all changes to the "user_id" field.
 func (m *PaymentOrderMutation) ResetUserID() {
 	m.user = nil
+}
+
+// SetRemark sets the "remark" field.
+func (m *PaymentOrderMutation) SetRemark(s string) {
+	m.remark = &s
+}
+
+// Remark returns the value of the "remark" field in the mutation.
+func (m *PaymentOrderMutation) Remark() (r string, exists bool) {
+	v := m.remark
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRemark returns the old "remark" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldRemark(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRemark is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRemark requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRemark: %w", err)
+	}
+	return oldValue.Remark, nil
+}
+
+// ResetRemark resets all changes to the "remark" field.
+func (m *PaymentOrderMutation) ResetRemark() {
+	m.remark = nil
 }
 
 // SetUserEmail sets the "user_email" field.
@@ -34321,9 +34358,12 @@ func (m *PaymentOrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentOrderMutation) Fields() []string {
-	fields := make([]string, 0, 41)
+	fields := make([]string, 0, 42)
 	if m.user != nil {
 		fields = append(fields, paymentorder.FieldUserID)
+	}
+	if m.remark != nil {
+		fields = append(fields, paymentorder.FieldRemark)
 	}
 	if m.user_email != nil {
 		fields = append(fields, paymentorder.FieldUserEmail)
@@ -34455,6 +34495,8 @@ func (m *PaymentOrderMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case paymentorder.FieldUserID:
 		return m.UserID()
+	case paymentorder.FieldRemark:
+		return m.Remark()
 	case paymentorder.FieldUserEmail:
 		return m.UserEmail()
 	case paymentorder.FieldUserName:
@@ -34546,6 +34588,8 @@ func (m *PaymentOrderMutation) OldField(ctx context.Context, name string) (ent.V
 	switch name {
 	case paymentorder.FieldUserID:
 		return m.OldUserID(ctx)
+	case paymentorder.FieldRemark:
+		return m.OldRemark(ctx)
 	case paymentorder.FieldUserEmail:
 		return m.OldUserEmail(ctx)
 	case paymentorder.FieldUserName:
@@ -34641,6 +34685,13 @@ func (m *PaymentOrderMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUserID(v)
+		return nil
+	case paymentorder.FieldRemark:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRemark(v)
 		return nil
 	case paymentorder.FieldUserEmail:
 		v, ok := value.(string)
@@ -35195,6 +35246,9 @@ func (m *PaymentOrderMutation) ResetField(name string) error {
 	switch name {
 	case paymentorder.FieldUserID:
 		m.ResetUserID()
+		return nil
+	case paymentorder.FieldRemark:
+		m.ResetRemark()
 		return nil
 	case paymentorder.FieldUserEmail:
 		m.ResetUserEmail()

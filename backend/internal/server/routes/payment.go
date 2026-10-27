@@ -53,6 +53,8 @@ func RegisterPaymentRoutes(
 			orders.POST("", paymentHandler.CreateOrder)
 			orders.POST("/verify", paymentHandler.VerifyOrder)
 			orders.GET("/my", paymentHandler.GetMyOrders)
+			orders.GET("/export", paymentHandler.ExportMyOrders)
+			orders.PATCH("/:id/remark", paymentHandler.UpdateOrderRemark)
 			orders.GET("/:id", paymentHandler.GetOrder)
 			orders.POST("/:id/resume", paymentHandler.ResumeOrder)
 			orders.POST("/:id/cancel", paymentHandler.CancelOrder)

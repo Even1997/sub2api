@@ -6,6 +6,9 @@
         <div class="flex flex-wrap items-center gap-3">
           <Select v-model="currentFilter" :options="statusFilters" class="w-36" @change="handlePageChange(1)" />
           <div class="flex flex-1 items-center justify-end gap-2">
+            <button class="btn btn-secondary" data-test="export-orders" @click="showExport = true">
+              <Icon name="download" size="md" />{{ t('payment.orders.export') }}
+            </button>
             <button @click="fetchOrders" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
@@ -18,6 +21,9 @@
       <OrderTable :orders="orders" :loading="loading">
         <template #actions="{ row }">
           <div class="flex items-center gap-2">
+            <button class="inline-flex min-h-11 items-center whitespace-nowrap rounded-md px-3 py-2 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/20" data-test="edit-remark" @click="openRemarkDialog(row)">
+              {{ t('payment.orders.editRemark') }}
+            </button>
             <button
               v-if="row.status === 'PENDING' && row.resumable"
               data-test="resume-order"
@@ -50,6 +56,40 @@
         @update:pageSize="handlePageSizeChange"
       />
     </div>
+
+    <BaseDialog :show="!!remarkTarget" :title="t('payment.orders.editRemark')" :close-on-escape="!savingRemark" :show-close-button="!savingRemark" @close="remarkTarget = null">
+      <label for="order-remark" class="input-label">{{ t('payment.orders.remark') }} · #{{ remarkTarget?.id }}</label>
+      <textarea id="order-remark" v-model="remarkDraft" rows="4" maxlength="500" class="input mt-2 w-full" :disabled="savingRemark" :placeholder="t('payment.orders.remarkPlaceholder')" aria-describedby="order-remark-help" />
+      <p id="order-remark-help" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.remarkHint') }} · {{ remarkDraft.length }}/500</p>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button class="btn btn-secondary" :disabled="savingRemark" @click="remarkTarget = null">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" data-test="save-remark" :disabled="savingRemark" @click="saveRemark">{{ savingRemark ? t('common.processing') : t('common.save') }}</button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog :show="showExport" :title="t('payment.orders.export')" :close-on-escape="!exporting" :show-close-button="!exporting" @close="showExport = false">
+      <p class="mb-4 text-sm text-gray-600 dark:text-gray-300">{{ t('payment.orders.exportHint') }}</p>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label for="order-export-start" class="input-label">{{ t('payment.orders.startDate') }}</label>
+          <input id="order-export-start" v-model="exportStart" type="date" class="input mt-1 w-full" :max="exportEnd" :disabled="exporting" />
+        </div>
+        <div>
+          <label for="order-export-end" class="input-label">{{ t('payment.orders.endDate') }}</label>
+          <input id="order-export-end" v-model="exportEnd" type="date" class="input mt-1 w-full" :min="exportStart" :disabled="exporting" />
+        </div>
+      </div>
+      <p class="mt-3 text-sm text-gray-600 dark:text-gray-300">{{ t('payment.orders.status') }}: {{ statusFilters.find(filter => filter.value === currentFilter)?.label }}</p>
+      <p v-if="!exportRange" role="alert" class="mt-2 text-sm text-red-600 dark:text-red-400">{{ t('payment.orders.invalidRange') }}</p>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button class="btn btn-secondary" :disabled="exporting" @click="showExport = false">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" data-test="confirm-export" :disabled="exporting || !exportRange" @click="exportOrders">{{ exporting ? t('common.processing') : t('payment.orders.export') }}</button>
+        </div>
+      </template>
+    </BaseDialog>
 
     <!-- Cancel Confirm Dialog -->
     <BaseDialog :show="!!cancelTarget" :title="t('payment.orders.cancel')" width="narrow" @close="cancelTarget = null">
@@ -112,6 +152,8 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OrderTable from '@/components/payment/OrderTable.vue'
+import { orderExportRange, ordersCSV } from '@/components/payment/orderExport'
+import { saveAs } from 'file-saver'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -127,6 +169,55 @@ const cancelTarget = ref<PaymentOrder | null>(null)
 const refundTarget = ref<PaymentOrder | null>(null)
 const refundReason = ref('')
 const pagination = reactive({ page: 1, page_size: 20, total: 0 })
+const remarkTarget = ref<PaymentOrder | null>(null)
+const remarkDraft = ref('')
+const savingRemark = ref(false)
+const showExport = ref(false)
+const exporting = ref(false)
+const today = new Date()
+const localDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const exportStart = ref(localDate(new Date(today.getFullYear(), today.getMonth(), 1)))
+const exportEnd = ref(localDate(today))
+const exportRange = computed(() => orderExportRange(exportStart.value, exportEnd.value))
+
+function openRemarkDialog(order: PaymentOrder) {
+  remarkTarget.value = order
+  remarkDraft.value = order.remark || ''
+}
+
+async function saveRemark() {
+  if (!remarkTarget.value || savingRemark.value) return
+  savingRemark.value = true
+  try {
+    const result = await paymentAPI.updateOrderRemark(remarkTarget.value.id, remarkDraft.value)
+    remarkTarget.value.remark = result.data.remark
+    remarkTarget.value = null
+    appStore.showSuccess(t('common.success'))
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  } finally {
+    savingRemark.value = false
+  }
+}
+
+async function exportOrders() {
+  if (!exportRange.value || exporting.value) return
+  exporting.value = true
+  try {
+    const result = await paymentAPI.exportMyOrders({ ...exportRange.value, status: currentFilter.value || undefined })
+    if (!result.data.length) {
+      appStore.showError(t('payment.orders.noExportOrders'))
+      return
+    }
+    saveAs(new Blob([ordersCSV(result.data, t)], { type: 'text/csv;charset=utf-8' }), `orders_${exportStart.value}_${exportEnd.value}.csv`)
+    showExport.value = false
+    appStore.showSuccess(t('common.success'))
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  } finally {
+    exporting.value = false
+  }
+}
 
 const statusFilters = computed(() => [
   { value: '', label: t('common.all') },

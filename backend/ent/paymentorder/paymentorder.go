@@ -16,6 +16,8 @@ const (
 	FieldID = "id"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldRemark holds the string denoting the remark field in the database.
+	FieldRemark = "remark"
 	// FieldUserEmail holds the string denoting the user_email field in the database.
 	FieldUserEmail = "user_email"
 	// FieldUserName holds the string denoting the user_name field in the database.
@@ -113,6 +115,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldUserID,
+	FieldRemark,
 	FieldUserEmail,
 	FieldUserName,
 	FieldUserNotes,
@@ -166,6 +169,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultRemark holds the default value on creation for the "remark" field.
+	DefaultRemark string
 	// UserEmailValidator is a validator for the "user_email" field. It is called by the builders before save.
 	UserEmailValidator func(string) error
 	// UserNameValidator is a validator for the "user_name" field. It is called by the builders before save.
@@ -229,6 +234,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// ByRemark orders the results by the remark field.
+func ByRemark(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRemark, opts...).ToFunc()
 }
 
 // ByUserEmail orders the results by the user_email field.

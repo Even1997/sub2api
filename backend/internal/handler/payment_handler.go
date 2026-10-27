@@ -700,6 +700,7 @@ func isMobile(c *gin.Context) bool {
 }
 
 type PaymentOrderResult struct {
+	Remark              string     `json:"remark"`
 	ID                  int64      `json:"id"`
 	UserID              int64      `json:"user_id"`
 	Amount              float64    `json:"amount"`
@@ -741,6 +742,7 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *PaymentOrderRes
 		return nil
 	}
 	return &PaymentOrderResult{
+		Remark:              order.Remark,
 		ID:                  order.ID,
 		UserID:              order.UserID,
 		Amount:              order.Amount,

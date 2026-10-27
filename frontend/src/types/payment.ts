@@ -99,6 +99,7 @@ export interface CheckoutInfoResponse {
 
 export interface PaymentOrder {
   id: number
+  remark?: string
   user_id: number
   amount: number
   pay_amount: number

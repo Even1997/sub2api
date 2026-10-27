@@ -29,6 +29,20 @@ func (_c *PaymentOrderCreate) SetUserID(v int64) *PaymentOrderCreate {
 	return _c
 }
 
+// SetRemark sets the "remark" field.
+func (_c *PaymentOrderCreate) SetRemark(v string) *PaymentOrderCreate {
+	_c.mutation.SetRemark(v)
+	return _c
+}
+
+// SetNillableRemark sets the "remark" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableRemark(v *string) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetRemark(*v)
+	}
+	return _c
+}
+
 // SetUserEmail sets the "user_email" field.
 func (_c *PaymentOrderCreate) SetUserEmail(v string) *PaymentOrderCreate {
 	_c.mutation.SetUserEmail(v)
@@ -541,6 +555,10 @@ func (_c *PaymentOrderCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *PaymentOrderCreate) defaults() {
+	if _, ok := _c.mutation.Remark(); !ok {
+		v := paymentorder.DefaultRemark
+		_c.mutation.SetRemark(v)
+	}
 	if _, ok := _c.mutation.FeeRate(); !ok {
 		v := paymentorder.DefaultFeeRate
 		_c.mutation.SetFeeRate(v)
@@ -587,6 +605,9 @@ func (_c *PaymentOrderCreate) defaults() {
 func (_c *PaymentOrderCreate) check() error {
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "PaymentOrder.user_id"`)}
+	}
+	if _, ok := _c.mutation.Remark(); !ok {
+		return &ValidationError{Name: "remark", err: errors.New(`ent: missing required field "PaymentOrder.remark"`)}
 	}
 	if _, ok := _c.mutation.UserEmail(); !ok {
 		return &ValidationError{Name: "user_email", err: errors.New(`ent: missing required field "PaymentOrder.user_email"`)}
@@ -748,6 +769,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_spec = sqlgraph.NewCreateSpec(paymentorder.Table, sqlgraph.NewFieldSpec(paymentorder.FieldID, field.TypeInt64))
 	)
 	_spec.OnConflict = _c.conflict
+	if value, ok := _c.mutation.Remark(); ok {
+		_spec.SetField(paymentorder.FieldRemark, field.TypeString, value)
+		_node.Remark = value
+	}
 	if value, ok := _c.mutation.UserEmail(); ok {
 		_spec.SetField(paymentorder.FieldUserEmail, field.TypeString, value)
 		_node.UserEmail = value
@@ -986,6 +1011,18 @@ func (u *PaymentOrderUpsert) SetUserID(v int64) *PaymentOrderUpsert {
 // UpdateUserID sets the "user_id" field to the value that was provided on create.
 func (u *PaymentOrderUpsert) UpdateUserID() *PaymentOrderUpsert {
 	u.SetExcluded(paymentorder.FieldUserID)
+	return u
+}
+
+// SetRemark sets the "remark" field.
+func (u *PaymentOrderUpsert) SetRemark(v string) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldRemark, v)
+	return u
+}
+
+// UpdateRemark sets the "remark" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateRemark() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldRemark)
 	return u
 }
 
@@ -1681,6 +1718,20 @@ func (u *PaymentOrderUpsertOne) SetUserID(v int64) *PaymentOrderUpsertOne {
 func (u *PaymentOrderUpsertOne) UpdateUserID() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetRemark sets the "remark" field.
+func (u *PaymentOrderUpsertOne) SetRemark(v string) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetRemark(v)
+	})
+}
+
+// UpdateRemark sets the "remark" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateRemark() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateRemark()
 	})
 }
 
@@ -2648,6 +2699,20 @@ func (u *PaymentOrderUpsertBulk) SetUserID(v int64) *PaymentOrderUpsertBulk {
 func (u *PaymentOrderUpsertBulk) UpdateUserID() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetRemark sets the "remark" field.
+func (u *PaymentOrderUpsertBulk) SetRemark(v string) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetRemark(v)
+	})
+}
+
+// UpdateRemark sets the "remark" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateRemark() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateRemark()
 	})
 }
 

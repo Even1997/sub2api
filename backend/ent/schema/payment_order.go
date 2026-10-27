@@ -33,6 +33,7 @@ func (PaymentOrder) Fields() []ent.Field {
 	return []ent.Field{
 		// 用户信息（冗余存储，避免关联查询）
 		field.Int64("user_id"),
+		field.String("remark").Default("").SchemaType(map[string]string{dialect.Postgres: "varchar(500)"}),
 		field.String("user_email").
 			MaxLen(255),
 		field.String("user_name").

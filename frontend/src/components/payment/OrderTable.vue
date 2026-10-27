@@ -38,6 +38,9 @@
     <template #cell-actions="{ row }">
       <slot name="actions" :row="row" />
     </template>
+    <template #cell-remark="{ value }">
+      <p class="min-w-32 max-w-64 whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300">{{ value || '—' }}</p>
+    </template>
   </DataTable>
 </template>
 
@@ -79,6 +82,7 @@ const columns = computed((): Column[] => {
     { key: 'payment_type', label: t('payment.orders.paymentMethod') },
     { key: 'status', label: t('payment.orders.status') },
     { key: 'created_at', label: t('payment.orders.createdAt') },
+    ...(!props.showUser ? [{ key: 'remark', label: t('payment.orders.remark') }] : []),
     { key: 'actions', label: t('common.actions') },
   )
   return cols

@@ -43,6 +43,20 @@ func (_u *PaymentOrderUpdate) SetNillableUserID(v *int64) *PaymentOrderUpdate {
 	return _u
 }
 
+// SetRemark sets the "remark" field.
+func (_u *PaymentOrderUpdate) SetRemark(v string) *PaymentOrderUpdate {
+	_u.mutation.SetRemark(v)
+	return _u
+}
+
+// SetNillableRemark sets the "remark" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableRemark(v *string) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetRemark(*v)
+	}
+	return _u
+}
+
 // SetUserEmail sets the "user_email" field.
 func (_u *PaymentOrderUpdate) SetUserEmail(v string) *PaymentOrderUpdate {
 	_u.mutation.SetUserEmail(v)
@@ -891,6 +905,9 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 			}
 		}
 	}
+	if value, ok := _u.mutation.Remark(); ok {
+		_spec.SetField(paymentorder.FieldRemark, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.UserEmail(); ok {
 		_spec.SetField(paymentorder.FieldUserEmail, field.TypeString, value)
 	}
@@ -1151,6 +1168,20 @@ func (_u *PaymentOrderUpdateOne) SetUserID(v int64) *PaymentOrderUpdateOne {
 func (_u *PaymentOrderUpdateOne) SetNillableUserID(v *int64) *PaymentOrderUpdateOne {
 	if v != nil {
 		_u.SetUserID(*v)
+	}
+	return _u
+}
+
+// SetRemark sets the "remark" field.
+func (_u *PaymentOrderUpdateOne) SetRemark(v string) *PaymentOrderUpdateOne {
+	_u.mutation.SetRemark(v)
+	return _u
+}
+
+// SetNillableRemark sets the "remark" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableRemark(v *string) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetRemark(*v)
 	}
 	return _u
 }
@@ -2032,6 +2063,9 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Remark(); ok {
+		_spec.SetField(paymentorder.FieldRemark, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UserEmail(); ok {
 		_spec.SetField(paymentorder.FieldUserEmail, field.TypeString, value)

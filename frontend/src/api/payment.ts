@@ -60,6 +60,15 @@ export const paymentAPI = {
     return apiClient.get<BasePaginationResponse<PaymentOrder>>('/payment/orders/my', { params })
   },
 
+  /** Save or clear the current user's order remark */
+  updateOrderRemark(id: number, remark: string) {
+    return apiClient.patch<{ remark: string }>(`/payment/orders/${id}/remark`, { remark })
+  },
+
+  exportMyOrders(params: { start_time: string; end_time: string; status?: string }) {
+    return apiClient.get<PaymentOrder[]>('/payment/orders/export', { params })
+  },
+
   /** Get a specific order by ID */
   getOrder(id: number) {
     return apiClient.get<PaymentOrder>(`/payment/orders/${id}`)
