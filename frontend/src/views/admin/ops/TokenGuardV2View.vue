@@ -102,12 +102,13 @@
                     <small v-if="item.relogin_fail_streak && item.cooldown_until">{{ t('tokenGuardV2.reloginBackoffUntil') }} {{ date(item.cooldown_until) }}</small>
                   </div>
                 </td>
-                <td><span class="badge" :class="probeClass(item)">{{ probeLabel(item) }}</span><small>{{ statusDetail(item) }}</small></td>
+                <td><span class="badge" :class="probeClass(item)">{{ probeLabel(item) }}</span><small>{{ statusDetail(item) }}</small><details v-if="item.refresh_failure"><summary>{{ t('tokenGuardV2.operationFailure.refreshAttempt') }}</summary><CredentialOperationFailureView :failure="item.refresh_failure" /></details></td>
                 <td class="tabular-nums">{{ item.fail_streak }}</td>
-                <td>{{ date(item.last_probe_at) }}<small v-if="item.enabled">{{ t('tokenGuardV2.next') }} {{ date(item.next_probe_at) }}</small><small v-else>{{ t('tokenGuardV2.paused') }}</small></td>
+                <td>{{ date(item.last_probe_at) }}<CredentialOperationFailureView v-if="probeOperationFailure(item)" :failure="probeOperationFailure(item)!" /><small v-if="item.enabled">{{ t('tokenGuardV2.next') }} {{ date(item.next_probe_at) }}</small><small v-else>{{ t('tokenGuardV2.paused') }}</small></td>
                 <td>
-                  {{ date(item.last_reauth_at) }}
+                  {{ date(item.latest_task?.finished_at || item.latest_task?.created_at || item.last_reauth_at) }}
                   <small v-if="item.latest_task">{{ taskLabel(item.latest_task) }}</small>
+                  <CredentialOperationFailureView v-if="taskOperationFailure(item.latest_task)" :failure="taskOperationFailure(item.latest_task)!" />
                   <button v-if="item.latest_task" type="button" class="task-log-link" @click="openTaskLog(item.latest_task.id)">{{ t('tokenGuardV2.viewTaskLog') }}</button>
                 </td>
                 <td>
@@ -304,6 +305,8 @@
 </template>
 
 <script setup lang="ts">
+import CredentialOperationFailureView from '@/components/account/CredentialOperationFailure.vue'
+import { probeOperationFailure, taskOperationFailure, safeDiagnosticToken } from '@/utils/credentialOperationFailure'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -347,7 +350,7 @@ import {
   type TokenGuardV2WorkerStatus
 } from '@/api/admin/accountTokenGuardV2'
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 const encryptionReady = ref(false)
 const emptyStatus = (): TokenGuardV2Status => ({
   accounts: [],
@@ -478,7 +481,19 @@ const selectableAccounts = computed(() => {
       .some(value => String(value || '').toLowerCase().includes(query)))
 })
 
-const message = (value: unknown) => (value as { message?: string })?.message || t('tokenGuardV2.error')
+const manualErrors: Record<string, string> = {
+  TOKEN_GUARD_V2_PROBE_BUSY: 'busy', OPENAI_REAUTH_TASK_ACTIVE: 'busy',
+  OPENAI_REAUTH_WORKER_UNAVAILABLE: 'worker', OPENAI_REAUTH_UNAVAILABLE: 'worker',
+  OPENAI_REAUTH_CONFIG_REQUIRED: 'configuration', OPENAI_REAUTH_ENCRYPTION_KEY_REQUIRED: 'encryption',
+  OPENAI_REAUTH_ACCOUNT_CHANGED: 'changed', OPENAI_REAUTH_IDENTITY_MISMATCH: 'changed',
+  OPENAI_REAUTH_TASK_NOT_ACTIVE: 'changed'
+}
+const message = (value: unknown) => {
+  const reason = (value as { reason?: unknown })?.reason
+  return typeof reason === 'string' && Object.prototype.hasOwnProperty.call(manualErrors, reason)
+    ? `${t(`tokenGuardV2.operationFailure.manual.${manualErrors[reason]}`)} (${reason})`
+    : t('tokenGuardV2.error')
+}
 const date = (value?: string) => value ? new Date(value).toLocaleString() : '-'
 const modeLabel = (mode?: TokenGuardV2CredentialMode) => !mode ? '-' : mode === 'password_totp' ? t('tokenGuardV2.passwordMode') : t('tokenGuardV2.mailboxMode')
 const engineLabel = (engine?: TokenGuardV2Engine) => engine === 'session_studio' ? t('tokenGuardV2.sessionStudioEngine') : t('tokenGuardV2.localWorkerEngine')
@@ -506,14 +521,15 @@ const proxyLabel = (source: TokenGuardV2ProxySource = 'account', proxyId?: numbe
 const isRetired = (item: TokenGuardV2Account) => item.blocked_reason === 'account_retired'
 const probeLabel = (item: TokenGuardV2Account) => isRetired(item) ? t('tokenGuardV2.retired') : t(`tokenGuardV2.probeStates.${item.probe_state || 'pending'}`)
 const probeClass = (item: TokenGuardV2Account) => isRetired(item) || item.probe_state === 'auth' || item.probe_state === 'blocked' ? 'danger' : item.probe_state === 'ok' ? 'ok' : ''
-const statusDetail = (item: TokenGuardV2Account) => isRetired(item) ? t('tokenGuardV2.retiredDetail') : (item.blocked_reason || item.probe_detail || '-')
-const taskErrorLabel = (errorCode: string) => {
-  const path = `tokenGuardV2.reauthErrors.${errorCode}`
-  return te(path) ? t(path) : errorCode
+const statusDetail = (item: TokenGuardV2Account) => {
+  if (isRetired(item)) return t('tokenGuardV2.retiredDetail')
+  if (probeOperationFailure(item)) return item.blocked_reason ? t('tokenGuardV2.operationFailure.automationBlocked') : ''
+  return item.blocked_reason || item.probe_detail || '-'
 }
+const safeTaskToken = (value: string) => ['queued', 'running', 'callback_processing', 'failed', 'succeeded', 'starting', 'protocol_connecting', 'email_submitted', 'waiting_otp', 'otp_submitted', 'password_submitted', 'mfa_submitted', 'waiting_callback', 'exchanging_token', 'applying_credentials'].includes(value) ? value : 'unknown'
 const taskLabel = (task: TokenGuardV2Task) => task.diagnostic
-  ? `${task.status}: ${task.diagnostic.stage} · ${task.diagnostic.reason} · ${task.diagnostic.elapsed_ms} ms`
-  : task.error ? `${task.status}: ${taskErrorLabel(task.error)}` : `${task.status} · ${task.stage}`
+  ? `${safeTaskToken(task.status)}: ${safeDiagnosticToken(task.diagnostic.stage)} · ${safeDiagnosticToken(task.diagnostic.reason)} · ${Number.isFinite(task.diagnostic.elapsed_ms) ? task.diagnostic.elapsed_ms : 0} ms${task.diagnostic.http_status && task.diagnostic.http_status >= 100 && task.diagnostic.http_status <= 599 ? ` · HTTP ${task.diagnostic.http_status}` : ''}`
+  : `${safeTaskToken(task.status)} · ${safeTaskToken(task.stage)}`
 const canStopTask = (task?: TokenGuardV2Task) => Boolean(task && ['queued', 'running', 'callback_processing'].includes(task.status))
 const configurationDetail = (item: TokenGuardV2Account) => {
   const config = item.login_config
@@ -783,8 +799,12 @@ async function act(item: TokenGuardV2Account, action: () => Promise<unknown>, su
   if (busyId.value) return
   busyId.value = item.account_id; error.value = ''; notice.value = ''
   try {
-    await action()
-    notice.value = t(successKey, { account: item.account_name })
+    const result = await action()
+    const failure = successKey === 'tokenGuardV2.inspectionQueued'
+      ? probeOperationFailure(result as TokenGuardV2Account)
+      : successKey === 'tokenGuardV2.reloginQueued' ? taskOperationFailure(result as TokenGuardV2Task) : undefined
+    if (failure) error.value = `${t(`tokenGuardV2.operationFailure.reasons.${failure.category}`)} ${t(`tokenGuardV2.operationFailure.actions.${failure.action}`)}`
+    else notice.value = t(successKey, { account: item.account_name })
     await load(true)
   } catch (value) {
     error.value = message(value)

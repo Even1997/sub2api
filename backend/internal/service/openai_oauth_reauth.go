@@ -111,17 +111,18 @@ type OpenAIOAuthReauthRuntimeSettings struct {
 
 // OpenAIOAuthReauthTask is the safe task status exposed to administrators.
 type OpenAIOAuthReauthTask struct {
-	Diagnostic   *LocalProtocolDiagnostic `json:"diagnostic,omitempty"`
-	OAuthProfile string                   `json:"oauth_profile"`
-	ID           int64                    `json:"id"`
-	AccountID    int64                    `json:"account_id"`
-	Status       string                   `json:"status"`
-	Stage        string                   `json:"stage"`
-	Error        string                   `json:"error,omitempty"`
-	Attempt      int                      `json:"attempt"`
-	CreatedAt    time.Time                `json:"created_at"`
-	UpdatedAt    time.Time                `json:"updated_at"`
-	FinishedAt   *time.Time               `json:"finished_at,omitempty"`
+	Failure      *CredentialOperationFailure `json:"failure,omitempty"`
+	Diagnostic   *ReauthDiagnostic           `json:"diagnostic,omitempty"`
+	OAuthProfile string                      `json:"oauth_profile"`
+	ID           int64                       `json:"id"`
+	AccountID    int64                       `json:"account_id"`
+	Status       string                      `json:"status"`
+	Stage        string                      `json:"stage"`
+	Error        string                      `json:"error,omitempty"`
+	Attempt      int                         `json:"attempt"`
+	CreatedAt    time.Time                   `json:"created_at"`
+	UpdatedAt    time.Time                   `json:"updated_at"`
+	FinishedAt   *time.Time                  `json:"finished_at,omitempty"`
 }
 
 // OpenAIOAuthReauthStatus combines saved configuration and the latest task.
@@ -1529,7 +1530,11 @@ func safeReauthTask(record *OpenAIOAuthReauthTaskRecord) *OpenAIOAuthReauthTask 
 		return nil
 	}
 	_, diagnostic, _ := localProtocolError(record.Error)
+	if diagnostic == nil {
+		_, diagnostic, _ = sessionStudioError(record.Error)
+	}
 	return &OpenAIOAuthReauthTask{
+		Failure:    reauthOperationFailure(record, diagnostic),
 		Diagnostic: diagnostic,
 		ID:         record.ID, AccountID: record.AccountID, Status: record.Status, OAuthProfile: reauthTaskProfile(record),
 		Stage: record.Stage, Error: sanitizeReauthError(record.Error), Attempt: record.Attempt,
@@ -1538,6 +1543,9 @@ func safeReauthTask(record *OpenAIOAuthReauthTaskRecord) *OpenAIOAuthReauthTask 
 }
 
 func sanitizeReauthError(raw string) string {
+	if safe, _, handled := sessionStudioError(raw); handled {
+		return safe
+	}
 	if safe, _, handled := localProtocolError(raw); handled {
 		return safe
 	}
@@ -1545,15 +1553,14 @@ func sanitizeReauthError(raw string) string {
 	if msg == "" {
 		return ""
 	}
-	// Do not let callback URLs, bearer-like strings, or long provider payloads
-	// become durable task logs.
-	if len(msg) > maxOpenAIOAuthReauthError {
-		msg = msg[:maxOpenAIOAuthReauthError]
+	// Old workers may send only a fixed machine code. Preserve only an exact
+	// allowlist, never arbitrary provider prose (even when no secret is labelled).
+	if code := credentialOperationText(msg); code != "unknown" {
+		return code
 	}
-	for _, marker := range []string{"access_token", "refresh_token", "code=", "state=", "?key=", "&key="} {
-		if strings.Contains(strings.ToLower(msg), marker) {
-			return "re-login failed; sensitive provider details were omitted"
-		}
+	switch msg {
+	case "password/TOTP protocol failed (exit 1)", "proxy_unavailable", "password_rejected", "totp_rejected", "upstream_rejected", "worker_timeout":
+		return msg
 	}
-	return msg
+	return "re-login failed; provider details omitted"
 }
