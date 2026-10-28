@@ -102,7 +102,7 @@ func TestQualityPresetKeepsBPSOptionsAndDropsGeneratedQuestionData(t *testing.T)
 
 func TestQualityTemplateCompleteLegacyPresetDefaultsToObservation(t *testing.T) {
 	repo := newFakeTemplateRepo(newTemplatePlanRepo())
-	svc := ProvideScheduledTestService(nil, nil, repo, nil)
+	svc := ProvideScheduledTestService(nil, nil, repo, nil, nil)
 	input := presetInput()
 	input.PelicanConfig.Quality.Action = ""
 	input.PelicanConfig.Quality.RemoveGroupIDs = []int64{21}
@@ -144,7 +144,7 @@ func TestQualityTemplateCompletePolicyWhitelistAndDependencies(t *testing.T) {
 			input.PelicanConfig.TriggerSource = "must-not-copy"
 			input.PelicanConfig.QualityModelOutcomes = map[string]string{"test-model": "failed"}
 			repo := newFakeTemplateRepo(newTemplatePlanRepo())
-			svc := ProvideScheduledTestService(nil, nil, repo, nil)
+			svc := ProvideScheduledTestService(nil, nil, repo, nil, nil)
 			saved, err := svc.CreateQualityPreset(context.Background(), input)
 			require.NoError(t, err)
 			cfg := saved.PelicanConfig

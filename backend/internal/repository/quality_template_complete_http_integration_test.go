@@ -21,7 +21,7 @@ func completeTemplateRouter(t *testing.T, observer bool) *gin.Engine {
 	db := repository.QualityLiveDB()
 	// The real repository needs Ent only for dynamic filter dispatch. Passive
 	// preset and per-account roundtrips below deliberately do not invoke it.
-	svc := service.ProvideScheduledTestService(repository.NewScheduledTestPlanRepository(db), repository.NewScheduledTestResultRepository(db), repository.NewQualityRuleTemplateRepository(nil, db), nil)
+	svc := service.ProvideScheduledTestService(repository.NewScheduledTestPlanRepository(db), repository.NewScheduledTestResultRepository(db), repository.NewQualityRuleTemplateRepository(nil, db), nil, nil)
 	h := admin.NewScheduledTestHandler(svc)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

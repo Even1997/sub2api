@@ -22,7 +22,7 @@ func TestQualityTemplateCompleteDistributionKeepsItsOwnSemantics(t *testing.T) {
 			require.NoError(t, f.plans.Delete(ctx, f.plan.ID))
 			f.exec(`UPDATE accounts SET name=$2 WHERE id=$1`, fmt.Sprintf("complete-distribution-%d", f.account))
 			repo := NewQualityRuleTemplateRepository(integrationEntClient, integrationDB)
-			svc := service.ProvideScheduledTestService(f.plans, NewScheduledTestResultRepository(integrationDB), repo, nil)
+			svc := service.ProvideScheduledTestService(f.plans, NewScheduledTestResultRepository(integrationDB), repo, nil, nil)
 			tpl := &service.QualityRuleTemplate{ModelID: "first", CronExpression: "7 */2 * * *", Enabled: true, MaxResults: 137,
 				AccountFilter: service.QualityRuleAccountFilter{Group: strconv.FormatInt(group, 10), Search: fmt.Sprintf("complete-distribution-%d", f.account)},
 				PelicanConfig: &service.PelicanTestConfig{RuleName: "Distribution display", QuestionKind: "candy", TestChannel: "account", Prompt: "Synthetic question", ReasoningEffort: "xhigh", ParallelCount: 3, ModelIDs: []string{"first", "second"}, TriggerSource: "runtime-not-reusable", Quality: &service.QualityPolicy{Action: action, ExpectedAnswer: "42", RemoveGroupIDs: []int64{group}, AutoRestore: true, TriggerOnUpstream5xx: true, Judge: &service.QualityJudgeConfig{Kind: "jev", Prompt: "Compare"}}}}
@@ -65,7 +65,7 @@ func TestQualityTemplateCompleteDistributionCannotOverrideIsolatedScope(t *testi
 	require.NoError(t, f.plans.Delete(ctx, f.plan.ID))
 	f.exec(`UPDATE accounts SET name=$2 WHERE id=$1`, fmt.Sprintf("complete-distribution-guard-%d", f.account))
 	repo := NewQualityRuleTemplateRepository(integrationEntClient, integrationDB)
-	svc := service.ProvideScheduledTestService(f.plans, NewScheduledTestResultRepository(integrationDB), repo, nil)
+	svc := service.ProvideScheduledTestService(f.plans, NewScheduledTestResultRepository(integrationDB), repo, nil, nil)
 	tpl := &service.QualityRuleTemplate{ModelID: "sol", CronExpression: "*/30 * * * *", Enabled: true, MaxResults: 100, AccountFilter: service.QualityRuleAccountFilter{Group: strconv.FormatInt(group, 10), Search: fmt.Sprintf("complete-distribution-guard-%d", f.account)},
 		PelicanConfig: &service.PelicanTestConfig{QuestionKind: "candy", Prompt: "Synthetic", ReasoningEffort: "high", ParallelCount: 1, ModelIDs: []string{"sol", "astra"}, Quality: &service.QualityPolicy{Action: service.QualityActionIsolateModels, ExpectedAnswer: "42", RemoveGroupIDs: []int64{group}, AutoRestore: true}}}
 	saved, created, err := svc.CreateQualityTemplate(ctx, tpl)

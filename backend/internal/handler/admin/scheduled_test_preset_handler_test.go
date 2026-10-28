@@ -61,7 +61,7 @@ func TestQualityPresetCompleteRejectsObserverAndInvalidName(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, observer := range []bool{false, true} {
 		repo := &handlerPresetRepo{}
-		h := NewScheduledTestHandler(service.ProvideScheduledTestService(nil, nil, repo, nil))
+		h := NewScheduledTestHandler(service.ProvideScheduledTestService(nil, nil, repo, nil, nil))
 		r := gin.New()
 		if observer {
 			r.Use(func(c *gin.Context) {
