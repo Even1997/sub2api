@@ -1676,6 +1676,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	// including a write with an uncertain result. Later internal retries keep
 	// that admission; a new turn must recheck after all lease/handshake waits.
 	latencyGenerationStartedTurn := 0
+	priorityLatencyCtx := ctx
 	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string, imageInputSize string, requestedReasoningEffort *string) (*OpenAIForwardResult, error) {
 		responseModelObserver := &upstreamResponseModelObserver{}
 		if lease == nil {
@@ -1688,8 +1689,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		wroteDownstream := false
 		outboundPayload := s.prepareCodexQuotaOverdraftBody(ctx, account, false, payload)
 		if latencyGenerationStartedTurn != turn {
-			if _, denied := s.beginPriorityLatencyTurn(ctx, c, account, extractOpenAICodexTicketModel(outboundPayload)); denied != nil {
-				return nil, denied
+			if err := s.priorityLatencyBeforeSend(priorityLatencyCtx, account); err != nil {
+				return nil, err
 			}
 			latencyGenerationStartedTurn = turn
 		}
@@ -2231,7 +2232,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		if !skipBeforeTurn {
-			if _, denied := s.beginPriorityLatencyTurn(ctx, c, account, extractOpenAICodexTicketModel(currentPayload)); denied != nil {
+			var denied error
+			if turn == 1 {
+				priorityLatencyCtx, denied = s.beginPriorityLatencyTurn(ctx, c, account, extractOpenAICodexTicketModel(currentPayload))
+			} else {
+				priorityLatencyCtx, denied = s.nextPriorityLatencyWSTurn(ctx, c, account, extractOpenAICodexTicketModel(currentPayload))
+			}
+			if denied != nil {
 				return denied
 			}
 		}

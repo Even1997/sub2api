@@ -919,9 +919,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return errors.New("openai ws passthrough dialer is nil")
 	}
 
-	if _, denied := s.beginPriorityLatencyTurn(ctx, c, account, gjson.GetBytes(firstClientMessage, "model").String()); denied != nil {
+	latencyCtx, denied := s.beginPriorityLatencyTurn(ctx, c, account, gjson.GetBytes(firstClientMessage, "model").String())
+	if denied != nil {
 		return denied
 	}
+	ctx = latencyCtx
 	agentTaskRecoveryTried := false
 	var upstreamConn openAIWSClientConn
 	statusCode := 0
@@ -1201,8 +1203,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if isResponseCreate && model != "" && model != strings.TrimSpace(gjson.GetBytes(payload, "model").String()) {
 				payload = s.ReplaceModelInBody(payload, model)
 			}
+			var turnLatencyCtx context.Context
 			if isResponseCreate {
-				if _, denied := s.beginPriorityLatencyTurn(ctx, c, account, model); denied != nil {
+				var denied error
+				turnLatencyCtx, denied = s.nextPriorityLatencyWSTurn(ctx, c, account, model)
+				if denied != nil {
 					return payload, nil, denied
 				}
 			}
@@ -1223,6 +1228,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil && isResponseCreate {
 				out = s.prepareCodexQuotaOverdraftBody(ctx, account, false, out)
+				if denied := s.priorityLatencyBeforeSend(turnLatencyCtx, account); denied != nil {
+					return out, nil, denied
+				}
 				activePolicyModel.Store(&model)
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
@@ -1253,10 +1261,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		},
 	}
 	// Recheck after handshake/slot waits, before the first generation write.
-	if _, denied := s.beginPriorityLatencyTurn(ctx, c, account, gjson.GetBytes(firstClientMessage, "model").String()); denied != nil {
+
+	upstreamFirstMessageSent := false
+	if denied := s.priorityLatencyBeforeSend(ctx, account); denied != nil {
 		return denied
 	}
-	upstreamFirstMessageSent := false
 	firstWriteCtx, cancelFirstWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
 	firstWriteErr := relayUpstreamFrameConn.WriteFrame(firstWriteCtx, coderws.MessageText, firstClientMessage)
 	cancelFirstWrite()
