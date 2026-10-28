@@ -169,6 +169,31 @@ func TestForwardOpenAIWSV2_MarksCyberPolicyForFailureEventShapes(t *testing.T) {
 	}
 }
 
+func TestForwardOpenAIWSV2_FirstResponseOverloadBeforeWriteRetries(t *testing.T) {
+	setStreamFirstResponseForTest(t, true)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	cfg := newOpenAIWSV2TestConfig()
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	conn := &openAIWSCaptureConn{events: [][]byte{
+		[]byte(`{"type":"error","error":{"code":"server_is_overloaded","type":"service_unavailable_error","message":"Our servers are currently overloaded. Please try again later."}}`),
+	}}
+	pool := newOpenAIWSConnPool(cfg)
+	defer pool.Close()
+	pool.setClientDialerForTest(&openAIWSCaptureDialer{conn: conn})
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: &httpUpstreamRecorder{}, cache: &stubGatewayCache{}, openaiWSResolver: NewOpenAIWSProtocolResolver(cfg), toolCorrector: NewCodexToolCorrector(), openaiWSPool: pool}
+	account := &Account{ID: 5885, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Credentials: map[string]any{"api_key": "sk-test"}, Extra: map[string]any{"responses_websockets_v2_enabled": true}}
+	_, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-6-astra","stream":true,"input":"hi"}`))
+	var failover *UpstreamFailoverError
+	require.ErrorAs(t, err, &failover)
+	require.True(t, failover.RetryableOnSameAccount)
+	require.True(t, failover.IsOpenAICapacityShed())
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+}
+
 func TestForwardOpenAIWSV2_OverloadBeforeOutputAllowsAccountFailover(t *testing.T) {
 	for _, mode := range []string{"stream", "nonstream", "after_output"} {
 		stream := mode != "nonstream"
@@ -201,7 +226,8 @@ func TestForwardOpenAIWSV2_OverloadBeforeOutputAllowsAccountFailover(t *testing.
 			}
 			require.ErrorAs(t, err, &failover)
 			require.Equal(t, http.StatusServiceUnavailable, failover.StatusCode)
-			require.False(t, failover.RetryableOnSameAccount)
+			require.True(t, failover.RetryableOnSameAccount)
+			require.True(t, failover.IsOpenAICapacityShed())
 			require.True(t, failover.ShouldRetryNextAccount())
 			require.False(t, c.Writer.Written())
 			require.Empty(t, rec.Body.String())

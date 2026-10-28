@@ -2172,6 +2172,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
 			rawEventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
+			hadFirstResponse := firstTokenMs != nil
 			observeStreamFirstResponse(&firstTokenMs, firstResponseEnabled, startTime, trimmedData, rawEventType)
 			observer.ObserveOpenAI(dataBytes, rawEventType)
 			if needModelReplace {
@@ -2244,7 +2245,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 						UpstreamOutTok: usage.OutputTokens,
 					})
 				}
+				// 首响模式会把当前 JSON 事件记成首包。过载事件本身不是语义输出，
+				// 不能因此跳过同账号重试；已经刷出的前序事件仍然不能重放。
 				outputStarted := openAIStreamClientOutputStarted(c, clientOutputStarted) || (firstResponseEnabled && firstTokenMs != nil)
+				if isOpenAIUpstreamCapacityShedEvent(dataBytes) && !hadFirstResponse {
+					outputStarted = openAIStreamClientOutputStarted(c, clientOutputStarted)
+				}
 				if !outputStarted && !cyberHit {
 					if compactErr := newOpenAICompactFallbackSignal(c, dataBytes, failedMessage); compactErr != nil {
 						return resultWithUsage(), compactErr

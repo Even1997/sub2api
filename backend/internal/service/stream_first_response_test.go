@@ -171,11 +171,16 @@ func TestStreamFirstResponseHTTPFailureDoesNotFailover(t *testing.T) {
 			_, err := firstResponseHTTPStream(context.Background(), c, body, time.Now(), passthrough)
 			require.Error(t, err)
 			var failover *UpstreamFailoverError
-			require.False(t, errors.As(err, &failover))
 			if metadata {
+				require.False(t, errors.As(err, &failover))
 				require.Contains(t, w.Body.String(), "response.created")
+				require.Contains(t, w.Body.String(), "response.failed")
+				continue
 			}
-			require.Contains(t, w.Body.String(), "response.failed")
+			require.ErrorAs(t, err, &failover)
+			require.True(t, failover.RetryableOnSameAccount)
+			require.True(t, failover.IsOpenAICapacityShed())
+			require.NotContains(t, w.Body.String(), "response.failed")
 		}
 	}
 }

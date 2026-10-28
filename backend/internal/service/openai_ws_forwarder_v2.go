@@ -896,7 +896,7 @@ readLoop:
 			}
 			// error 事件后连接不再可复用，避免回池后污染下一请求。
 			lease.MarkBroken()
-			if !(firstResponseEnabled && reqStream) && !wroteDownstream && isOpenAIRequestScopedCapacityShed(errCodeRaw, message) {
+			if !wroteDownstream && isOpenAIRequestScopedCapacityShed(errCodeRaw, message) {
 				failover := s.openAIUpstreamFailoverError(http.StatusServiceUnavailable, lease.HandshakeHeaders(), message, errMsg, false)
 				return nil, failover
 			}
