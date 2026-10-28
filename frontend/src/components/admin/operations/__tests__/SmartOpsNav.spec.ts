@@ -21,6 +21,7 @@ describe('SmartOpsNav', () => {
       '/admin/auto-config',
       '/admin/priority-scheduling',
       '/admin/channel-operations',
+      '/admin/profit-operations',
       '/admin/account-quality',
       '/admin/controlled-experiments',
       '/admin/account-ops',

@@ -1,4 +1,6 @@
 import bills from './bills'
+import profitOps from './profitOps'
+import upstreamOps from './upstreamOps'
 import channelOps from './channelOps'
 import ipAudit from './ipAudit'
 import traffic from './traffic'
@@ -38,6 +40,8 @@ export default {
   priorityScheduling,
   qualityOps,
   channelOps,
+  upstreamOps,
+  profitOps,
   controlledExperiments,
   accountOps,
   tokenGuard,
