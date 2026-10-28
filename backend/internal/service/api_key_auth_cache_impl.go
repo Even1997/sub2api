@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 32 // v32: configured API key groups, after local Codex ingress policy
+const apiKeyAuthSnapshotVersion = 33 // v33: image count billing with local configured groups and epochs
 
 // Local-only generation wrapper. Old entries remain bounded by existing TTL
 // and capacity, but cannot authorize after a subscription recovery checkpoint.
@@ -426,7 +426,6 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			if groupSnapshot := apiKeyAuthGroupSnapshotFromGroup(group); groupSnapshot != nil {
 				snapshot.MixedGroups = append(snapshot.MixedGroups, *groupSnapshot)
 			}
-
 		}
 	}
 	return snapshot
@@ -483,7 +482,6 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		apiKey.MixedGroups = make([]*Group, 0, len(snapshot.MixedGroups))
 		for i := range snapshot.MixedGroups {
 			apiKey.MixedGroups = append(apiKey.MixedGroups, apiKeyAuthGroupSnapshotToGroup(&snapshot.MixedGroups[i]))
-
 		}
 	}
 	s.compileAPIKeyIPRules(apiKey)
@@ -508,6 +506,7 @@ func apiKeyAuthGroupSnapshotFromGroup(group *Group) *APIKeyAuthGroupSnapshot {
 		MonthlyLimitUSD:                 group.MonthlyLimitUSD,
 		AllowImageGeneration:            group.AllowImageGeneration,
 		AllowBatchImageGeneration:       group.AllowBatchImageGeneration,
+		ImageCountBilling:               group.ImageCountBilling,
 		ImageRateIndependent:            group.ImageRateIndependent,
 		ImageRateMultiplier:             group.ImageRateMultiplier,
 		ImagePrice1K:                    group.ImagePrice1K,
@@ -582,6 +581,7 @@ func apiKeyAuthGroupSnapshotToGroup(snapshot *APIKeyAuthGroupSnapshot) *Group {
 		MonthlyLimitUSD:                 snapshot.MonthlyLimitUSD,
 		AllowImageGeneration:            snapshot.AllowImageGeneration,
 		AllowBatchImageGeneration:       snapshot.AllowBatchImageGeneration,
+		ImageCountBilling:               snapshot.ImageCountBilling,
 		ImageRateIndependent:            snapshot.ImageRateIndependent,
 		ImageRateMultiplier:             snapshot.ImageRateMultiplier,
 		ImagePrice1K:                    snapshot.ImagePrice1K,

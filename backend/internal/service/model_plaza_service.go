@@ -305,6 +305,14 @@ func (s *ModelPlazaService) accountModels(ctx context.Context, g *Group) ([]Supp
 // token 模型取计费阶梯表（单价与档位均由真实计费函数得出），
 // 图片/按次模型（或阶梯表不可用时）沿用渠道定价与分组图片档位价。
 func (s *ModelPlazaService) fillDisplayPricing(ctx context.Context, m *PlazaModel, g *Group) {
+	if groupPricing := matchGroupModelPricing(g, m.Name); groupPricing != nil {
+		m.Pricing = groupPricing
+		// 分组模型级固定价就是实收价，不能再被分组图片兜底档位覆盖。
+		// 否则模型广场会显示 image_price_1k/2k/4k，而实际按 model_pricing 扣费。
+		if groupPricing.BillingMode == BillingModeImage || groupPricing.BillingMode == BillingModePerRequest {
+			return
+		}
+	}
 	if s.billingService != nil && s.resolver != nil {
 		sched, err := s.billingService.ResolveContextPricingSchedule(ctx, s.resolver, ContextPricingScheduleInput{
 			Model:    m.Name,

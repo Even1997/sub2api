@@ -237,7 +237,9 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			_ = part.Close()
 			continue
 		}
-		data, err := io.ReadAll(io.LimitReader(part, openAIImageMaxUploadPartSize))
+		// The body is already bounded by the request body limit; truncating a part
+		// here would forward a corrupt image upstream.
+		data, err := io.ReadAll(part)
 		_ = part.Close()
 		if err != nil {
 			return
@@ -830,6 +832,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		UpstreamModel:        upstreamModel,
 		ResponseHeaders:      resp.Header.Clone(),
 		Duration:             time.Since(startTime),
+		ImageEndpoint:        usage.ImageCount > 0,
 		ImageCount:           usage.ImageCount,
 		ImageSize:            usage.ImageSize,
 		ImageInputSize:       usage.ImageInputSize,
