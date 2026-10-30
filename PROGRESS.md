@@ -1,3 +1,67 @@
+# PR #593：独立上游渠道实体与多账号绑定
+
+## P1 复审修复（当前进行中，覆盖此前冻结结论）
+
+- 固定缺陷 head：`ec820522203515e67823c267badb7b01be4b8b23`。旧 head 的 push/dispatch 绿色与截图保留为历史证据，不能证明本次 P1 已闭合。
+- 根因：usage LEFT JOIN 预先筛选的 cohort，正常但不属于筛选范围的账号被补 NULL，误归为 `unknown:account_missing`。
+- [x] 新增私有迁移数据库的真实 HTTP→DB→GET 混合回归：显式渠道跨 URL、不同实体共享 URL、未绑定 URL fallback、无效 URL、真正 missing；请求数、金额、unknown 覆盖、分页 summary 和各维度下钻一致；读取前后 usage 不变。只有私有 fixture 暂移除 usage→account FK 以构造缺失历史记录，不改应用迁移或共享 DB。
+- [x] 修复为 LEFT JOIN 完整 accounts_config 后分别筛选真正 missing 和选中 cohort，不改收入/成本公式。
+- [x] 专属 CI 保留旧断言与变异回归，并新增精确旧 head 仅叠加新测试的 RED、新 head GREEN，上传日志及 run/job/event/SHA provenance。
+- [x] 普通 merge origin/production @ `76b54ea02b3cd3ed8dbfb8865d1aa46c19799a5a`；PROGRESS 保留双方完整内容。账号仓储静态复核：保留 production 的 Codex snapshot 事务/顺序处理及本 PR 的初始实体绑定事务，不 rebase/force push。
+- [x] 提交并普通 push 原分支，普通 merge 后 GitHub 已恢复 pull_request 事件 CI；保持 Draft，不需要 ready_for_review，仍禁止合并 PR。当前 head 的最终绿色另列下项验收。
+- [ ] filter=all、全部当前 head 实际 raw 日志与 RED/GREEN provenance 复核后交 Hermes/父级独立审查。
+- 首轮 `a9ca7fd36`：RED 导出路径错误（backend 工作目录下 git archive 子树），未执行测试，不能称 RED；已改从仓库根导出精确旧树并加强拒绝 build/setup/skip 的证据检查。
+- 首轮安全 CI 真实失败：GHSA-83rm-6c8r-g728 与 GHSA-qr28-fpjm-wq7f。升级 vue-i18n / compiler 到11.4.16、decode-uri-component到0.5.1；本 PR 活跃前端CI使用 Node22以符合修复库引擎要求；不新增安全豁免。完整组件/语言/构建兼容性仍由新head远端CI验证。本机只更新lockfile（ignore-scripts），不运行全量前端动态。
+- 本机仅静态/gofmt；禁止 Go compile/build/test/run/generate、Docker、全量前端动态。最新产物记录于 `p1-cohort/`，此前最终冻结记录已经失效。本次不改生产账本、usage、路由或凭据。
+
+- Worktree / branch：`sub2api-profit-url-channel-remarks` / `feat/profit-url-channel-remarks`；base `production` @ `08d69a522c79a182fd681ead8fa4d848d9e1554e`。
+- Draft PR：https://github.com/ranxi2001/sub2api/pull/593；同一 PR 按用户更正完成完整实体需求。
+- 此前文档 head `0a91e6df1` 之后，复核补强软删保留归属、显式渠道错误记录筛选、新建实体确认和ID下钻成员展示。最终 head/checks/冻结记录统一写入产物 `entity-final-ACCEPTANCE.md` / `entity-final-freeze.json`，避免文档提交循环触发CI。
+- 已读取 DEV_GUIDE 和原 PR 八节模板。PR body 保留完整模板小节；按最新实际范围更新，不创建第二 PR。
+- Agent 披露：Codex / `gpt-6.1-sol` / `xhigh`；Hermes / `gpt-6.1-sol` / 推理档位未知（父级提供）。未启动子 agent。
+
+## 完整实现
+
+- [x] `upstream_channels` 独立实体：BIGSERIAL 稳定 ID、唯一不可变 code、唯一可编辑名称、备注、revision。
+- [x] `upstream_channel_bindings` 独立账号关联：允许任意账号类型，包括不可识别/不可获取 URL；每账号 revision CAS / NULL tombstone。
+- [x] 管理员实体分页 CRUD、绑定列表、分页成员、确认绑定和有界解绑；observer / 普通用户拒绝；写审计正文省略。
+- [x] 账号新建（同事务）/编辑/批量选择和读回；渠道与账号管理入口可见，保存前列出成员影响。显式创建账号失败后读回可重试而不重复创建。
+- [x] 删除有成员渠道返回冲突；必须先明确解绑、确认并读取新版本后删除空对象。通道 FK RESTRICT，不级联删账号/usage。软删除账号保留原绑定与历史 usage 归属；真正物理删除时由外键清绑定，migration 313触发器推进原渠道 revision。
+- [x] 只有独立渠道是可写的渠道备注与身份。旧 URL-key 备注表/API/UI/迁移已撤除；不由 URL 或旧备注回填/猜测实体关系。URL 只作未绑定账号自动聚合 fallback。
+- [x] 利润按显式 channel ID 聚合及下钻；同渠道可有不同 URL，不同渠道可有相同 URL。下钻筛选 channel FK 而不是 URL 字符串。未绑定 URL / unknown 明确标识；统计只是当前账号归属，不是历史路由。
+- [x] 保持已确认利润口径：`usage_logs.total_cost × 当前 extra.cost_multiplier`；未设置沿用统一账户默认0.1。不叠加模型成本、账本费用倍率或改变账本/历史usage。
+- [x] 中文/英文界面、独立 `/admin/upstream-channels`、账户新建/编辑/批量、精确利润页管理与直接入口，文档齐备。
+
+## 完整验证（此前已验收 head bfb1f3804）
+
+- 本机定向 Vitest 8 spec / 329 assertions；包含账号新建、编辑、批量、实体管理、绑定失败/读回/版本冲突、语言完整性。最新实体管理回归还实际点击取消、清空并重挂载确认，以及写后GET失败保留草稿/重新读取后确认。未运行 Go 编译/动态、Docker 或全量前端构建。
+- 远端 filter=all：28 success / 3 既有条件 skipped（upstream v0.2.19 regression、CLA check/lock）；所有 check 全部完成，无失败。
+- push / PR 通用 workflow 的 unit、integration、lint、安全及前端关键检查均通过；完整前端 build/typecheck 与实体专属测试均按实际 head 运行。
+- 专属 PostgreSQL 变异绑定 RED 命中“explicit binding must persist independently of URL eligibility”；恢复后真实 Gin API → 私有 migration 312 DB → GET → 实际账户创建/绑定 → 利润跨页/改名/解绑/删除为 GREEN。同一实体跨不同 URL、两个实体共享相同 URL、无效 URL/动态 OAuth 都覆盖。
+- 当前实体下钻 SQL 对所选 channel FK 过滤完整 cohort，防止其他账号错误落进 unknown。真实 repository 回归验证 selected total 1 / requests 4，且 JSON 历史 `usage_logs.channel_id`（模型定价）不参与实体归属。
+- 浏览器：9c82752b7 的最终实体页面截图运行真实 ProfitOperationsView、UpstreamChannelsView、AccountsView 与账户新建/编辑/批量控件，使用 Axios synthetic adapter，禁止真实 `/api/`/外部访问；0 browser errors、0 live API、0 paid requests。实体浏览器产物与截图见 `/data/development/artifacts/sub2api-profit-url-channel-remarks/entity-browser-accepted-9c/`。旧 URL-key 编辑截图已废弃，不用于此次验收。
+- 所有已完成及历史 raw CI 日志、filter=all 结果、修复原因与产物索引见 `/data/development/artifacts/sub2api-profit-url-channel-remarks/`。
+
+## 最终提交与冻结门槛
+
+- [ ] 本次收敛版文档（实体唯一身份、公式、旧 URL-key 路径已删除）提交到同一 branch。
+- [ ] 最后提交 push / PR 的所有 checks `filter=all` 完成且 raw 日志复核；任何失败继续修复。
+- [ ] 冻结最终 head、PR / 本地 / 远端一致且工作区干净后交父级审查。父级确认是交接点，不作为缺失功能阻塞。
+
+完整推送 CI 后保持 Draft；不 merge / release / deploy。禁止生产 SSH/DB/Redis、付费模型；不修改模型定价 channel、路由、凭据、成本公式和历史账本。
+
+## 最终补强与最新验收
+
+- 软删保留显式绑定；新增私有DB回归与远端变异 RED→GREEN，物理删除另测FK清理及实体revision递增。
+- 显式实体ID下钻后的成员区直接可见，留存错误记录使用同一账号cohort筛选；真实HTTP测试断言同实体4条错误，不混入其他实体/未绑定账号。
+- 新建实体也需确认不可变code和零成员影响；服务端确认字段验证保持一致。组件保留失败草稿/Unicode长度回归。
+- 最新完整CI未完成前不冻结；最终以产物 `entity-final-ACCEPTANCE.md`、最新filter=all原始JSON、raw日志与截图为准。源文档不写入会自引用失效的最终commit SHA。
+
+
+---
+
+# 已合入 production 的进度记录（完整保留）
+
 # Issue #578 delivery log
 
 ## Review 2 reopened on c225 (current, acceptance blocked)

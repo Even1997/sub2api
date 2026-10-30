@@ -11,6 +11,7 @@
       @submit.prevent="handleSubmit"
       class="space-y-5"
     >
+      <AccountUpstreamChannelBinding v-if="show" :account-ids="[account.id]" />
       <div>
         <label class="input-label">{{ t('common.name') }}</label>
         <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
@@ -3706,6 +3707,7 @@ import type {
   TempUnschedulableScope
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import AccountUpstreamChannelBinding from './AccountUpstreamChannelBinding.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
