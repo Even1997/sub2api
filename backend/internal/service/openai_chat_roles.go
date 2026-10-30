@@ -19,7 +19,7 @@ func requiresSystemChatRole(account *Account, targetURL, upstreamModel string) b
 	}
 	// OpenCode multiplexes providers: only its DeepSeek models require system.
 	// Use the mapped outbound model and selected destination, not the client alias.
-	if (account.IsOpenCodeGo() || isOfficialOpenCodeHost(targetURL)) && isDeepSeekCatalogModel(upstreamModel) {
+	if (account.IsOpenCodeGo() || isOfficialOpenCodeHost(targetURL)) && isDeepSeekModelName(upstreamModel) {
 		return true
 	}
 	// OpenAI-compatible accounts can point at the same strict providers. Match

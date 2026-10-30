@@ -3703,8 +3703,6 @@ import type {
   GrokModelDiagnostics,
   OpenCodeGoUsageState,
   OpenCodeGoUsageWindow,
-  GrokMediaEligibilityMode,
-  GrokMediaEligibilityState,
   TempUnschedulableScope
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -4232,7 +4230,6 @@ const headerOverrideCapable = computed(
 // Grok OAuth 自定义上游地址（仅转发端点；OAuth 授权/令牌刷新不受影响）
 const grokOAuthCustomBaseUrlEnabled = ref(false)
 const grokOAuthBaseUrl = ref('')
-const grokSkipForbiddenPause = ref(false)
 const grokDiagnostics = ref<GrokModelDiagnostics | null>(null)
 const diagnosticsLoading = ref(false)
 const diagnosticsRefreshFailed = ref(false)
