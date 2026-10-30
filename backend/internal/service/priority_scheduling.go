@@ -227,23 +227,27 @@ type PrioritySchedulingSignal struct {
 	TeamsWindowStart       *time.Time `json:"-"`
 	TeamsWindowEnd         *time.Time `json:"-"`
 	SelectedTTFTMs         *float64   `json:"selected_ttft_ms"`
+	LatestBadLatencyAt     *time.Time `json:"latest_bad_latency_at,omitempty"`
+	LatestLatencyAt        *time.Time `json:"latest_latency_at,omitempty"`
+	LatestQualityPassed    *bool      `json:"latest_quality_passed,omitempty"`
 	P50TTFTMs              float64    `json:"p50_ttft_ms"`
 	P70TTFTMs              float64    `json:"p70_ttft_ms"`
+	P90TTFTMs              float64    `json:"p90_ttft_ms"`
 	P95TTFTMs              float64    `json:"p95_ttft_ms"`
+	P99TTFTMs              float64    `json:"p99_ttft_ms"`
+	ExperienceP90Ms        float64    `json:"experience_p90_ms"`
+	Revenue                float64    `json:"revenue"`
+	BaseCost               float64    `json:"-"`
 	LatencyPercentile      int        `json:"latency_percentile"`
 	LatencyMeasurement     string     `json:"latency_measurement"`
 	LatencyEvidenceVersion int        `json:"latency_evidence_version"`
 	LatencyUnknownSamples  int        `json:"latency_unknown_samples"`
 	ExperienceSamples      int        `json:"experience_samples"`
-	ExperienceP90Ms        float64    `json:"experience_p90_ms"`
-	LatestBadLatencyAt     *time.Time `json:"latest_bad_latency_at,omitempty"`
-	LatestQualityPassed    *bool      `json:"latest_quality_passed,omitempty"`
-	Revenue                float64    `json:"revenue"`
-	BaseCost               float64    `json:"-"`
 	ProfitSamples          int        `json:"profit_samples"`
 	Samples                int        `json:"samples"`
-	P90TTFTMs              float64    `json:"p90_ttft_ms"`
-	LatestLatencyAt        *time.Time `json:"latest_latency_at,omitempty"`
+	SlowSamples            int        `json:"slow_samples"`
+	ErrorSamples           int        `json:"error_samples"`
+	UpstreamErrorRate      float64    `json:"upstream_error_rate"`
 	QualityPassed          int        `json:"quality_passed"`
 	QualitySamples         int        `json:"quality_samples"`
 }
@@ -273,6 +277,10 @@ type prioritySignalEntry struct {
 	expires, observed, lastUsed, attempted time.Time
 	refreshing                             bool
 	failure                                string
+	generation                             uint64
+	recomputeGeneration                    uint64
+	requiredReadGeneration                 uint64
+	completedReadGeneration                uint64
 }
 
 type prioritySchedulingState struct {
@@ -281,7 +289,7 @@ type prioritySchedulingState struct {
 	launches    [2]time.Time
 	launchIndex int
 	active      int
-	latest      *PrioritySchedulingSnapshot
+
 	latestInput *prioritySnapshotInput
 }
 
@@ -317,6 +325,11 @@ type PrioritySchedulingScore struct {
 	PrioritySchedulingSignal
 }
 type PrioritySchedulingSnapshot struct {
+	EvaluatedAt        time.Time                 `json:"evaluated_at"`
+	HistoryStatus      string                    `json:"history_status"`
+	HistoryObservedAt  *time.Time                `json:"history_observed_at,omitempty"`
+	HistoryError       string                    `json:"history_error,omitempty"`
+	HistoryRefreshing  bool                      `json:"history_refreshing"`
 	SelectionPolicy    string                    `json:"selection_policy"`
 	At                 time.Time                 `json:"at"`
 	Model              string                    `json:"model"`
@@ -330,40 +343,6 @@ type PrioritySchedulingSnapshot struct {
 	HistoryWindowEnd   *time.Time                `json:"history_window_end,omitempty"`
 	ConfigRevision     string                    `json:"config_revision"`
 	Candidates         []PrioritySchedulingScore `json:"candidates"`
-}
-
-func (s *OpenAIGatewayService) PrioritySchedulingSnapshot() *PrioritySchedulingSnapshot {
-	if s == nil {
-		return nil
-	}
-	s.priorityScheduling.mu.Lock()
-	input := s.priorityScheduling.latestInput
-	latest := s.priorityScheduling.latest
-	s.priorityScheduling.mu.Unlock()
-	if input != nil {
-		return s.prioritySnapshotFromInput(input)
-	}
-	if !s.prioritySchedulingRuntimeConfig().Enabled {
-		return nil
-	}
-	return latest
-}
-
-func (s *OpenAIGatewayService) prioritySnapshotFromInput(input *prioritySnapshotInput) *PrioritySchedulingSnapshot {
-	h := priorityHistoryResult{status: "limited"}
-	if !input.limited {
-		h = s.priorityHistory(input.request, input.config, input.candidates)
-	}
-	now := time.Now()
-	snapshot := &PrioritySchedulingSnapshot{At: input.at, Model: priorityHistoryModel(input.request), GroupID: input.request.GroupID, Mode: input.config.Mode, SelectionPolicy: "capacity_first", HistoryReady: h.ready(), LatencyPercentile: input.config.LatencyPercentile, LatencyMeasurement: input.config.LatencyMeasurement, MinSamples: input.config.MinSamples, WindowMinutes: input.config.WindowMinutes, HistoryWindowEnd: h.windowEnd, ConfigRevision: priorityConfigRevision(input.config), Candidates: make([]PrioritySchedulingScore, 0, len(input.candidates))}
-	for _, item := range input.candidates {
-		if s.openaiAccountStats != nil {
-			item.priorityErrors = s.openaiAccountStats.attempts.snapshot(priorityRequestAttemptKey(input.request, item.account.ID), now, input.config.ErrorRateWindowMinutes, input.config.ErrorRatePriorSamples)
-		}
-		signal := h.signals[item.account.ID]
-		snapshot.Candidates = append(snapshot.Candidates, applyPriorityCandidate(input.config, &item, signal, now))
-	}
-	return snapshot
 }
 
 func (s *OpenAIGatewayService) prioritySignals(req OpenAIAccountScheduleRequest, c PrioritySchedulingConfig, accounts []openAIAccountCandidateScore) (map[int64]PrioritySchedulingSignal, bool) {
@@ -545,86 +524,10 @@ func (s *defaultOpenAIAccountScheduler) applyPriorityScheduling(req OpenAIAccoun
 }
 
 func (s *defaultOpenAIAccountScheduler) recordPrioritySnapshot(req OpenAIAccountScheduleRequest, c PrioritySchedulingConfig, pool []openAIAccountCandidateScore, now time.Time) {
-	signals, ready := s.service.prioritySignals(req, c, pool)
-	snapshot := &PrioritySchedulingSnapshot{At: now, Model: priorityHistoryModel(req), GroupID: req.GroupID, Mode: c.Mode, SelectionPolicy: "capacity_first", HistoryReady: ready, LatencyPercentile: c.LatencyPercentile, LatencyMeasurement: c.LatencyMeasurement, MinSamples: c.MinSamples, WindowMinutes: c.WindowMinutes, HistoryWindowEnd: &now, ConfigRevision: priorityConfigRevision(c), Candidates: []PrioritySchedulingScore{}}
-	if c.OAuthQuotaPriority {
-		snapshot.SelectionPolicy = "oauth_quota_priority"
-	}
-	for _, candidate := range pool {
-		role := ""
-		if candidate.priorityOAuthSpare > 0 {
-			role = "preferred"
-		}
-		if candidate.priorityAPIStandby {
-			role = "standby"
-		}
-		item := candidate
-		score := applyPriorityCandidate(c, &item, signals[item.account.ID], now)
-		score.OAuthQuotaRole = role
-		score.ExplorationEligible = item.priorityExploration
-		score.BoundGroups = priorityAccountGroupCount(item.account)
-		score.SelectionWeight = prioritySelectionWeight(item, now)
-		score.CapacityBand = priorityCapacityBand(item)
-		snapshot.Candidates = append(snapshot.Candidates, score)
-	}
-	slices.SortStableFunc(snapshot.Candidates, func(a, b PrioritySchedulingScore) int {
-		unhealthy := func(v PrioritySchedulingScore) bool {
-			return slices.Contains(v.Reasons, "quality_below_target") || slices.Contains(v.Reasons, "recent_errors") || slices.Contains(v.Reasons, "historical_loss")
-		}
-		if unhealthy(a) != unhealthy(b) {
-			if unhealthy(a) {
-				return 1
-			}
-			return -1
-		}
-		if a.CapacityBand != b.CapacityBand {
-			return a.CapacityBand - b.CapacityBand
-		}
-		tier := func(t string) int {
-			if t == "eligible" {
-				return 2
-			}
-			if t == "insufficient" {
-				return 1
-			}
-			return 0
-		}
-		if tier(a.Tier) != tier(b.Tier) {
-			return tier(b.Tier) - tier(a.Tier)
-		}
-		aRecovery, bRecovery := a.TeamsRecovery != nil && a.TeamsRecovery.NeedsRecovery, b.TeamsRecovery != nil && b.TeamsRecovery.NeedsRecovery
-		if aRecovery != bRecovery {
-			if aRecovery {
-				return -1
-			}
-			return 1
-		}
-		if aRecovery && a.TeamsRecovery.RequiredRevenuePerHourCNY != b.TeamsRecovery.RequiredRevenuePerHourCNY {
-			if a.TeamsRecovery.RequiredRevenuePerHourCNY > b.TeamsRecovery.RequiredRevenuePerHourCNY {
-				return -1
-			}
-			return 1
-		}
-		if a.Priority != b.Priority {
-			if a.Priority < b.Priority {
-				return -1
-			}
-			return 1
-		}
-		if a.SelectionWeight > b.SelectionWeight {
-			return -1
-		}
-		if a.SelectionWeight < b.SelectionWeight {
-			return 1
-		}
-		return 0
-	})
-	if len(snapshot.Candidates) > 100 {
-		snapshot.Candidates = snapshot.Candidates[:100]
-	}
+	input := newPrioritySnapshotInput(req, c, pool, now)
 	state := &s.service.priorityScheduling
 	state.mu.Lock()
-	state.latest = snapshot
+	state.latestInput = input
 	state.mu.Unlock()
 }
 

@@ -20,12 +20,14 @@ const (
 )
 
 type priorityHistoryResult struct {
-	windowEnd  *time.Time
-	signals    map[int64]PrioritySchedulingSignal
-	status     string
-	observed   *time.Time
-	failure    string
-	refreshing bool
+	entry                   *prioritySignalEntry
+	completedReadGeneration uint64
+	windowEnd               *time.Time
+	signals                 map[int64]PrioritySchedulingSignal
+	status                  string
+	observed                *time.Time
+	failure                 string
+	refreshing              bool
 }
 
 func (h priorityHistoryResult) ready() bool { return h.status == "ready" || h.status == "stale" }
@@ -125,7 +127,7 @@ func (s *OpenAIGatewayService) priorityHistory(req OpenAIAccountScheduleRequest,
 			break
 		}
 	}
-	due := now.After(entry.expires) || (missing && entry.failure == "" && now.Sub(entry.attempted) >= time.Second)
+	due := entry.requiredReadGeneration > entry.completedReadGeneration || now.After(entry.expires) || (missing && entry.failure == "" && now.Sub(entry.attempted) >= time.Second)
 	if !entry.refreshing && due && state.active < 2 && now.Sub(state.launches[state.launchIndex]) >= priorityHistoryLaunchWindow {
 		ids := make([]int64, 0, len(entry.accounts))
 		for id := range entry.accounts {
@@ -143,6 +145,8 @@ func (s *OpenAIGatewayService) priorityHistory(req OpenAIAccountScheduleRequest,
 		state.launchIndex = (state.launchIndex + 1) % len(state.launches)
 		entry.refreshing = true
 		entry.attempted = now
+		entry.generation++
+		generation := entry.generation
 		state.active++
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -166,21 +170,42 @@ func (s *OpenAIGatewayService) priorityHistory(req OpenAIAccountScheduleRequest,
 			state.mu.Lock()
 			defer state.mu.Unlock()
 			state.active--
+			if state.entries[key] != entry || entry.generation != generation {
+				return
+			}
 			entry.refreshing = false
+			entry.completedReadGeneration = generation
 			if err != nil {
 				// Keep recent evidence, including known risk, through transient failures.
 				entry.failure = failure
 				entry.expires = time.Now().Add(priorityHistoryRetry)
 				return
 			}
-			entry.signals = make(map[int64]PrioritySchedulingSignal, len(ids))
+			// Validate the entire read before replacing any successful evidence.
+			// An omitted aggregate is incomplete, unlike an explicit zero row.
+			for _, id := range ids {
+				if _, returned := signals[id]; !returned {
+					entry.failure = "incomplete"
+					entry.expires = time.Now().Add(priorityHistoryRetry)
+					return
+				}
+			}
+			nextSignals := make(map[int64]PrioritySchedulingSignal, len(entry.accounts))
+			// Candidates may join while SQL is running. Retain their prior evidence
+			// until a read that includes them can replace it.
+			for id, signal := range entry.signals {
+				if _, tracked := entry.accounts[id]; tracked {
+					nextSignals[id] = signal
+				}
+			}
 			for _, id := range ids {
 				if signal, returned := signals[id]; returned {
 					if _, tracked := entry.accounts[id]; tracked {
-						entry.signals[id] = signal
+						nextSignals[id] = signal
 					}
 				}
 			}
+			entry.signals = nextSignals
 			entry.failure = ""
 			entry.windowEnd = query.UsageUntil
 			entry.observed = time.Now()
@@ -197,7 +222,8 @@ func (s *OpenAIGatewayService) priorityHistory(req OpenAIAccountScheduleRequest,
 			entry.expires = entry.observed.Add(ttl)
 		}()
 	}
-	h := priorityHistoryResult{signals: make(map[int64]PrioritySchedulingSignal, len(wanted)), status: "loading", failure: entry.failure, refreshing: entry.refreshing}
+	// Completion metadata and evidence belong to the same locked observation.
+	h := priorityHistoryResult{entry: entry, completedReadGeneration: entry.completedReadGeneration, signals: make(map[int64]PrioritySchedulingSignal, len(wanted)), status: "loading", failure: entry.failure, refreshing: entry.refreshing}
 	if !entry.observed.IsZero() && now.Sub(entry.observed) <= priorityHistoryMaxAge {
 		observed := entry.observed
 		h.observed = &observed
@@ -241,23 +267,4 @@ func (s *OpenAIGatewayService) cachedPriorityHistory(req OpenAIAccountScheduleRe
 		}
 	}
 	return h
-}
-
-// Dashboard reads keep the request identity without retaining credentials.
-type prioritySnapshotInput struct {
-	limited    bool
-	at         time.Time
-	request    OpenAIAccountScheduleRequest
-	config     PrioritySchedulingConfig
-	candidates []openAIAccountCandidateScore
-}
-
-func newPrioritySnapshotInput(req OpenAIAccountScheduleRequest, c PrioritySchedulingConfig, pool []openAIAccountCandidateScore, at time.Time) *prioritySnapshotInput {
-	input := &prioritySnapshotInput{limited: len(pool) > priorityHistoryMaxAccounts, at: at, config: c, request: OpenAIAccountScheduleRequest{RequestedModel: req.RequestedModel, HistoryModel: req.HistoryModel, InboundEndpoint: req.InboundEndpoint, RequiredCapability: req.RequiredCapability, RequireCompact: req.RequireCompact}}
-	if req.GroupID != nil {
-		id := *req.GroupID
-		input.request.GroupID = &id
-	}
-	input.candidates = append([]openAIAccountCandidateScore(nil), pool[:min(len(pool), priorityHistoryMaxAccounts)]...)
-	return input
 }

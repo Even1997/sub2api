@@ -48,6 +48,7 @@ export interface PriorityCandidate {
     required_revenue_per_hour_cny: number
   }
   error_rate?: number | null
+  upstream_error_rate?: number
   error_smoothed_rate?: number
   error_successes?: number
   error_failures?: number
@@ -83,16 +84,19 @@ export interface PriorityCandidate {
   load_percent: number | null
   waiting: number
   samples: number
+  p50_ttft_ms?: number
   p90_ttft_ms: number
   selected_ttft_ms?: number | null
-  p50_ttft_ms?: number
   p70_ttft_ms?: number
   p95_ttft_ms?: number
+  p99_ttft_ms?: number
   latency_percentile?: number
   latency_measurement?: string
   latency_unknown_samples?: number
   experience_samples?: number
   experience_p90_ms?: number
+  slow_samples?: number
+  error_samples?: number
   quality_passed: number
   quality_samples: number
 }
@@ -108,6 +112,89 @@ export interface PrioritySnapshot {
   latency_measurement?: string
   candidates: PriorityCandidate[]
 }
+export interface PriorityLatencyBucket {
+  account_id: number
+  bucket: string
+  samples: number
+  p50_ttft_ms: number
+  p70_ttft_ms?: number
+  p90_ttft_ms: number
+  p95_ttft_ms?: number
+  p99_ttft_ms: number
+  mean_ttft_ms?: number
+  selected_ttft_ms?: number
+  slow_samples: number
+  error_samples: number
+}
+export interface PriorityLatencyAccount {
+  account_id: number
+  account_name: string
+  samples: number
+  p50_ttft_ms: number
+  p70_ttft_ms?: number
+  p90_ttft_ms: number
+  p95_ttft_ms?: number
+  p99_ttft_ms: number
+  mean_ttft_ms?: number
+  selected_ttft_ms?: number
+  latency_percentile?: number
+  latency_measurement?: string
+  slow_samples: number
+  error_samples: number
+  error_rate: number
+  buckets: PriorityLatencyBucket[]
+}
+export interface PriorityLatencySeries {
+  at: string
+  model: string
+  group_id: number | null
+  bucket_minutes: number
+  latency_percentile?: number
+  latency_measurement?: string
+  accounts: PriorityLatencyAccount[]
+}
+export interface PrioritySchedulingDiffRow {
+  account_id: number
+  account_name: string
+  old_rank?: number
+  new_rank?: number
+  old_score: number
+  new_score: number
+  old_weight: number
+  new_weight: number
+  old_tier?: string
+  new_tier?: string
+  old_p90_ttft_ms: number
+  new_p90_ttft_ms: number
+  old_samples: number
+  new_samples: number
+  old_error_samples: number
+  new_error_samples: number
+  changed: boolean
+  reasons?: string[]
+}
+export interface PrioritySchedulingRecomputeResult {
+  before: PrioritySnapshot | null
+  after: PrioritySnapshot | null
+  diff: PrioritySchedulingDiffRow[]
+  timed_out: boolean
+}
+export interface PriorityStickyBindingRow {
+  account_id: number
+  count: number
+}
+export interface PriorityStickyBindings {
+  group_id: number
+  total: number
+  by_account: PriorityStickyBindingRow[]
+}
+export interface PriorityStickyClearResult {
+  group_id: number
+  deleted: number
+  remaining: number
+  dry_run?: boolean
+  by_account: PriorityStickyBindingRow[]
+}
 export async function getPriorityConfig(): Promise<PrioritySchedulingConfig> {
   return (await apiClient.get('/admin/priority-scheduling/config')).data
 }
@@ -116,4 +203,16 @@ export async function savePriorityConfig(config: PrioritySchedulingConfig): Prom
 }
 export async function getPrioritySnapshot(): Promise<PrioritySnapshot | null> {
   return (await apiClient.get('/admin/priority-scheduling/snapshot')).data.snapshot
+}
+export async function getPriorityLatency(minutes = 60, bucketMinutes = 5): Promise<PriorityLatencySeries> {
+  return (await apiClient.get('/admin/priority-scheduling/latency', { params: { minutes, bucket_minutes: bucketMinutes } })).data
+}
+export async function recomputePriorityScheduling(): Promise<PrioritySchedulingRecomputeResult> {
+  return (await apiClient.post('/admin/priority-scheduling/recompute')).data
+}
+export async function getPriorityStickyBindings(groupID: number): Promise<PriorityStickyBindings> {
+  return (await apiClient.get('/admin/priority-scheduling/sticky-bindings', { params: { group_id: groupID } })).data
+}
+export async function clearPriorityStickyBindings(payload: { group_id: number; account_ids: number[]; dry_run?: boolean }): Promise<PriorityStickyClearResult> {
+  return (await apiClient.post('/admin/priority-scheduling/sticky-bindings/clear', payload)).data
 }

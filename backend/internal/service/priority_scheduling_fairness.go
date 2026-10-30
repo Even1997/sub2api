@@ -62,6 +62,10 @@ func priorityAccountGroupCount(account *Account) int {
 // in a tier/priority cohort can receive traffic. Capacity uses real slots, not
 // load_factor, and quota headroom is a soft preference rather than a new gate.
 func prioritySelectionWeight(item openAIAccountCandidateScore, now time.Time) float64 {
+	return prioritySelectionWeightWithQuota(item, openAIQuotaHeadroomFactor(item.account, now))
+}
+
+func prioritySelectionWeightWithQuota(item openAIAccountCandidateScore, headroom float64) float64 {
 	remaining := 1.0
 	if item.loadKnown && item.loadInfo != nil {
 		remaining = math.Max(0.05, float64(max(1, item.account.Concurrency)-max(0, item.loadInfo.CurrentConcurrency))) /
@@ -72,7 +76,7 @@ func prioritySelectionWeight(item openAIAccountCandidateScore, now time.Time) fl
 		score = 0
 	}
 	preference := 0.5 + clamp01(score/100)
-	quota := 0.5 + 0.5*openAIQuotaHeadroomFactor(item.account, now)
+	quota := 0.5 + 0.5*headroom
 	// OAuth capacity is shared by every bound group. Prefer spare capacity
 	// exposed to fewer groups without excluding broader accounts or reserving
 	// idle slots when there is work they can serve. API-key routing weights keep

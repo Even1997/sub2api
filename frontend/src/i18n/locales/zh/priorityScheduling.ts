@@ -83,5 +83,23 @@ export default {
   snapshotHint: '仅展示当前实例最近一次候选池，最多 100 个账号。按风险、预计占用档位及分流偏好展示；占用接近的候选会加权抽样，分流权重不是全局概率，表格不是固定选取顺序或流量比例。历史未就绪也会展示实时容量候选。',
   model: '模型', group: '分组', account: '账号', score: '得分', tier: '状态', latency: '选定首 token', load: '并发占用', rate: '成本倍率', quality: '质量通过', samples: '条样本', unknown: '未知',
   tiers: { eligible: '体验达标', insufficient: '数据不足', degraded: '体验未达标' },
-  reasons: { quality_below_target: '质量低于目标', quality_unknown: '无有效质量结果', latency_above_target: '延迟超过目标', latency_recovery: '慢账号保持时间已过，等待新的样本', latency_insufficient: '延迟样本不足', busy: '并发偏高或有排队', load_unknown: '并发数据未知', cost_unknown: '成本未知', recent_errors: '近期错误偏多', historical_loss: '近期用户扣费低于理论成本', profit_insufficient: '利润样本不足', teams_recovery: '本窗口收入尚未超过单号成本', teams_window_unavailable: 'Teams 成本窗口未设置或已失效' }
+  reasons: { quality_below_target: '质量低于目标', quality_unknown: '无有效质量结果', latency_above_target: '延迟超过目标', latency_recovery: '慢账号保持时间已过，等待新的样本', latency_insufficient: '延迟样本不足', busy: '并发偏高或有排队', load_unknown: '并发数据未知', cost_unknown: '成本未知', recent_errors: '近期错误偏多', historical_loss: '近期用户扣费低于理论成本', profit_insufficient: '利润样本不足', teams_recovery: '本窗口收入尚未超过单号成本', teams_window_unavailable: 'Teams 成本窗口未设置或已失效' },
+  latencyPanel: {
+    title: '延迟分析', refresh: '刷新', hint: '按下单次选号的候选池统计：P50/P90/P99 为首 token 毫秒，错误为上游错误事件去重数，慢请求为超过目标首字阈值的请求数。汇总取优先调度历史窗口，热力格取上方所选窗口、每 5 分钟一格。',
+    account: '账号', samples: '样本', p50: 'P50 首字', p90: 'P90 首字', p99: 'P99 首字', errors: '错误', slow: '慢请求', errorRate: '错误率',
+    empty: '暂无延迟样本', error: '读取延迟分析失败，请重试。', window: '时间窗口'
+  },
+  recompute: {
+    action: '重算对比', running: '重算中…', title: '重算对比（不写回账号）',
+    hint: '强制读取最新历史信号，对比最近一次候选池的排名、得分和分流权重。候选池与并发占用仍取自最近一次选号；要应用新排名，请清理对应账号的会话粘性。',
+    clearChanged: '清理变化账号的粘性', timedOut: '历史统计刷新超时，展示的是当前可用结果。', noChange: '重算完成，排名与得分没有变化。', error: '重算失败，请稍后重试。', scope: '重算范围：模型 {model}，分组 {group}，变化账号 {accounts}。',
+    account: '账号', rank: '排名', score: '得分', weight: '分流权重', tier: '状态', p90: 'P90 首字', errors: '错误'
+  },
+  sticky: {
+    title: '会话粘性', group: '分组', refresh: '统计', clearAll: '全部清除', clear: '清除', count: '绑定数',
+    total: '当前 {count} 个会话绑定', empty: '该分组当前没有会话绑定', loadHint: '选择分组并点击“统计”查看当前会话绑定。',
+    hint: '只删除 session-hash 绑定，保留 response 续链和 owner 绑定。清除后会话会重新选号，可能造成一次上游缓存冷启动。',
+    confirmAll: '确认清除分组 {group} 的全部 {count} 个会话粘性？', confirmAccount: '确认清除分组 {group} 中账号 {account} 的 {count} 个会话粘性？', confirmSome: '确认清除分组 {group} 中变化的 {count} 个账号会话粘性？',
+    cleared: '已清除 {count} 个会话粘性。', error: '读取会话粘性失败。', clearError: '清除会话粘性失败。', invalidGroup: '分组 ID 必须是正整数。', scopeAccount: '粘性作用域：分组 {group}；账号 {accounts}。'
+  }
 }
