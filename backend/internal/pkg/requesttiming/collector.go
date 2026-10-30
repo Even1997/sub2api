@@ -19,23 +19,25 @@ type Span struct {
 	Attempt int     `json:"attempt,omitempty"`
 }
 type Attempt struct {
-	Route           transportdiag.Route `json:"route"`
-	Terminal        string              `json:"terminal,omitempty"`
-	CleanupCanceled bool                `json:"cleanup_canceled,omitempty"`
-	Kind            string              `json:"kind"`
-	Parent          int                 `json:"parent,omitempty"`
-	Number          int                 `json:"number"`
-	AccountID       int64               `json:"account_id"`
-	ProxyID         int64               `json:"proxy_id"`
-	StartMS         float64             `json:"start_ms"`
-	EndMS           *float64            `json:"end_ms"`
-	Status          int                 `json:"status"`
-	Error           string              `json:"error,omitempty"`
-	Reused          *bool               `json:"reused"`
-	RequestBytes    int64               `json:"request_bytes"`
-	ResponseBytes   int64               `json:"response_bytes"`
-	BodyEOF         bool                `json:"body_eof"`
-	Events          map[string]float64  `json:"events"`
+	ContentEncoding  string              `json:"content_encoding,omitempty"`
+	AutoDecompressed bool                `json:"auto_decompressed,omitempty"`
+	Route            transportdiag.Route `json:"route"`
+	Terminal         string              `json:"terminal,omitempty"`
+	CleanupCanceled  bool                `json:"cleanup_canceled,omitempty"`
+	Kind             string              `json:"kind"`
+	Parent           int                 `json:"parent,omitempty"`
+	Number           int                 `json:"number"`
+	AccountID        int64               `json:"account_id"`
+	ProxyID          int64               `json:"proxy_id"`
+	StartMS          float64             `json:"start_ms"`
+	EndMS            *float64            `json:"end_ms"`
+	Status           int                 `json:"status"`
+	Error            string              `json:"error,omitempty"`
+	Reused           *bool               `json:"reused"`
+	RequestBytes     int64               `json:"request_bytes"`
+	ResponseBytes    int64               `json:"response_bytes"`
+	BodyEOF          bool                `json:"body_eof"`
+	Events           map[string]float64  `json:"events"`
 }
 type Snapshot struct {
 	IdentitySource    string             `json:"identity_source,omitempty"`

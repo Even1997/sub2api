@@ -155,6 +155,7 @@ vite.config.js
 user-traffic-pending/
 docs/*
 !docs/ANTIGRAVITY_ATTRIBUTION_429.md
+!docs/stream-timing.md
 !docs/user-traffic.md
 !docs/typesafe-content-audit.md
 !docs/multi-host-session-owner.md

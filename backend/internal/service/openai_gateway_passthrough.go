@@ -2356,6 +2356,13 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				}
 				return resultWithUsage(), newOpenAIResponsesEmptyCompletedFailoverError(c, account, upstreamRequestID)
 			}
+			if requesttiming.From(ctx) != nil && gjson.Valid(trimmedData) {
+				requesttiming.Stage(ctx, "sse_parsed_first")
+				if openAIStreamDataStartsVisibleOutput(trimmedData, eventType) {
+					requesttiming.Stage(ctx, "sse_visible_first")
+				}
+			}
+			requesttiming.Output(ctx, openAIStreamDataStartsSemanticTTFT(trimmedData, eventType), openAIStreamDataStartsVisibleOutput(trimmedData, eventType), timingTerminal(eventType))
 			if !firstResponseEnabled && firstTokenMs == nil && openAIStreamDataStartsTTFT(trimmedData, eventType, forceFlushFailedEvent, ttftMode) {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
