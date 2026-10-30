@@ -112,7 +112,7 @@
         >
           <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
           {{ t('admin.accounts.status.creditsExhausted') }}
-          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
+          <span class="text-[10px] opacity-70">{{ item.kind === 'quality_hold' ? t('qualityOps.waitingForRecovery') : formatCountdown(item.reset_at) }}</span>
         </span>
         <!-- 正在走积分（模型限流但积分可用）-->
         <span
@@ -121,7 +121,7 @@
         >
           <span>⚡</span>
           {{ formatScopeName(item.model) }}
-          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
+          <span class="text-[10px] opacity-70">{{ item.kind === 'quality_hold' ? t('qualityOps.waitingForRecovery') : formatCountdown(item.reset_at) }}</span>
         </span>
         <!-- 普通模型限流 -->
         <span
@@ -130,14 +130,16 @@
         >
           <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
           {{ formatScopeName(item.model) }}
-          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
+          <span class="text-[10px] opacity-70">{{ item.kind === 'quality_hold' ? t('qualityOps.waitingForRecovery') : formatCountdown(item.reset_at) }}</span>
         </span>
         <!-- Tooltip -->
         <div
           class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[320px] -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
         >
           {{
-            item.kind === 'credits_exhausted'
+            item.kind === 'quality_hold'
+              ? t('qualityOps.cooldownRecoveryHint')
+              : item.kind === 'credits_exhausted'
               ? t('admin.accounts.status.creditsExhaustedUntil', { time: formatDateTimeToMinute(item.reset_at) })
               : item.kind === 'credits_active'
                 ? t('admin.accounts.status.modelCreditOveragesUntil', { model: formatScopeName(item.model), time: formatDateTimeToMinute(item.reset_at) })
@@ -231,7 +233,7 @@ const isRateLimited = computed(() => {
 })
 
 type AccountModelStatusItem = {
-  kind: 'rate_limit' | 'credits_exhausted' | 'credits_active'
+  kind: 'rate_limit' | 'credits_exhausted' | 'credits_active' | 'quality_hold'
   model: string
   reset_at: string
 }
@@ -240,7 +242,7 @@ type AccountModelStatusItem = {
 const activeModelStatuses = computed<AccountModelStatusItem[]>(() => {
   const extra = props.account.extra as Record<string, unknown> | undefined
   const modelLimits = extra?.model_rate_limits as
-    | Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
+    | Record<string, { rate_limited_at: string; rate_limit_reset_at: string; reason?: string }>
     | undefined
   const now = new Date()
   const items: AccountModelStatusItem[] = []
@@ -253,6 +255,10 @@ const activeModelStatuses = computed<AccountModelStatusItem[]>(() => {
   const allowOverages = !!(extra?.allow_overages)
 
   for (const [model, info] of Object.entries(modelLimits)) {
+    if (/^quality_rule:[1-9]\d*$/.test(info.reason || '')) {
+      items.push({ kind: 'quality_hold', model, reset_at: info.rate_limit_reset_at })
+      continue
+    }
     if (new Date(info.rate_limit_reset_at) <= now) continue
 
     if (model === 'AICredits') {

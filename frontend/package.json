@@ -77,5 +77,8 @@
       "dompurify@<3.4.17": ">=3.4.17",
       "decode-uri-component@<0.5.1": "0.5.1"
     }
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
