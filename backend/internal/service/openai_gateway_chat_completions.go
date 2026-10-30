@@ -70,6 +70,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	finishReservation := BeginAccountSlotReservation(ctx, account, c)
 	defer func() { finishReservation(slotErr, slotResult != nil && slotResult.SucceededForScheduling()) }()
 	slotResult, slotErr = s.forwardAsChatCompletions(ctx, c, account, body, promptCacheKey, defaultMappedModel, false)
+	if slotResult != nil && c != nil {
+		slotResult.AuthConnectionID = c.GetString("openai_auth_connection_id")
+	}
 	errorScope.finish(slotResult)
 	return slotResult, slotErr
 }

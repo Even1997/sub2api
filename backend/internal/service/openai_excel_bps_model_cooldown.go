@@ -50,6 +50,12 @@ func (s *OpenAIGatewayService) coolDownExcelBPSModel(ctx context.Context, accoun
 	if s == nil {
 		return
 	}
+	if account != nil && account.AuthConnectionID != "" && s.excelOAuthReauth != nil {
+		updateCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.excelOAuthReauth.FailAuthConnection(updateCtx, account, 403)
+		return
+	}
 	s.scheduleExcelBPSModelRecovery(ctx, account, upstreamModel, time.Now().Add(s.settingService.GetExcelBPSModelRateLimitCooldown(ctx)), false)
 }
 

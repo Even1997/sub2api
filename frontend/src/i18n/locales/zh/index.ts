@@ -1,4 +1,5 @@
 import bills from './bills'
+import openaiAuth from './openaiAuth'
 import upstreamEntities from './upstreamEntities'
 import profitOps from './profitOps'
 import upstreamOps from './upstreamOps'
@@ -33,6 +34,7 @@ import autoConfig from './autoConfig'
 
 export default {
   bills,
+  openaiAuth,
   upstreamEntities,
   traffic,
   ipAudit,

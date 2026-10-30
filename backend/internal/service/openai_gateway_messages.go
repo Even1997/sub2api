@@ -39,7 +39,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	ctx = admittedCtx
 	ctx, scope := withPriorityAttemptScope(ctx, gjson.GetBytes(body, "model").String(), "/v1/messages")
-	defer func() { scope.finish(slotResult) }()
+	defer func() {
+		if slotResult != nil && c != nil {
+			slotResult.AuthConnectionID = c.GetString("openai_auth_connection_id")
+		}
+		scope.finish(slotResult)
+	}()
 	finishReservation := BeginAccountSlotReservation(ctx, account, c)
 	defer func() { finishReservation(slotErr, slotResult != nil && slotResult.SucceededForScheduling()) }()
 	rememberOpenCodeInboundBody(c, body)

@@ -22,7 +22,9 @@ import (
 )
 
 type Account struct {
-	InitialAdmissionPlan *ScheduledTestPlan `json:"-"`
+	AuthConnectionID       string
+	AuthConnectionRevision int64
+	InitialAdmissionPlan   *ScheduledTestPlan `json:"-"`
 	// InitialQualityPlan is internal create-only state, never imported or exported.
 	InitialQualityPlan      *ScheduledTestPlan `json:"-"`
 	ID                      int64
@@ -1985,6 +1987,12 @@ func (a *Account) GetOpenAISessionID() string {
 }
 
 func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapability) bool {
+	if a.HasManagedOpenAIConnections() && a.AuthConnectionID == "" {
+		return a.managedConnectionSupports(string(capability))
+	}
+	if validateOpenAIConnectionKind(a) != nil {
+		return false
+	}
 	if a == nil {
 		return false
 	}
@@ -2179,6 +2187,9 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 }
 
 func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
+	if a.HasManagedOpenAIConnections() && capability != "" {
+		return false
+	}
 	if capability == "" {
 		return true
 	}
@@ -2452,6 +2463,9 @@ func (a *Account) IsCopilotSDKEnabled() bool {
 // 1. 按账号类型读取分类型字段
 // 2. 分类型字段缺失时，回退兼容字段
 func (a *Account) IsOpenAIResponsesWebSocketV2Enabled() bool {
+	if a.HasManagedOpenAIConnections() {
+		return false
+	}
 	if a.IsSIWCEnabled() {
 		return false
 	}
@@ -2526,6 +2540,9 @@ func normalizeOpenAIWSIngressDefaultMode(mode string) string {
 // 3. 兼容 enabled 旧字段（bool）
 // 4. defaultMode（非法时回退 ctx_pool）
 func (a *Account) ResolveOpenAIResponsesWebSocketV2Mode(defaultMode string) string {
+	if a.HasManagedOpenAIConnections() {
+		return OpenAIWSIngressModeOff
+	}
 	if a.IsSIWCEnabled() {
 		return OpenAIWSIngressModeOff
 	}
