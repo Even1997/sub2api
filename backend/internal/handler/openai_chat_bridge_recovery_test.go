@@ -76,7 +76,7 @@ func TestChatBridgeHandlerRecoveryAndOpsOutcome(t *testing.T) {
 			upstream := &chatBridgeRecoveryUpstream{bodies: tc.bodies}
 			billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 			t.Cleanup(billing.Stop)
-			gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
+			gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
 				service.NewBillingService(cfg, nil), nil, billing, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil)
 			t.Cleanup(gateway.StopOpenAICodexTicketHarvester)
 			t.Cleanup(gateway.CloseOpenAIWSPool)

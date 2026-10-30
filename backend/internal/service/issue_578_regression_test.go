@@ -186,7 +186,7 @@ func issue578Quota(t *testing.T, r *issue578Repo, handler http.HandlerFunc) *Ope
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	tokens := &stubQuotaTokenCache{tokens: map[string]string{OpenAITokenCacheKey(r.accounts[300]): "synthetic-oauth-token"}}
-	return NewOpenAIQuotaService(r, nil, NewOpenAITokenProvider(r, tokens, nil), newQuotaRedirectingFactory(srv), nil)
+	return NewOpenAIQuotaService(r, nil, NewOpenAITokenProvider(r, tokens, nil), newQuotaRedirectingFactory(srv))
 }
 
 func TestIssue578QueryUsageSynchronizesNonzero(t *testing.T) {
@@ -224,6 +224,11 @@ func TestIssue578BPSTTLRefreshAndThrottle(t *testing.T) {
 	r := &issue578Repo{accounts: map[int64]*Account{a.ID: a}}
 	var calls atomic.Int32
 	q := issue578Quota(t, r, func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == chatGPTConversationInitPath {
+			require.Equal(t, "Bearer test-token", req.Header.Get("Authorization"))
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
 		require.Equal(t, "Bearer synthetic-oauth-token", req.Header.Get("Authorization"), "usage must use OAuth credentials, not the BPS grant")
 		w.Header().Set("Content-Type", "application/json")
 		if req.URL.Path == "/backend-api/wham/usage" {

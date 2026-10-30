@@ -197,7 +197,7 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 		if headerErr != nil {
 			return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "failed to build upstream authentication: %v", headerErr)
 		}
-		queryStartedAt := time.Now()
+		queryStartedAt := nextCodexUsageObservation(time.Now())
 		resp, err := client.R().
 			SetContext(callCtx).
 			SetHeaders(quotaHeaders).

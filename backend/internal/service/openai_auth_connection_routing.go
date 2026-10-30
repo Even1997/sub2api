@@ -177,7 +177,7 @@ func (s *OpenAIGatewayService) prepareAuthConnection(ctx context.Context, c *gin
 	}
 	out.Extra = shallowCopyMap(account.Extra)
 	for key := range out.Extra {
-		if IsOpenAICodexTicketPrivateExtraKey(key) || strings.HasPrefix(key, "codex_harvest") || key == OpenAICodexSkipHarvestExtraKey {
+		if IsOpenAICodexTurnStatePrivateExtraKey(key) || strings.HasPrefix(key, "codex_harvest") || key == OpenAICodexSkipHarvestExtraKey {
 			delete(out.Extra, key)
 		}
 	}

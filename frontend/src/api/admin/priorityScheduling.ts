@@ -101,6 +101,14 @@ export interface PriorityCandidate {
   quality_samples: number
 }
 export interface PrioritySnapshot {
+  evaluated_at?: string
+  history_status?: 'ready' | 'stale' | 'partial' | 'loading' | 'error' | 'limited' | 'unavailable'
+  history_observed_at?: string
+  history_error?: string
+  history_refreshing?: boolean
+  history_window_end?: string
+  config_revision?: string
+  window_minutes?: number
   selection_policy?: string
   at: string
   model: string

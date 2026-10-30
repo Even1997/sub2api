@@ -1449,7 +1449,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	if platform != "" {
 		filtered := make([]Account, 0)
 		for _, acc := range accounts {
-			if acc.Platform == platform {
+			if acc.Platform == platform || mixedListingAccountAllowed(platform, &acc) {
 				filtered = append(filtered, acc)
 			}
 		}
@@ -1476,6 +1476,9 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		if len(mapping) > 0 {
 			hasAnyMapping = true
 			for model := range mapping {
+				if platform != "" && acc.Platform != platform && !mixedListingModelAllowed(platform, model) {
+					continue
+				}
 				modelSet[model] = struct{}{}
 			}
 		}

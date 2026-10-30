@@ -55,7 +55,7 @@ func TestOpenAIGatewayHandlerRealHTTPDeliveryFailureDoesNotInventUsageOrRecallMo
 				acquireUserSlotFn:    func(context.Context, int64, int, string) (bool, error) { return true, nil },
 				acquireAccountSlotFn: func(context.Context, int64, int, string) (bool, error) { return true, nil },
 			})
-			gateway := service.NewOpenAIGatewayService(accounts, nil, logs, billing, nil, nil, nil, nil, cfg, nil, concurrency,
+			gateway := service.NewOpenAIGatewayService(accounts, logs, billing, nil, nil, nil, nil, cfg, nil, concurrency,
 				service.NewBillingService(cfg, nil), nil, nil, repository.NewHTTPUpstream(cfg), &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil)
 			t.Cleanup(gateway.CloseOpenAIWSPool)
 			h := &OpenAIGatewayHandler{gatewayService: gateway, cfg: cfg, billingCacheService: billingCache,

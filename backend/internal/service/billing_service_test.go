@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"log"
 	"math"
+	"os"
 	"strings"
 	"testing"
 
@@ -2142,7 +2143,7 @@ func TestNewModelPricingAliasesRetainExplicitOverrides(t *testing.T) {
 	}
 }
 
-func TestAstraUltrafastPricingUsesSixTimesStandard(t *testing.T) {
+func TestAstraUltrafastPricingLongContextAcrossSources(t *testing.T) {
 	data, err := os.ReadFile("../../resources/model-pricing/model_prices_and_context_window.json")
 	require.NoError(t, err)
 	catalog := &PricingService{}

@@ -106,7 +106,7 @@ func TestIssue578ExplicitRefreshWinsDelayedHeader(t *testing.T) {
 	s := &OpenAIGatewayService{accountRepo: r, codexSnapshotThrottle: newAccountWriteThrottle(120 * time.Millisecond)}
 	s.UpdateCodexUsageSnapshotFromHeaders(context.Background(), a.ID, excelBPSQuotaHeaders("89", "20"))
 	require.Eventually(t, func() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.writes == 1 }, time.Second, time.Millisecond)
-	s.UpdateCodexUsageSnapshotFromHeaders(context.Background(), a.ID, excelBPSQuotaHeaders("95", "20"))
+	s.UpdateCodexUsageSnapshotFromHeaders(context.Background(), a.ID, excelBPSQuotaHeaders("90", "20"))
 	q := issue578Quota(t, r, func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if req.URL.Path == "/backend-api/wham/usage" {

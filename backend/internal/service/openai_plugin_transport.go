@@ -129,6 +129,12 @@ func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL 
 			}
 		}
 	}()
+	if err := s.priorityLatencyBeforeSend(request.Context(), account); err != nil {
+		return nil, err
+	}
+	if err := s.fenceAuthConnectionEgress(request.Context(), request, account); err != nil {
+		return nil, err
+	}
 	observeAttempt := s.observePriorityAttempt(request, account)
 	if s.pluginManager != nil {
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)

@@ -55,7 +55,7 @@ func TestIssue578RefreshQuotaSynchronizesSchedulingWindows(t *testing.T) {
 				case "/backend-api/wham/usage":
 					_, _ = w.Write([]byte(`{"account_id":"fixture-account","rate_limit":{"allowed":true,"primary_window":{"used_percent":100,"limit_window_seconds":18000,"reset_after_seconds":3600},"secondary_window":{"used_percent":20,"limit_window_seconds":604800,"reset_after_seconds":86400}},"credits":{"has_credits":true,"balance":"20.00"},"rate_limit_reset_credits":{"available_count":1}}`))
 				case "/backend-api/wham/rate-limit-reset-credits":
-					_, _ = w.Write([]byte(`{"available_count":1}`))
+					_, _ = w.Write([]byte(`{"available_count":1,"credits":[{"id":"synthetic-credit","expires_at":"2099-01-01T00:00:00Z"}]}`))
 				default:
 					t.Errorf("unexpected upstream path %s", request.URL.Path)
 					w.WriteHeader(404)
@@ -72,7 +72,7 @@ func TestIssue578RefreshQuotaSynchronizesSchedulingWindows(t *testing.T) {
 					}
 				}), nil
 			}
-			quota := service.NewOpenAIQuotaService(r, nil, service.NewOpenAITokenProvider(r, nil, nil), factory, nil)
+			quota := service.NewOpenAIQuotaService(r, nil, service.NewOpenAITokenProvider(r, nil, nil), factory)
 			h := &OpenAIOAuthHandler{quotaService: quota}
 			gin.SetMode(gin.TestMode)
 			router := gin.New()
@@ -83,7 +83,7 @@ func TestIssue578RefreshQuotaSynchronizesSchedulingWindows(t *testing.T) {
 			var envelope struct {
 				Data struct {
 					UsagePersisted   bool `json:"usage_cache_persisted"`
-					CreditsPersisted bool `json:"credits_cache_persisted"`
+					CreditsPersisted bool `json:"cache_persisted"`
 				} `json:"data"`
 			}
 			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope))

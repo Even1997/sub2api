@@ -117,7 +117,7 @@ func TestHandleUpstreamError_Cloudflare1010DoesNotPenalizeAccount(t *testing.T) 
 			account := &Account{ID: 601, Platform: platform, Type: AccountTypeAPIKey}
 
 			shouldDisable := svc.HandleUpstreamError(
-				context.Background(), account, http.StatusForbidden, http.Header{}, []byte(openAI403Cloudflare1010Body),
+				context.Background(), account, http.StatusForbidden, http.Header{}, []byte("<html><body>error code: 1010</body></html>"),
 			)
 
 			require.False(t, shouldDisable, "Cloudflare 1010 不得判定账号应下线")

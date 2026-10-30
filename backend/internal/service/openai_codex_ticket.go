@@ -891,6 +891,14 @@ func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, accou
 	if s == nil || h == nil || !isOpenAICodexTicketAccount(account, model) {
 		return nil
 	}
+	if account.AuthConnectionID != "" {
+		h.Del("Cookie")
+		h.Del(openAICodexTurnStateHeader)
+		if s.openAICodexTicketGatedModel(normalizeOpenAICodexTicketModel(model)) {
+			return denyOpenAITicket()
+		}
+		return nil
+	}
 	if s.codexTurnStateOwner(ctx, account) != codexTurnStateOwnerLegacyTicket {
 		return nil
 	}
@@ -985,9 +993,7 @@ func (s *OpenAIGatewayService) openAICodexTicketReadyForRequest(account *Account
 		return false
 	}
 	if account.AuthConnectionID != "" {
-		h.Del("Cookie")
-		h.Del(openAICodexTurnStateHeader)
-		return ErrOpenAICodexTicketUnavailable
+		return false
 	}
 	cfg := s.openAICodexTicketConfig()
 	if cfg.FailClosed && !openAICodexSkipHarvest(account) && s.openAICodexTicketHarvestExcluded(account) {

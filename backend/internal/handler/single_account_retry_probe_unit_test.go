@@ -5,7 +5,13 @@ package handler
 import (
 	"bytes"
 	"context"
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"sync"
 	"testing"
 
@@ -73,6 +79,52 @@ func TestGeminiGroupRequestsDoNotReadAntigravityBucket(t *testing.T) {
 			require.NotContains(t, platforms, service.PlatformAntigravity)
 		})
 	}
+}
+
+type geminiClientCancelFixture struct {
+	handler        *GatewayHandler
+	upstream       *geminiClientCancelUpstream
+	schedulerCache *bucketRecordingSchedulerCache
+	group          *service.Group
+}
+
+type geminiClientCancelUpstream struct {
+	service.HTTPUpstream
+	calls atomic.Int32
+}
+
+func (u *geminiClientCancelUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	u.calls.Add(1)
+	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}`))}, nil
+}
+
+func newGeminiClientCancelFixture(t *testing.T) *geminiClientCancelFixture {
+	t.Helper()
+	group := &service.Group{ID: 9400, Hydrated: true, Platform: service.PlatformGemini, Status: service.StatusActive}
+	account := &service.Account{ID: 9401, Platform: service.PlatformGemini, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Concurrency: 1, Credentials: map[string]any{"api_key": "synthetic-key"}, GroupIDs: []int64{group.ID}}
+	cache := &bucketRecordingSchedulerCache{fakeSchedulerCache: &fakeSchedulerCache{accounts: []*service.Account{account}}}
+	h, cleanup := newTestGatewayHandlerWithSchedulerCache(t, group, cache)
+	t.Cleanup(cleanup)
+	upstream := &geminiClientCancelUpstream{}
+	snapshot := service.NewSchedulerSnapshotService(cache, nil, nil, nil, nil)
+	h.geminiCompatService = service.NewGeminiMessagesCompatService(nil, &fakeGroupRepo{group: group}, nil, snapshot, nil, nil, upstream, nil, &config.Config{})
+	return &geminiClientCancelFixture{handler: h, upstream: upstream, schedulerCache: cache, group: group}
+}
+
+func (f *geminiClientCancelFixture) serve(t *testing.T, route, path, body string, call func(*gin.Context)) {
+	t.Helper()
+	router := gin.New()
+	router.POST(route, func(c *gin.Context) {
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.Group, f.group))
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 9402, UserID: 9403, GroupID: &f.group.ID, Group: f.group, Status: service.StatusActive, User: &service.User{ID: 9403, Balance: 100, Concurrency: 10}})
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9403, Concurrency: 10})
+		call(c)
+	})
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 }
 
 func TestMessagesAnthropicGroupDoesNotReadAntigravityBucket(t *testing.T) {

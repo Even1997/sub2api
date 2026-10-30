@@ -1105,7 +1105,7 @@ func ParseCodexRateLimitHeaders(headers http.Header) *OpenAICodexUsageSnapshot {
 		return nil
 	}
 
-	snapshot.UpdatedAt = time.Now().Format(time.RFC3339Nano)
+	snapshot.UpdatedAt = nextCodexUsageObservation(time.Now()).Format(time.RFC3339Nano)
 	return snapshot
 }
 

@@ -44,7 +44,7 @@ func TestPoolCapacityHTTPDoesNotCascadeIntoModelCooldown(t *testing.T) {
 			require.Empty(t, repo.modelRateLimitCalls)
 			require.Zero(t, repo.tempCalls)
 			require.Zero(t, repo.setErrCalls)
-			require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-6.1-sol", false))
+			require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(context.Background(), account, "gpt-6.1-sol", false))
 		})
 	}
 }

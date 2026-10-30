@@ -26,7 +26,7 @@ func TestPriorityLatencyAvailabilityHandlerSlots(t *testing.T) {
 			require.NoError(t, settings.SavePrioritySchedulingConfig(context.Background(), cfg))
 			slots := &penaltySlotCache{full: path != "acquired"}
 			account := service.Account{ID: 901, Name: "synthetic", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Concurrency: 2, GroupIDs: []int64{11}}
-			gateway := service.NewOpenAIGatewayService(openAIImagesFailoverAccountRepo{accounts: []service.Account{account}}, nil, penaltyModeUsage{}, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, service.NewConcurrencyService(slots), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, settings, nil)
+			gateway := service.NewOpenAIGatewayService(openAIImagesFailoverAccountRepo{accounts: []service.Account{account}}, penaltyModeUsage{}, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, service.NewConcurrencyService(slots), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, settings, nil)
 			t.Cleanup(func() { _ = gateway.CloseExcelBPSImages() })
 			group := int64(11)
 			ctx := service.WithPrioritySchedulingObservation(context.Background(), &group, "public-model", "/v1/responses")

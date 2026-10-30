@@ -63,8 +63,19 @@ func normalizeEffortModelID(model string) string {
 	if slash := strings.IndexByte(id, '/'); slash >= 0 {
 		id = strings.TrimPrefix(strings.TrimSpace(id[slash+1:]), "models/")
 	}
+	for _, prefix := range []string{"us.", "eu.", "apac.", "jp.", "au.", "us-gov.", "global."} {
+		id = strings.TrimPrefix(id, prefix)
+	}
 	id = strings.TrimPrefix(id, "anthropic.")
 	id = strings.TrimSuffix(id, "-thinking")
+	switch id {
+	case "claude-opus-5.5":
+		id = "claude-opus-5-5"
+	case "claude-sonnet-5.5":
+		id = "claude-sonnet-5-5"
+	case "claude-haiku-5.5":
+		id = "claude-haiku-5-5"
+	}
 	if mapped, ok := ModelIDReverseOverrides[id]; ok {
 		id = mapped
 	}

@@ -338,7 +338,6 @@ describe('priority scheduling', () => {
     await oldRequest
     wrapper.unmount()
   })
-})
 
   it('defaults legacy penalty action to soft and saves either explicit action', async () => {
     const legacy = { ...config, ...savedDefaults }

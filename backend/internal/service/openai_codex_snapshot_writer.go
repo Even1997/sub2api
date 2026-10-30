@@ -12,6 +12,8 @@ import (
 type codexPendingWrite struct {
 	updates     map[string]any
 	lastAttempt time.Time
+	prearmed    bool
+	wake        chan struct{}
 }
 
 type codexWriteKey struct {
@@ -39,7 +41,7 @@ func (t *accountWriteThrottle) close() {
 // One retained latest update per account, at most one attempt per interval.
 // Transient failures retry without another upstream response. Deleted accounts
 // and shutdown terminate the worker and release all pending state.
-func (t *accountWriteThrottle) submitCodex(repo AccountRepository, id int64, updates map[string]any, write func(context.Context, map[string]any) error) {
+func (t *accountWriteThrottle) submitCodex(repo AccountRepository, id int64, updates map[string]any, write func(context.Context, map[string]any) error, urgent ...bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.closed || id <= 0 {
@@ -52,11 +54,19 @@ func (t *accountWriteThrottle) submitCodex(repo AccountRepository, id int64, upd
 		t.pending = make(map[codexWriteKey]*codexPendingWrite)
 	}
 	key := codexWriteKey{repo: repo, id: id}
+	prearm := len(urgent) > 0 && urgent[0]
 	if pending := t.pending[key]; pending != nil {
 		pending.updates = mergeCodexUsageUpdates(pending.updates, updates)
+		if prearm && !pending.prearmed {
+			pending.prearmed = true
+			select {
+			case pending.wake <- struct{}{}:
+			default:
+			}
+		}
 		return
 	}
-	pending := &codexPendingWrite{updates: mergeCodexUsageUpdates(nil, updates)}
+	pending := &codexPendingWrite{updates: mergeCodexUsageUpdates(nil, updates), prearmed: prearm, wake: make(chan struct{}, 1)}
 	t.pending[key] = pending
 	t.workers.Add(1)
 	go func() {
@@ -79,6 +89,8 @@ func (t *accountWriteThrottle) submitCodex(repo AccountRepository, id int64, upd
 					timer.Stop()
 					return
 				case <-timer.C:
+				case <-pending.wake:
+					timer.Stop()
 				}
 			}
 			t.mu.Lock()

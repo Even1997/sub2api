@@ -245,7 +245,7 @@ func TestIssue582FixedWindow(t *testing.T) {
 	ctx := context.Background()
 	rdb := issue582Redis(t)
 	key := apiKeyCreateCountKey(582)
-	counter := NewAPIKeyCache(rdb)
+	counter := NewAPIKeyCache(rdb).(*apiKeyCache)
 	count, err := counter.IncrementCreateCount(ctx, 582, time.Minute)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, count)

@@ -61,7 +61,7 @@ func newPrioritySnapshotInput(req OpenAIAccountScheduleRequest, c PrioritySchedu
 // last observed pool. At still denotes the selection/load observation; a new
 // EvaluatedAt must never be presented as a new live capacity measurement.
 func (s *OpenAIGatewayService) PrioritySchedulingSnapshot() *PrioritySchedulingSnapshot {
-	if s == nil {
+	if s == nil || (s.settingService != nil && !s.prioritySchedulingRuntimeConfig().Enabled) {
 		return nil
 	}
 	state := &s.priorityScheduling

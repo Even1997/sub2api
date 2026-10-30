@@ -599,6 +599,7 @@ type OpenAIGatewayOption func(*OpenAIGatewayService)
 func WithOpenAIAuthConnections(connections *OpenAIOAuthReauthService) OpenAIGatewayOption {
 	return func(s *OpenAIGatewayService) { s.excelOAuthReauth = connections }
 }
+
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
 func NewOpenAIGatewayService(
 	accountRepo AccountRepository,
@@ -623,6 +624,7 @@ func NewOpenAIGatewayService(
 	balanceNotifyService *BalanceNotifyService,
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	options ...OpenAIGatewayOption,
 ) *OpenAIGatewayService {
 	// enforceCodexIdentityHeaders 是 HTTP / 透传 / WS / 探针 等出站路径共用的纯函数收口点，
 	// 拿不到配置，故在此发布进程级开关快照。配置取反义，零值即「强制统一出口开启」。
@@ -677,6 +679,9 @@ func NewOpenAIGatewayService(
 	}
 	if registrar, ok := httpUpstream.(interface{ SetAstraTicketLifecycle(AstraTicketLifecycle) }); ok {
 		registrar.SetAstraTicketLifecycle(svc)
+	}
+	for _, option := range options {
+		option(svc)
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc

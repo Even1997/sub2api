@@ -407,7 +407,7 @@ func TestPriorityLatencyAvailabilityPreWriteRecheck(t *testing.T) {
 	svc.httpUpstream = upstream
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://compat.example/v1/responses", strings.NewReader(`{"model":"gpt-test"}`))
 	require.NoError(t, err)
-	_, err = svc.doOpenAIProxyAttempt(request, selected.Account, runtimeProxyEgress{})
+	_, err = svc.doOpenAIUpstream(request, "", selected.Account)
 	require.ErrorIs(t, err, ErrPriorityLatencyUnavailable, "history learned during preparation must be checked before actual write")
 	require.Empty(t, upstream.requests, "pre-write rejection must send no generation")
 }
@@ -465,6 +465,7 @@ func TestPriorityLatencyAvailabilityHTTPWSLease(t *testing.T) {
 	svc, req, account, upstream, dialer, ctx := reviewNativeFixture(t, OpenAIWSIngressModeCtxPool)
 	c := newOpenAIRejectedFieldTestContext([]byte(`{"model":"gpt-test","input":"synthetic"}`))
 	c.Request = c.Request.WithContext(ctx)
+	c.Set("api_key", &APIKey{ID: 77, GroupID: req.GroupID})
 	admitted, err := svc.beginPriorityLatencyTurn(ctx, c, account, req.RequestedModel)
 	require.NoError(t, err)
 	done := make(chan error, 1)

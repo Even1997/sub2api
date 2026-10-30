@@ -3,10 +3,13 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +22,92 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+// The client history carries a completed tool round trip; a switched account
+// must receive exactly the same converted history.
+const excelBPSFailoverRequestBody = `{"model":"gpt-6-astra","stream":%t,"input":[` +
+	`{"type":"message","role":"user","content":[{"type":"input_text","text":"list the files"}]},` +
+	`{"type":"function_call","call_id":"call_ls","name":"shell","arguments":"{\"cmd\":\"ls\"}"},` +
+	`{"type":"function_call_output","call_id":"call_ls","output":"a.txt"}],` +
+	`"tools":[{"type":"function","name":"shell","parameters":{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"]}}]}`
+
+// excelBPSImageAdmissionUpstream answers in call order and records the account of
+// every BPS attempt.
+type excelBPSImageAdmissionUpstream struct {
+	service.HTTPUpstream
+	mu         sync.Mutex
+	accountIDs []int64
+	bodies     [][]byte
+	urls       []string
+	answer     func(call int) *http.Response
+	onDo       func(call int)
+}
+
+func (u *excelBPSImageAdmissionUpstream) Do(req *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+	body, _ := io.ReadAll(req.Body)
+	u.mu.Lock()
+	call := len(u.accountIDs)
+	u.accountIDs = append(u.accountIDs, accountID)
+	u.bodies = append(u.bodies, body)
+	u.urls = append(u.urls, req.URL.String())
+	u.mu.Unlock()
+	if u.onDo != nil {
+		u.onDo(call)
+	}
+	return u.answer(call), nil
+}
+
+func (u *excelBPSImageAdmissionUpstream) calls() []int64 {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]int64(nil), u.accountIDs...)
+}
+
+func excelBPS429(retryAfter string) *http.Response {
+	header := http.Header{"Content-Type": {"application/json"}}
+	if retryAfter != "" {
+		header.Set("Retry-After", retryAfter)
+	}
+	return &http.Response{StatusCode: http.StatusTooManyRequests, Header: header,
+		Body: io.NopCloser(strings.NewReader(`{"error":{"code":"basispoints_rate_limited","message":"PRIVATE_UPSTREAM workspace detail"}}`))}
+}
+
+func excelBPSCompleted() *http.Response {
+	wire := "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_bps_failover\",\"status\":\"completed\",\"model\":\"gpt-6-astra\"," +
+		"\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"done\"}]}],\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n\n"
+	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(wire))}
+}
+
+// excelBPSFailoverAccountRepo also answers the no-account diagnosis query.
+type excelBPSFailoverAccountRepo struct {
+	openAIImagesFailoverAccountRepo
+}
+
+func (r excelBPSFailoverAccountRepo) ListModelAvailabilityCandidates(_ context.Context, _ *int64, platforms []string, _ bool) ([]service.Account, error) {
+	var out []service.Account
+	for _, platform := range platforms {
+		out = append(out, r.accountsForPlatform(platform)...)
+	}
+	return out, nil
+}
+
+func newExcelBPSFailoverTestContext(ctx context.Context, stream bool) (*gin.Context, *httptest.ResponseRecorder) {
+	groupID := int64(3131)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader([]byte(fmt.Sprintf(excelBPSFailoverRequestBody, stream))))
+	req = req.WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		ID:      99,
+		GroupID: &groupID,
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+		User:    &service.User{ID: 100},
+	})
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 100, Concurrency: 0})
+	return c, rec
+}
 
 // excelBPSImageAdmissionAccountRepo records every account a forward attempt
 // was admitted on.
@@ -103,7 +192,7 @@ func newExcelBPSImageAdmissionTestHandler(t *testing.T, upstream service.HTTPUps
 	attempts := &excelBPSImageAdmissionAttempts{}
 	gatewayService := service.NewOpenAIGatewayService(
 		excelBPSImageAdmissionAccountRepo{excelBPSFailoverAccountRepo{openAIImagesFailoverAccountRepo{accounts: accounts}}, attempts},
-		nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
 		cfg,
 		nil, schedulingConcurrency, nil, nil, nil,
 		upstream,
@@ -164,10 +253,10 @@ func holdExcelBPSImageSlot(t *testing.T, handler *OpenAIGatewayHandler, groupID 
 	})
 }
 
-func blockingFirstBPSCall() (*excelBPSFailoverUpstream, <-chan struct{}, func()) {
+func blockingFirstBPSCall() (*excelBPSImageAdmissionUpstream, <-chan struct{}, func()) {
 	entered := make(chan struct{})
 	blocked := make(chan struct{})
-	upstream := &excelBPSFailoverUpstream{
+	upstream := &excelBPSImageAdmissionUpstream{
 		answer: func(int) *http.Response { return excelBPSCompleted() },
 		onDo: func(call int) {
 			if call == 0 {

@@ -123,7 +123,7 @@ func newPoolCapacityRouter(t *testing.T, repo *poolCapacityRepo, upstream servic
 	billingCache := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billingCache.Stop)
 	rateLimits := service.NewRateLimitService(repo, nil, cfg, nil, nil)
-	gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
+	gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
 		service.NewBillingService(cfg, nil), rateLimits, billingCache, upstream, &service.DeferredService{},
 		nil, nil, nil, nil, nil, nil, nil)
 	h := NewOpenAIGatewayHandler(gateway, service.NewConcurrencyService(nil), billingCache,

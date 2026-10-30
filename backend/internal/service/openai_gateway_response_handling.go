@@ -51,6 +51,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel, reasoningEffort string) (*openaiStreamingResult, error) {
+	ctx = requesttiming.ResponseContext(ctx, resp)
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -736,6 +737,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			startsFirstResponse := firstResponseEnabled && !clientOutputStarted && isStreamFirstResponse(data, eventType)
 			startsClientOutput = startsClientOutput || startsFirstResponse
 			startsVisibleOutput := openAIStreamDataStartsVisibleOutput(data, eventType)
+			requesttiming.Output(ctx, startsSemanticOutput, startsVisibleOutput, "")
 			startsTTFTOutput := openAIStreamDataStartsTTFT(data, eventType, forceFlushFailedEvent, ttftMode)
 			if firstResponseEnabled {
 				startsTTFTOutput = startsFirstResponse

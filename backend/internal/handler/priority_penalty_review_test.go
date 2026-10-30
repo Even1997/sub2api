@@ -47,11 +47,11 @@ func TestPriorityPenaltyReviewHandlerFailover(t *testing.T) {
 			require.NoError(t, settings.SavePrioritySchedulingConfig(context.Background(), penalty))
 			slots := &reviewFailoverSlots{}
 			concurrency := service.NewConcurrencyService(slots)
-			repo := &initialAdmissionRepo{}
+			repo := &openAIImagesFailoverAccountRepo{}
 			for id := int64(1); id <= 2; id++ {
 				repo.accounts = append(repo.accounts, service.Account{ID: id, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true, GroupIDs: []int64{3131}, Priority: int(id), Concurrency: 1, Credentials: map[string]any{"access_token": fmt.Sprintf("test-token-%d", id), "chatgpt_account_id": fmt.Sprintf("test-account-%d", id)}, Extra: map[string]any{"openai_excel_bps": true}})
 			}
-			upstream := &excelBPSFailoverUpstream{answer: func(int) *http.Response {
+			upstream := &excelBPSImageAdmissionUpstream{answer: func(int) *http.Response {
 				// Responses uses BPS's explicit failover classification. Chat
 				// 429 follows its existing same-account retry policy, so use
 				// an ordinary retryable 503 to reach its account-switch seam.
@@ -62,7 +62,7 @@ func TestPriorityPenaltyReviewHandlerFailover(t *testing.T) {
 				response.Body = io.NopCloser(strings.NewReader(`{"error":{"code":"basispoints_rate_limited","message":"previous synthetic supplier failure"}}`))
 				return response
 			}, onDo: func(int) { slots.failed = true }}
-			gateway := service.NewOpenAIGatewayService(repo, nil, penaltyModeUsage{}, nil, nil, nil, nil, nil, cfg, nil, concurrency, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, settings, nil)
+			gateway := service.NewOpenAIGatewayService(repo, penaltyModeUsage{}, nil, nil, nil, nil, nil, cfg, nil, concurrency, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, settings, nil)
 			t.Cleanup(func() { _ = gateway.CloseExcelBPSImages() })
 			billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 			t.Cleanup(billing.Stop)

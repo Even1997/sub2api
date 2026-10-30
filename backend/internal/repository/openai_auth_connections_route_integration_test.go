@@ -59,7 +59,7 @@ func TestIssue594ProductionGatewayConnectionRouteAndAccountSafety(t *testing.T) 
 	transport := &issue594OfflineInference{t: t, endpoint: strings.TrimPrefix(upstream.URL, "http://")}
 	cfg := &config.Config{}
 	cfg.Default.RateMultiplier = 1
-	gateway := service.NewOpenAIGatewayService(f.accounts, nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil, service.NewBillingService(cfg, nil), nil, nil, transport, &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil, service.WithOpenAIAuthConnections(f.svc))
+	gateway := service.NewOpenAIGatewayService(f.accounts, nil, nil, nil, nil, nil, nil, cfg, nil, nil, service.NewBillingService(cfg, nil), nil, nil, transport, &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil, service.WithOpenAIAuthConnections(f.svc))
 	forward := func(session string) (*service.OpenAIForwardResult, error) {
 		a, e := f.accounts.GetByID(ctx, f.accountID)
 		require.NoError(t, e)

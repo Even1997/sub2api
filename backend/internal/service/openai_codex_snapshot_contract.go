@@ -5,11 +5,28 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 const CodexUsageObservationVersionKey = "codex_usage_observed_at_ns"
 const CodexUsageFieldVersionsKey = "codex_usage_field_versions"
+
+var codexUsageObservationClock atomic.Int64
+
+// Wall time can repeat on Windows. Keep in-process observations strictly ordered.
+func nextCodexUsageObservation(now time.Time) time.Time {
+	for {
+		previous := codexUsageObservationClock.Load()
+		next := now.UnixNano()
+		if next <= previous {
+			next = previous + 1
+		}
+		if codexUsageObservationClock.CompareAndSwap(previous, next) {
+			return time.Unix(0, next).UTC()
+		}
+	}
+}
 
 func IsCodexUsageFieldKey(key string) bool {
 	return strings.HasPrefix(key, "codex_5h_") || strings.HasPrefix(key, "codex_7d_") ||

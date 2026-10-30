@@ -112,7 +112,7 @@
         >
           <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
           {{ t('admin.accounts.status.creditsExhausted') }}
-          <span class="text-[10px] opacity-70">{{ item.kind === 'quality_hold' ? t('qualityOps.waitingForRecovery') : formatCountdown(item.reset_at) }}</span>
+          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
         </span>
         <!-- 正在走积分（模型限流但积分可用）-->
         <span
@@ -121,7 +121,7 @@
         >
           <span>⚡</span>
           {{ formatScopeName(item.model) }}
-          <span class="text-[10px] opacity-70">{{ item.kind === 'quality_hold' ? t('qualityOps.waitingForRecovery') : formatCountdown(item.reset_at) }}</span>
+          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
         </span>
         <!-- 普通模型限流 -->
         <span
