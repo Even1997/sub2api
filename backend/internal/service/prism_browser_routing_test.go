@@ -342,6 +342,37 @@ func TestPrismBrowserUnavailableRuntimeIsFilteredBeforeForward(t *testing.T) {
 	}
 }
 
+func TestManagedCodexIgnoresLegacyPrismRouting(t *testing.T) {
+	for _, mode := range []string{"managed", "bound"} {
+		t.Run(mode, func(t *testing.T) {
+			svc, account := prismTestService("")
+			svc.cfg.Gateway.PrismBrowser.Enabled = false
+			account.Status, account.Schedulable = StatusActive, true
+			account.Extra["openai_auth_connections"] = []*OpenAIAuthConnection{{
+				ID: "synthetic-managed-codex", Kind: "codex", Status: "active", RefreshState: "idle", Preferred: true,
+				Capabilities: []string{"responses", "chat_completions", "responses_compact"},
+			}}
+			if mode == "managed" {
+				account.Extra["openai_connections_managed"] = true
+			} else {
+				account.AuthConnectionID = "synthetic-managed-codex"
+			}
+			scheduler := &defaultOpenAIAccountScheduler{service: svc}
+			req := OpenAIAccountScheduleRequest{Platform: PlatformOpenAI, RequestedModel: "gpt-6.1-sol", RequiredCapability: OpenAIEndpointCapabilityResponses}
+			account.Extra["openai_prism_browser"] = false
+			ok, reason := scheduler.isAccountRequestCompatibleReason(context.Background(), account, req)
+			require.True(t, ok, "control: %s", reason)
+			account.Extra["openai_prism_browser"] = true
+
+			ok, reason = scheduler.isAccountRequestCompatibleReason(context.Background(), account, req)
+
+			require.True(t, ok, "managed Codex must ignore legacy Prism: %s", reason)
+			require.False(t, accountHasPrismBrowser(account))
+			require.False(t, account.IsPrismBrowserEnabledForModel(req.RequestedModel))
+		})
+	}
+}
+
 func TestPrismBrowserAdapterMisconfigurationIsNotTheClientsAuthFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

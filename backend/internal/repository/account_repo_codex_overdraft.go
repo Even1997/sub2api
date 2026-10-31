@@ -35,6 +35,7 @@ func (r *accountRepository) ClaimCodexQuotaOverdraftProbe(
 		WHERE id = $3
 			AND deleted_at IS NULL
 			AND extra @> '{"codex_quota_overdraft_enabled": true}'::jsonb
+			AND NOT (extra @> '{"openai_connections_managed": true}'::jsonb)
 			AND COALESCE(extra #>> '{codex_quota_overdraft_probe,cycle_key}', '') <> $4
 	`, service.CodexQuotaOverdraftProbeExtraKey, string(payload), id, state.CycleKey)
 	if err != nil {
@@ -69,6 +70,7 @@ func (r *accountRepository) PersistCodexQuotaOverdraftProbeUnlessFailed(
 		WHERE id = $3
 			AND deleted_at IS NULL
 			AND extra @> '{"codex_quota_overdraft_enabled": true}'::jsonb
+			AND NOT (extra @> '{"openai_connections_managed": true}'::jsonb)
 			AND (
 				COALESCE(extra #>> '{codex_quota_overdraft_probe,cycle_key}', '') <> $4
 				OR COALESCE(extra #>> '{codex_quota_overdraft_probe,status}', '') <> 'failed'
@@ -171,6 +173,7 @@ func (r *accountRepository) ClearCodexQuotaOverdraftPauseIfState(
 			WHERE id = $1
 				AND deleted_at IS NULL
 				AND extra @> '{"codex_quota_overdraft_enabled": true}'::jsonb
+				AND NOT (extra @> '{"openai_connections_managed": true}'::jsonb)
 				AND extra #>> '{codex_quota_overdraft_probe,cycle_key}' = $2
 				AND extra #>> '{codex_quota_overdraft_probe,status}' = $3
 			FOR UPDATE
@@ -247,6 +250,7 @@ func (r *accountRepository) FinalizeCodexQuotaOverdraftProbeFailed(
 		WHERE id = $5
 			AND deleted_at IS NULL
 			AND extra @> '{"codex_quota_overdraft_enabled": true}'::jsonb
+			AND NOT (extra @> '{"openai_connections_managed": true}'::jsonb)
 			AND extra #>> '{codex_quota_overdraft_probe,cycle_key}' = $6
 			AND (
 				extra #>> '{codex_quota_overdraft_probe,status}' IN ('pending', 'failed')

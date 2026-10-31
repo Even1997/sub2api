@@ -441,6 +441,9 @@ func (c *CodexQuotaOverdraftCoordinator) runProbePlan(
 		attemptCtx, attemptCancel := context.WithTimeout(planCtx, codexQuotaOverdraftProbeAttemptTimeout)
 		result := c.runProbeAttempt(attemptCtx, account, model)
 		attemptCancel()
+		if !c.accountStillEnabled(accountID) {
+			return
+		}
 		state.Attempts = attempt + 1
 		state.Model = result.Model
 		state.ReasonCode = result.ReasonCode
@@ -522,10 +525,14 @@ func (c *CodexQuotaOverdraftCoordinator) finishInconclusive(
 }
 
 func (c *CodexQuotaOverdraftCoordinator) runProbeAttempt(ctx context.Context, account *Account, model string) codexQuotaOverdraftProbeResult {
+	result := codexQuotaOverdraftProbeResult{Model: model}
+	if !CodexQuotaOverdraftEnabledForAccount(account) {
+		result.Status, result.ReasonCode = "inconclusive", "experimental_probe_unavailable"
+		return result
+	}
 	if c.probeAttemptForTest != nil {
 		return c.probeAttemptForTest(ctx, account, model)
 	}
-	result := codexQuotaOverdraftProbeResult{Model: model}
 	upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(model))
 	payload := map[string]any{
 		"model": upstreamModel,
@@ -606,6 +613,11 @@ func (c *CodexQuotaOverdraftCoordinator) runProbeAttempt(ctx context.Context, ac
 	var tlsProfile = (*tlsfingerprint.Profile)(nil)
 	if c.tlsFPProfileService != nil {
 		tlsProfile = c.tlsFPProfileService.ResolveTLSProfile(account)
+	}
+	// A queued probe may outlive the switch to managed authorization.
+	if !c.accountStillEnabled(account.ID) {
+		result.Status, result.ReasonCode = "inconclusive", "experimental_probe_unavailable"
+		return result
 	}
 	resp, err := c.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 	if err != nil {

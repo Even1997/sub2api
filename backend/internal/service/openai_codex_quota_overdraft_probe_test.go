@@ -181,6 +181,118 @@ func TestCodexQuotaOverdraftSingleProbeQuotaFailurePauses(t *testing.T) {
 	require.False(t, codexQuotaOverdraftSchedulingAllowed(account, now), "同周期确认失败后不得继续绕过限额")
 }
 
+func TestCodexQuotaOverdraftManagedProbeCannotSendOrPauseParent(t *testing.T) {
+	for _, mode := range []string{"legacy", "managed", "bound"} {
+		for _, reply := range []stateProbeReply{
+			{status: http.StatusOK, body: stateProbeCompletedStream},
+			{status: http.StatusTooManyRequests, body: `{"error":{"code":"usage_limit_reached"}}`},
+			{status: http.StatusUnauthorized, body: `{"error":{"code":"invalid_api_key"}}`},
+		} {
+			t.Run(mode+"/"+strconv.Itoa(reply.status), func(t *testing.T) {
+				now := time.Now().UTC()
+				account := newCodexOverdraftProbeTestAccount(t, now)
+				account.Credentials = map[string]any{"access_token": "synthetic-retired-parent-token"}
+				signal, exhausted := codexQuotaOverdraftSignalFromAccount(account, nil, now)
+				require.True(t, exhausted)
+				state := newCodexOverdraftPendingState(signal, now)
+				// A queued legacy probe must stop after managed routing takes over.
+				if mode == "managed" {
+					account.Extra["openai_connections_managed"] = true
+				} else if mode == "bound" {
+					account.AuthConnectionID = "synthetic-managed-codex"
+				}
+				upstream := &stateProbeUpstream{replies: []stateProbeReply{reply}}
+				repo := &codexOverdraftProbeRepoStub{account: account}
+				coordinator := &CodexQuotaOverdraftCoordinator{accountRepo: repo, httpUpstream: upstream, now: func() time.Time { return now }}
+
+				coordinator.runProbePlan(account.ID, signal, "gpt-5.4", state)
+
+				if mode == "legacy" {
+					require.Len(t, upstream.calls, 1)
+					require.Equal(t, "Bearer synthetic-retired-parent-token", upstream.calls[0].header.Get("Authorization"))
+					if reply.status == http.StatusTooManyRequests {
+						require.Equal(t, 1, repo.tempPauseCalls)
+					}
+					return
+				}
+				require.Empty(t, upstream.calls, "managed routing must never send a legacy probe")
+				require.Empty(t, repo.states)
+				require.Zero(t, repo.tempPauseCalls)
+			})
+		}
+	}
+}
+
+func TestCodexQuotaOverdraftProbeRechecksManagedPolicyBeforeSend(t *testing.T) {
+	now := time.Now().UTC()
+	account := newCodexOverdraftProbeTestAccount(t, now)
+	account.Credentials = map[string]any{"access_token": "synthetic-retired-parent-token"}
+	stale := cloneCodexQuotaOverdraftAccount(account)
+	account.Extra["openai_connections_managed"] = true
+	upstream := &stateProbeUpstream{replies: []stateProbeReply{{status: http.StatusOK, body: stateProbeCompletedStream}}}
+	coordinator := &CodexQuotaOverdraftCoordinator{accountRepo: &codexOverdraftProbeRepoStub{account: account}, httpUpstream: upstream}
+
+	result := coordinator.runProbeAttempt(context.Background(), stale, "gpt-5.4")
+
+	require.Empty(t, upstream.calls, "a stale account loaded before a policy change cannot send")
+	require.Equal(t, "inconclusive", result.Status)
+}
+
+func TestCodexQuotaOverdraftManagedPolicyChangeDiscardsLegacyProbeResult(t *testing.T) {
+	for _, result := range []codexQuotaOverdraftProbeResult{
+		{Status: "available", ReasonCode: "model_response_ok", StatusCode: http.StatusOK},
+		{Status: "retry", ReasonCode: "quota_limited", StatusCode: http.StatusTooManyRequests},
+		{Status: "authentication_failed", ReasonCode: "authentication_failed", StatusCode: http.StatusUnauthorized},
+	} {
+		t.Run(result.Status, func(t *testing.T) {
+			now := time.Now().UTC()
+			account := newCodexOverdraftProbeTestAccount(t, now)
+			repo := &codexOverdraftProbeRepoStub{account: account}
+			coordinator := &CodexQuotaOverdraftCoordinator{accountRepo: repo}
+			coordinator.probeAttemptForTest = func(context.Context, *Account, string) codexQuotaOverdraftProbeResult {
+				account.Extra["openai_connections_managed"] = true
+				return result
+			}
+			signal, exhausted := codexQuotaOverdraftSignalFromAccount(account, nil, now)
+			require.True(t, exhausted)
+			state := newCodexOverdraftPendingState(signal, now)
+
+			coordinator.runProbePlan(account.ID, signal, "gpt-5.4", state)
+
+			require.Zero(t, state.Attempts, "results from a retired credential cannot affect the managed account")
+			require.Empty(t, repo.states)
+			require.Zero(t, repo.tempPauseCalls)
+		})
+	}
+}
+
+func TestCodexQuotaOverdraftManagedRequestsDoNotInjectOrHandleQuota429(t *testing.T) {
+	for _, mode := range []string{"managed", "bound"} {
+		t.Run(mode, func(t *testing.T) {
+			now := time.Now().UTC()
+			account := newCodexOverdraftProbeTestAccount(t, now)
+			if mode == "managed" {
+				account.Extra["openai_connections_managed"] = true
+			} else {
+				account.AuthConnectionID = "synthetic-managed-codex"
+			}
+			cfg := &config.Config{Gateway: config.GatewayConfig{CodexQuotaOverdraftEnabled: true}}
+			svc := &OpenAIGatewayService{cfg: cfg}
+			body := []byte(`{"input":[{"type":"message","role":"user"}]}`)
+			ctx := WithCodexQuotaOverdraftScheduling(context.Background())
+			require.Equal(t, body, svc.prepareCodexQuotaOverdraftBody(ctx, account, false, body))
+			require.False(t, codexQuotaOverdraftWasInjected(ctx, account.ID))
+			require.False(t, codexQuotaOverdraftBypassesSchedulingThreshold(ctx, account))
+			repo := &codexOverdraftProbeRepoStub{account: account}
+			coordinator := &CodexQuotaOverdraftCoordinator{accountRepo: repo, httpUpstream: &stateProbeUpstream{}, cfg: cfg}
+			markCodexQuotaOverdraftInjected(ctx, account.ID)
+			require.False(t, coordinator.HandleQuota429(ctx, account, nil, []byte(`{"error":{"code":"usage_limit_reached"}}`), "gpt-5.4"))
+			require.Empty(t, repo.states)
+			require.Zero(t, repo.tempPauseCalls)
+		})
+	}
+}
+
 func TestCodexQuotaOverdraftBusinessSuccessAtExhaustionPassesWithoutProbe(t *testing.T) {
 	now := time.Date(2026, time.August, 13, 14, 0, 0, 0, time.UTC)
 	account := newCodexOverdraftProbeTestAccount(t, now)

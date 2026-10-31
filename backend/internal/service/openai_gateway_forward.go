@@ -25,7 +25,8 @@ func accountUsesPrismBrowser(account *Account, cfg *config.Config) bool {
 }
 
 func accountHasPrismBrowser(account *Account) bool {
-	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsShadow() {
+	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsShadow() ||
+		account.HasManagedOpenAIConnections() || account.AuthConnectionID != "" {
 		return false
 	}
 	enabled, _ := account.Extra["openai_prism_browser"].(bool)

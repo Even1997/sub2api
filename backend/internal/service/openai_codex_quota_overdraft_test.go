@@ -91,6 +91,8 @@ func TestCodexQuotaOverdraftEnabledForAccountIsStrictAndParentOnly(t *testing.T)
 		{"string true is rejected", &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{CodexQuotaOverdraftEnabledExtraKey: "true"}}, false},
 		{"api key is rejected", &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{CodexQuotaOverdraftEnabledExtraKey: true}}, false},
 		{"shadow is rejected", &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, ParentAccountID: &parentID, Extra: map[string]any{CodexQuotaOverdraftEnabledExtraKey: true}}, false},
+		{"managed parent is rejected", &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{CodexQuotaOverdraftEnabledExtraKey: true, "openai_connections_managed": true}}, false},
+		{"bound connection is rejected", &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, AuthConnectionID: "synthetic-connection", Extra: map[string]any{CodexQuotaOverdraftEnabledExtraKey: true}}, false},
 		{"explicit parent opt in", &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{CodexQuotaOverdraftEnabledExtraKey: true}}, true},
 	}
 	for _, test := range tests {

@@ -13,9 +13,76 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+func TestCodexQuotaOverdraftManagedPolicyBlocksLegacyStateWrites(t *testing.T) {
+	for _, mode := range []string{"legacy", "managed"} {
+		for _, operation := range []string{"claim", "persist", "finalize", "clear"} {
+			t.Run(mode+"/"+operation, func(t *testing.T) {
+				ctx := context.Background()
+				now, until := time.Now().UTC(), time.Now().UTC().Add(time.Hour)
+				state := &service.CodexQuotaOverdraftProbeState{
+					Status: "pending", CycleKey: "5h:legacy-cycle", QuotaWindow: "5h",
+					Limit: 1, StartedAt: now, RecoverAt: &until,
+				}
+				if operation == "clear" {
+					state.Status = "passed"
+				}
+				account := mustCreateAccount(t, testEntClient(t), &service.Account{
+					Name: t.Name(), Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+					Credentials:      map[string]any{"access_token": "synthetic-retired-parent-token"},
+					Extra:            map[string]any{service.CodexQuotaOverdraftEnabledExtraKey: true, service.CodexQuotaOverdraftProbeExtraKey: state},
+					RateLimitResetAt: &until,
+				})
+				connections := NewOpenAIOAuthReauthRepository(integrationDB).(*openAIOAuthReauthRepository)
+				connection := &service.OpenAIAuthConnection{
+					ID: uuid.NewString(), AccountID: account.ID, Kind: "codex", Status: "active",
+					Scopes: []string{}, Capabilities: []string{"responses"}, CredentialsCiphertext: "synthetic-ciphertext",
+				}
+				require.NoError(t, connections.CreateAuthConnection(ctx, connection))
+				selected, err := connections.SelectAuthConnection(ctx, account.ID, connection.ID, 1)
+				require.NoError(t, err)
+				require.True(t, selected)
+				if mode == "legacy" {
+					require.NoError(t, connections.UseLegacyAuthConnections(ctx, account.ID))
+				}
+				repo := newAccountRepositoryWithSQL(testEntClient(t), integrationDB, nil)
+				before, err := repo.GetByID(ctx, account.ID)
+				require.NoError(t, err)
+				require.Equal(t, mode == "managed", before.HasManagedOpenAIConnections())
+				var changed bool
+				switch operation {
+				case "claim":
+					state.CycleKey = "5h:new-cycle"
+					changed, err = repo.ClaimCodexQuotaOverdraftProbe(ctx, account.ID, state)
+				case "persist":
+					state.Status = "passed"
+					changed, err = repo.PersistCodexQuotaOverdraftProbeUnlessFailed(ctx, account.ID, state)
+				case "finalize":
+					state.Status = "failed"
+					changed, err = repo.FinalizeCodexQuotaOverdraftProbeFailed(ctx, account.ID, state, until, "legacy quota exhausted")
+				case "clear":
+					var clearedTemp bool
+					changed, clearedTemp, err = repo.ClearCodexQuotaOverdraftPauseIfState(ctx, account.ID, state.CycleKey, state.Status, "")
+					require.False(t, clearedTemp)
+				}
+				require.NoError(t, err)
+				require.Equal(t, mode == "legacy", changed)
+				after, err := repo.GetByID(ctx, account.ID)
+				require.NoError(t, err)
+				require.Equal(t, before.Credentials, after.Credentials)
+				if mode == "managed" {
+					require.Equal(t, before.Extra, after.Extra)
+					require.Equal(t, before.RateLimitResetAt, after.RateLimitResetAt)
+					require.Nil(t, after.TempUnschedulableUntil)
+				}
+			})
+		}
+	}
+}
 
 type AccountRepoSuite struct {
 	suite.Suite

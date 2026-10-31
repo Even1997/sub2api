@@ -73,9 +73,11 @@ func PrepareCodexQuotaOverdraftForCreate(account *Account) {
 
 // CodexQuotaOverdraftEnabledForAccount is the single runtime gate for the
 // experimental behavior. The global switch remains an emergency kill switch;
-// an account must also be explicitly enabled in Extra.
+// a legacy account must also be explicitly enabled in Extra. Managed grants
+// cannot use the parent credential or account-wide probe state.
 func CodexQuotaOverdraftEnabledForAccount(account *Account) bool {
-	if !CodexQuotaOverdraftEnabled() || !isCodexQuotaOverdraftAccount(account) || account.Extra == nil {
+	if !CodexQuotaOverdraftEnabled() || !isCodexQuotaOverdraftAccount(account) ||
+		account.HasManagedOpenAIConnections() || account.AuthConnectionID != "" || account.Extra == nil {
 		return false
 	}
 	enabled, ok := account.Extra[CodexQuotaOverdraftEnabledExtraKey].(bool)
