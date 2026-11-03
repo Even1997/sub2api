@@ -2064,7 +2064,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				terminalEventCount++
 			}
 			observeStreamFirstResponse(&firstTokenMs, firstResponseEnabled, turnStart, string(upstreamMessage), eventType)
-			if firstTokenMs == nil && isTokenEvent {
+			if firstTokenMs == nil && openai.ResponseStartsSemanticOutput(upstreamMessage, eventType) {
 				ms := int(requesttiming.Now(ctx).Sub(turnStart).Milliseconds())
 				firstTokenMs = &ms
 			}
