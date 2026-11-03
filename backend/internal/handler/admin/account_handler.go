@@ -748,12 +748,20 @@ func (h *AccountHandler) List(c *gin.Context) {
 	var accounts []service.Account
 	var total int64
 	var err error
-	if quotaWindow == "" {
+	var concurrencyCounts map[int64]int
+	sortByCurrentConcurrency := strings.EqualFold(strings.TrimSpace(sortBy), "current_concurrency")
+	if sortByCurrentConcurrency && quotaWindow == "" {
+		accounts, total, concurrencyCounts, err = h.listAccountsByCurrentConcurrency(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortOrder)
+	} else if quotaWindow == "" {
 		accounts, total, err = h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
 	} else if (platform != "" && platform != service.PlatformOpenAI) || (accountType != "" && accountType != service.AccountTypeOAuth) {
 		accounts = []service.Account{}
 	} else if lister, ok := h.adminService.(openAIQuotaWindowAccountLister); ok {
-		accounts, total, err = lister.ListOpenAIAccountsByQuotaWindow(c.Request.Context(), page, pageSize, accountType, status, search, groupID, privacyMode, quotaWindow, sortBy, sortOrder)
+		quotaSortBy := sortBy
+		if sortByCurrentConcurrency {
+			quotaSortBy = "id"
+		}
+		accounts, total, err = lister.ListOpenAIAccountsByQuotaWindow(c.Request.Context(), page, pageSize, accountType, status, search, groupID, privacyMode, quotaWindow, quotaSortBy, sortOrder)
 	} else {
 		response.InternalError(c, "OpenAI quota window filtering is unavailable")
 		return
@@ -790,7 +798,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 
 	reservations, _ := h.concurrencyService.GetAccountSlotReservationsBatch(c.Request.Context(), accountIDs)
-	concurrencyCounts := make(map[int64]int)
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
@@ -810,7 +817,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 
 	// 始终获取并发数（Redis ZCARD，极低开销）
-	if h.concurrencyService != nil {
+	if concurrencyCounts == nil && h.concurrencyService != nil {
 		if cc, ccErr := h.concurrencyService.GetAccountConcurrencyBatch(c.Request.Context(), accountIDs); ccErr == nil && cc != nil {
 			concurrencyCounts = cc
 		}

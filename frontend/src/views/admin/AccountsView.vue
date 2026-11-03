@@ -336,6 +336,12 @@
               </div>
             </div>
           </template>
+          <template #header-capacity="{ column }">
+            <div class="flex items-center">
+              <span>{{ column.label }}</span>
+              <HelpTooltip :content="t('admin.accounts.capacitySortHint')" width-class="w-80" />
+            </div>
+          </template>
           <template #cell-capacity="{ row }">
             <AccountCapacityCell :account="row" />
           </template>
@@ -835,6 +841,7 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
   'name',
   'status',
   'schedulable',
+  'capacity',
   'priority',
   'rate_multiplier',
   'upstream_billing_rate',
@@ -851,7 +858,7 @@ const loadInitialAccountSortState = (): AccountSortState => {
     const key = typeof parsed.key === 'string' ? parsed.key : ''
     if (!ACCOUNT_SORTABLE_KEYS.has(key)) return fallback
     return {
-      sort_by: key,
+      sort_by: key === 'capacity' ? 'current_concurrency' : key,
       sort_order: parsed.order === 'desc' ? 'desc' : 'asc'
     }
   } catch {
@@ -870,6 +877,7 @@ const autoRefreshIntervalSeconds = ref<(typeof autoRefreshIntervals)[number]>(30
 const autoRefreshCountdown = ref(0)
 const autoRefreshETag = ref<string | null>(null)
 const autoRefreshFetching = ref(false)
+let accountListContextVersion = 0
 const AUTO_REFRESH_SILENT_WINDOW_MS = 15000
 const autoRefreshSilentUntil = ref(0)
 const hasPendingListSync = ref(false)
@@ -1469,6 +1477,7 @@ useSwipeSelect(accountTableRef, {
 }, swipeVirtualContext)
 
 const resetAutoRefreshCache = () => {
+  accountListContextVersion += 1
   autoRefreshETag.value = null
   upstreamBillingRateETag.value = null
   upstreamBillingRateAbortController?.abort()
@@ -1564,8 +1573,9 @@ const applyUpstreamBillingRateSnapshots = async (
   const currentIDs = accounts.value.map(account => account.id)
   const currentByID = new Map(accounts.value.map(account => [account.id, account]))
 
-  // Fetch missing rows without replacing the table with its loading skeleton.
-  if (result.total !== pagination.total || nextIDs.length !== currentIDs.length || nextIDs.some(id => !currentByID.has(id))) {
+  // Live concurrency order and its displayed numerators must come from one list
+  // response; billing snapshots alone do not carry those counts.
+  if (sortState.sort_by === 'current_concurrency' || result.total !== pagination.total || nextIDs.length !== currentIDs.length || nextIDs.some(id => !currentByID.has(id))) {
     const page = await adminAPI.accounts.list(
       pagination.page,
       pagination.page_size,
@@ -1696,10 +1706,11 @@ const handlePageSizeChange = (size: number) => {
 }
 
 const handleSort = (key: string, order: AccountSortOrder) => {
-  sortState.sort_by = key
+  const sortBy = key === 'capacity' ? 'current_concurrency' : key
+  sortState.sort_by = sortBy
   sortState.sort_order = order
   const requestParams = params as any
-  requestParams.sort_by = key
+  requestParams.sort_by = sortBy
   requestParams.sort_order = order
   syncAccountListDerivedParams()
   pagination.page = 1
@@ -1835,6 +1846,7 @@ const mergeAccountsIncrementally = (nextRows: Account[]) => {
 const refreshAccountsIncrementally = async () => {
   if (autoRefreshFetching.value) return
   syncAccountListDerivedParams()
+  const requestContextVersion = accountListContextVersion
   autoRefreshFetching.value = true
   try {
     const result = await adminAPI.accounts.listWithEtag(
@@ -1853,6 +1865,9 @@ const refreshAccountsIncrementally = async () => {
       },
       { etag: autoRefreshETag.value }
     )
+
+    // A sort/filter/page change may finish while this refresh is in flight.
+    if (requestContextVersion !== accountListContextVersion) return
 
     if (result.etag) {
       autoRefreshETag.value = result.etag
@@ -2248,7 +2263,7 @@ const allColumns = computed(() => {
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
     { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
-    { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
+    { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: true },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'login_credential', label: t('admin.accounts.columns.loginCredential'), sortable: false },
     { key: 'image_capacity', label: t('admin.accounts.columns.imageCapacity'), sortable: false },
