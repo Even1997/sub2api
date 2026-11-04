@@ -37,6 +37,7 @@ import (
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
+	compositeResolver          *service.CompositeRouteResolver
 	gatewayService             *service.OpenAIGatewayService
 	billingCacheService        *service.BillingCacheService
 	apiKeyService              *service.APIKeyService
@@ -2984,6 +2985,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 全部候选值逐一校验，任一未命中即拒绝。同一快照同时作为本轮队列复核的
 	// 不可变权限，等待 worker 不读取 Gin 上下文。
 	firstTurnQueuePermissions := openAIWSQueueTurnPermissions(reqModel, firstMessage)
+	firstTurnQueuePermissions.Models = service.APIKeyModelCandidates(apiKey, firstTurnQueuePermissions.Models)
 	firstFrameModels := firstTurnQueuePermissions.Models
 	if blocked := blockedModelAllowlistCandidate(apiKey.Group, firstTurnQueuePermissions.Models); blocked != "" {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
@@ -2998,7 +3000,30 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for your account in this group", denied))
 		return
 	}
-	ensureCompositeTargetPlatform(c, apiKey, reqModel)
+	// Keep the client model in the frame for admission, response identity and usage.
+	// Apply the resolved upstream model through MapRequestModel on every turn.
+	wsRouteModel := service.MapAPIKeyModel(apiKey, reqModel)
+	if wsRouteModel != reqModel {
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.RequestedPublicModel, reqModel))
+	}
+	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite && h.compositeResolver != nil {
+		decision, resolveErr := h.compositeResolver.Resolve(c.Request.Context(), apiKey.Group.ID, wsRouteModel, service.CompositeRouteEndpointResponses)
+		if resolveErr != nil {
+			reqLog.Error("openai.websocket_composite_route_failed", zap.Error(resolveErr))
+			closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "Failed to resolve composite model route")
+			return
+		}
+		if decision.OAuthAmbiguous() {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, decision.AmbiguousMessage())
+			return
+		}
+		if decision.Matched {
+			c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
+			wsRouteModel = decision.UpstreamModel
+		}
+	}
+	ensureCompositeTargetPlatform(c, apiKey, wsRouteModel)
 	ctx = c.Request.Context()
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
 		platform, ok := service.ResolvedTargetPlatformFromContext(ctx)
@@ -3419,6 +3444,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		)
 
 		maxReasoningEffort, reasoningEffortMappings, maxReasoningEffortOverLimit, _ := openAIReasoningEffortPolicyForRequest(c, apiKey)
+		forcedReasoningEffort := ""
+		if effectiveAPIKeyPlatform(c, apiKey) == service.PlatformOpenAI {
+			forcedReasoningEffort = apiKey.ReasoningEffort
+		}
 		var requestPayloadHash string
 		var turnStartsMu sync.Mutex
 		turnStarts := make(map[int]time.Time, 4)
@@ -3464,6 +3493,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			MaxReasoningEffort:          maxReasoningEffort,
 			MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
 			ReasoningEffortMappings:     reasoningEffortMappings,
+			ForcedReasoningEffort:       forcedReasoningEffort,
+			APIKeyModelMapping:          len(apiKey.ModelMapping) > 0,
 			TurnStarted:                 recordTurnStart,
 			BeforePayloadParse: func(turn int, raw []byte, effectiveModel string) error {
 				if middleware2.CheckGroupSubagentFrame(c, raw) {
@@ -3488,6 +3519,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					model = reqModel
 				}
 				turnQueuePermissions = openAIWSQueueTurnPermissions(model, raw)
+				turnQueuePermissions.Models = service.APIKeyModelCandidates(apiKey, turnQueuePermissions.Models)
 				permissionsPreflightTurn = turn
 				turnCtx := service.WithAPIKeyQueueRequestPermissions(c.Request.Context(), turnQueuePermissions)
 				if err := h.concurrencyHelper.RevalidateTurnAuth(turnCtx); err != nil {
@@ -3541,6 +3573,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 注入的生图工具），不再重写候选集；无 pre-parse 的入口则保留
 				// 原解析载荷捕获语义。与 HTTP 一致：实际生效模型始终参与复核。
 				parsedQueuePermissions := openAIWSQueueTurnPermissions(model, payload)
+				parsedQueuePermissions.Models = service.APIKeyModelCandidates(apiKey, parsedQueuePermissions.Models)
 				if permissionsPreflightTurn != turn {
 					turnQueuePermissions = parsedQueuePermissions
 				} else {
@@ -3574,7 +3607,16 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				setOpsRequestContext(c, model, true)
 				bindOpenAIPriorityObservation(c, apiKey.GroupID, model)
-				mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, model)
+				routeModel := service.MapAPIKeyModel(apiKey, model)
+				if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
+					// The account, target platform and route context are connection-scoped.
+					// A different public model needs a new connection and fresh resolution.
+					if model != reqModel {
+						return "", newOpenAIWSUnsupportedModelSwitchError(model)
+					}
+					routeModel = wsRouteModel
+				}
+				mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, routeModel)
 				mappedModelUnchanged := false
 				if previous := turnChannelMapping.Load(); previous != nil && previous.turn < turn {
 					mappedModelUnchanged = strings.TrimSpace(previous.mapping.MappedModel) == strings.TrimSpace(mapping.MappedModel)
@@ -3686,12 +3728,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if snapshot := turnChannelMapping.Load(); snapshot != nil && snapshot.turn == turn {
 					turnMapping = snapshot.mapping
 				} else {
-					turnMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, turnRequestedModel)
+					turnMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, service.MapAPIKeyModel(apiKey, turnRequestedModel))
 				}
 				if turnUpstreamModel == "" {
 					turnUpstreamModel = turnRequestedModel
 				}
 				turnUsageFields := turnMapping.ToUsageFields(turnRequestedModel, turnUpstreamModel)
+				if mapped := service.MapAPIKeyModel(apiKey, turnRequestedModel); mapped != turnRequestedModel {
+					turnUsageFields.APIKeyMappedModel = mapped
+				}
 				cyberMarked := service.GetOpsCyberPolicy(c) != nil
 				var cyberIdentityOverride *service.CyberSessionIdentityResolution
 				if cyberTurnContext.identity.Metadata.Status != "" {
@@ -3722,7 +3767,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if result == nil {
 					return
 				}
-				result.BillingModel = openAIWSTurnBillingModel(result, turnMapping, turnRequestedModel, turnUpstreamModel)
+				result.BillingModel = openAIWSTurnBillingModel(result, turnMapping, service.MapAPIKeyModel(apiKey, turnRequestedModel), turnUpstreamModel)
 				reqLog.Debug("openai.websocket_turn_billing",
 					zap.Int("turn", turn),
 					zap.String("turn_requested_model", turnRequestedModel),

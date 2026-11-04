@@ -94,6 +94,8 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		MixedMode:          k.MixedMode,
 		MixedGroups:        append([]int64(nil), k.MixedGroupIDs...),
 		Status:             k.Status,
+		ModelMapping:       k.ModelMapping,
+		ReasoningEffort:    k.ReasoningEffort,
 		IPWhitelist:        k.IPWhitelist,
 		IPBlacklist:        k.IPBlacklist,
 		LastUsedAt:         k.LastUsedAt,

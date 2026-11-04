@@ -14,6 +14,8 @@ type APIKeyAuthSnapshot struct {
 	MixedGroupIDs    []int64                   `json:"mixed_group_ids,omitempty"`
 	Name             string                    `json:"name"`
 	Status           string                    `json:"status"`
+	ModelMapping     map[string]string         `json:"model_mapping,omitempty"`
+	ReasoningEffort  string                    `json:"reasoning_effort,omitempty"`
 	IPWhitelist      []string                  `json:"ip_whitelist,omitempty"`
 	IPBlacklist      []string                  `json:"ip_blacklist,omitempty"`
 	User             APIKeyAuthUserSnapshot    `json:"user"`

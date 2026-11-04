@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -156,6 +157,8 @@ type apiKeyQueueInitialIdentity struct {
 	maxReasoningEffort string
 	reasoningOverLimit string
 	reasoningMappings  []service.ReasoningEffortMapping
+	modelMapping       map[string]string
+	forcedReasoning    string
 }
 
 func captureAPIKeyQueueIdentity(initial *service.APIKey) apiKeyQueueInitialIdentity {
@@ -165,6 +168,8 @@ func captureAPIKeyQueueIdentity(initial *service.APIKey) apiKeyQueueInitialIdent
 	}
 	identity.keyID = initial.ID
 	identity.userID = initial.UserID
+	identity.modelMapping = maps.Clone(initial.ModelMapping)
+	identity.forcedReasoning = initial.ReasoningEffort
 	if initial.GroupID != nil {
 		groupID := *initial.GroupID
 		identity.groupID = &groupID
@@ -187,6 +192,12 @@ func captureAPIKeyQueueIdentity(initial *service.APIKey) apiKeyQueueInitialIdent
 // authorization identity.
 func apiKeyQueueCoreIdentityChanged(initial apiKeyQueueInitialIdentity, latest *service.APIKey) bool {
 	if latest == nil {
+		return true
+	}
+	// A queued request or persistent socket has already resolved its route
+	// and fixed effort. Re-enter authentication after an administrator changes
+	// either setting rather than forwarding an old policy under a fresh key.
+	if initial.forcedReasoning != latest.ReasoningEffort || !maps.Equal(initial.modelMapping, latest.ModelMapping) {
 		return true
 	}
 	if initial.userID != 0 && latest.UserID != initial.userID {

@@ -1,5 +1,6 @@
 import autoCredit from './autoCredit'
 import accountPerformance from './accountPerformance'
+import apiKeyModelPolicy from './apiKeyModelPolicy'
 import lottery from './lottery'
 import accountTestTiming from './accountTestTiming'
 import bills from './bills'
@@ -38,6 +39,7 @@ import latencyObservability from './latencyObservability'
 import autoConfig from './autoConfig'
 
 export default {
+  apiKeyModelPolicy,
   autoCredit,
  accountPerformance,
 	lottery,
