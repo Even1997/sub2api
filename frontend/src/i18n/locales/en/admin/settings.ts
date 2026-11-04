@@ -600,7 +600,7 @@ export default {
         grokBaseURLModeEUWest1: 'Regional API (eu-west-1)',
         openaiTTFTMode: 'OpenAI Responses first-token metric',
         streamFirstResponse: 'Use first response for first-token timing',
-        streamFirstResponseHint: 'Forward the first real upstream event immediately and use its arrival for first-token timing, overriding the metric below. Heartbeats are excluded. Errors after output stay in the current stream and cannot silently switch requests. Disable to restore the previous policy.',
+        streamFirstResponseHint: 'Forward the first real upstream event immediately. First-token timing uses the upstream response arrival, not a later event, and overrides the metric below. Heartbeats are excluded. Errors after output has been sent stay in the current stream and cannot silently switch requests. Disable to restore the previous policy.',
         openaiTTFTModeSemantic: 'First token (default)',
         openaiTTFTModeVisible: 'Actual visible output',
         openaiTTFTModeHint: 'By default, first_token_ms is recorded when the upstream response begins, while user-facing labels remain “First token.” Actual visible output records it only when non-empty text, tool arguments, or image content arrives.',

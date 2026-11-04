@@ -125,15 +125,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	var firstTokenMs *int
 	firstResponseEnabled := s.settingService.IsStreamFirstResponseEnabled(ctx)
 	ttftMode := s.openAITTFTMode(ctx)
-	firstResponseMs := int(time.Since(startTime).Milliseconds())
-	if firstResponseMs < 0 {
-		firstResponseMs = 0
-	}
+	firstResponseMs := upstreamResponseElapsedMs(startTime)
 	reportedFirstTokenMs := func() *int {
-		if !firstResponseEnabled && ttftMode == OpenAITTFTModeSemantic {
-			return &firstResponseMs
-		}
-		return firstTokenMs
+		return reportedOpenAIFirstTokenMs(firstResponseEnabled, ttftMode, firstResponseMs, firstTokenMs)
 	}
 	firstOutputProgressObserved := false
 	bufferedWriter := bufio.NewWriterSize(w, 4*1024)

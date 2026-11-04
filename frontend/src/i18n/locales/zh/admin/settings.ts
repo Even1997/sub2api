@@ -593,7 +593,7 @@ export default {
         grokBaseURLModeEUWest1: '区域 API（eu-west-1）',
         openaiTTFTMode: 'OpenAI Responses 首字统计口径',
         streamFirstResponse: '首字使用首响口径',
-        streamFirstResponseHint: '开启后，流式接口收到上游首个真实响应事件即转发，首字时间按该事件计时，优先于下方统计口径。心跳不计入；已发出响应后发生的错误将在当前流内返回，无法再无感切换请求。关闭后恢复原有策略。',
+        streamFirstResponseHint: '开启后，流式接口收到上游首个真实响应事件即转发；首字时间按上游响应头到达计时，不再等后续事件，优先于下方统计口径。心跳不计入首字；已向客户端发出响应后发生的错误将在当前流内返回，无法再无感切换请求。关闭后恢复原有策略。',
         openaiTTFTModeSemantic: '首字（默认）',
         openaiTTFTModeVisible: '真实可见输出',
         openaiTTFTModeHint: '默认在上游开始响应时记录 first_token_ms，管理员和用户侧均显示“首字”。选择真实可见输出后，仅在首个非空文本、工具参数或图片内容到达时记录。',

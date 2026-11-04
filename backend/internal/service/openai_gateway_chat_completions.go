@@ -898,6 +898,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var usage OpenAIUsage
 	var firstTokenMs *int
 	firstResponseEnabled := s.settingService.IsStreamFirstResponseEnabled(c)
+	responseMs := upstreamResponseElapsedMs(startTime)
 	clientDisconnected := false
 	clientOutputStarted := false
 	pendingSSE := make([]string, 0, 4)
@@ -943,7 +944,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 			Stream:                        true,
 			Duration:                      time.Since(startTime),
-			FirstTokenMs:                  firstTokenMs,
+			FirstTokenMs:                  storedStreamFirstTokenMs(firstResponseEnabled, responseMs, firstTokenMs),
 		}
 		if searchCount > 0 {
 			out.SearchCount = searchCount

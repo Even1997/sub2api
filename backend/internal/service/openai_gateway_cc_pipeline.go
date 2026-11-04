@@ -281,9 +281,14 @@ func (s *OpenAIGatewayService) scanCCStream(
 	requestID string,
 	startTime time.Time,
 	emit func(*apicompat.ChatCompletionsChunk),
-) ccStreamScanState {
-	var st ccStreamScanState
+) (st ccStreamScanState) {
 	firstResponseEnabled := s.settingService.IsStreamFirstResponseEnabled(c)
+	responseMs := upstreamResponseElapsedMs(startTime)
+	defer func() {
+		if firstResponseEnabled {
+			st.FirstTokenMs = storedStreamFirstTokenMs(true, responseMs, nil)
+		}
+	}()
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 	for scanner.Scan() {

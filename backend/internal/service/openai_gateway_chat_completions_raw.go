@@ -336,6 +336,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	var usage OpenAIUsage
 	var firstTokenMs *int
 	firstResponseEnabled := s.settingService.IsStreamFirstResponseEnabled(c)
+	responseMs := upstreamResponseElapsedMs(startTime)
 	clientDisconnected := false
 	clientOutputStarted := false
 	pendingLines := make([]string, 0, 8)
@@ -441,7 +442,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 			Stream:                        true,
 			Duration:                      requesttiming.Now(c.Request.Context()).Sub(startTime),
-			FirstTokenMs:                  firstTokenMs,
+			FirstTokenMs:                  storedStreamFirstTokenMs(firstResponseEnabled, responseMs, firstTokenMs),
 		}
 	}
 

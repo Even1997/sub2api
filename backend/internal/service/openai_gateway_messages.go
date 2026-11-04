@@ -1024,6 +1024,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	firstResponseEnabled := s.settingService.IsStreamFirstResponseEnabled(c)
+	responseMs := upstreamResponseElapsedMs(startTime)
 	clientDisconnected := false
 	clientOutputStarted := false
 	var streamFailoverErr error
@@ -1068,7 +1069,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 			Stream:                        true,
 			Duration:                      time.Since(startTime),
-			FirstTokenMs:                  firstTokenMs,
+			FirstTokenMs:                  storedStreamFirstTokenMs(firstResponseEnabled, responseMs, firstTokenMs),
 			ClientDisconnect:              clientDisconnected,
 		}
 		if searchCount > 0 {

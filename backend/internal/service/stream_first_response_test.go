@@ -29,6 +29,14 @@ func setStreamFirstResponseForTest(t *testing.T, enabled bool) {
 	})
 }
 
+func TestReportedOpenAIFirstTokenUsesResponseArrival(t *testing.T) {
+	event := 900
+	require.Equal(t, 120, *reportedOpenAIFirstTokenMs(true, OpenAITTFTModeVisible, 120, &event))
+	require.Equal(t, 120, *reportedOpenAIFirstTokenMs(false, OpenAITTFTModeSemantic, 120, &event))
+	require.Equal(t, 900, *reportedOpenAIFirstTokenMs(false, OpenAITTFTModeVisible, 120, &event))
+	require.Nil(t, reportedOpenAIFirstTokenMs(false, OpenAITTFTModeVisible, 120, nil))
+}
+
 func TestStreamFirstResponseClassification(t *testing.T) {
 	for _, data := range []string{"", ": ping", "[DONE]", "null", "[]", "broken", `{"type":"ping"}`, `{"type":"keepalive"}`, `{"type":"heartbeat"}`} {
 		require.False(t, isStreamFirstResponse(data, ""), data)
@@ -101,6 +109,7 @@ func TestStreamFirstResponseHTTPFlushAndTiming(t *testing.T) {
 				metadataSent := make(chan struct{})
 				go func() {
 					defer writer.Close()
+					time.Sleep(200 * time.Millisecond)
 					_, _ = io.WriteString(writer, "data: "+`{"type":"response.created","response":{"id":"resp_first"}}`+"\n\n")
 					close(metadataSent)
 					<-release
@@ -144,7 +153,7 @@ func TestStreamFirstResponseHTTPFlushAndTiming(t *testing.T) {
 				require.NotNil(t, result)
 				require.NotNil(t, result.firstTokenMs)
 				if enabled {
-					require.LessOrEqual(t, *result.firstTokenMs, firstFlushMs)
+					require.LessOrEqual(t, *result.firstTokenMs, firstFlushMs-80)
 				} else {
 					require.GreaterOrEqual(t, *result.firstTokenMs, contentReleasedMs)
 				}

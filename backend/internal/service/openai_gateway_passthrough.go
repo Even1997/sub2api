@@ -2014,15 +2014,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	responseID := ""
 	ttftMode := s.openAITTFTMode(ctx)
 	firstResponseEnabled := s.settingService.IsStreamFirstResponseEnabled(ctx)
-	firstResponseMs := int(time.Since(startTime).Milliseconds())
-	if firstResponseMs < 0 {
-		firstResponseMs = 0
-	}
+	firstResponseMs := upstreamResponseElapsedMs(startTime)
 	reportedFirstTokenMs := func() *int {
-		if !firstResponseEnabled && ttftMode == OpenAITTFTModeSemantic {
-			return &firstResponseMs
-		}
-		return firstTokenMs
+		return reportedOpenAIFirstTokenMs(firstResponseEnabled, ttftMode, firstResponseMs, firstTokenMs)
 	}
 	requesttiming.Mode(ctx, ttftMode)
 	clientDisconnected := OpenAIHeaderWaitDisconnected(c)

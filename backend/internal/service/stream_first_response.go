@@ -41,3 +41,32 @@ func observeStreamFirstResponse(firstTokenMs **int, enabled bool, startTime time
 	ms := max(0, int(time.Since(startTime).Milliseconds()))
 	*firstTokenMs = &ms
 }
+
+func upstreamResponseElapsedMs(start time.Time) int {
+	ms := int(time.Since(start).Milliseconds())
+	if ms < 0 {
+		return 0
+	}
+	return ms
+}
+
+// storedStreamFirstTokenMs is the value written as first_token_ms.
+// When the switch is on, that value is the upstream response arrival, not the
+// first stream event. eventMs stays unchanged for forwarding and failover.
+func storedStreamFirstTokenMs(enabled bool, responseMs int, eventMs *int) *int {
+	if !enabled {
+		return eventMs
+	}
+	ms := responseMs
+	if ms < 0 {
+		ms = 0
+	}
+	return &ms
+}
+
+func reportedOpenAIFirstTokenMs(enabled bool, mode string, responseMs int, eventMs *int) *int {
+	if enabled || mode == OpenAITTFTModeSemantic {
+		return storedStreamFirstTokenMs(true, responseMs, nil)
+	}
+	return eventMs
+}
