@@ -86,6 +86,8 @@ func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
 }
 
 func provideCleanup(
+	balanceNotify *service.BalanceNotifyService,
+	cfg *config.Config,
 	requestCaptures *requestcapture.Manager,
 	entClient *ent.Client,
 	rdb *redis.Client,
@@ -146,10 +148,15 @@ func provideCleanup(
 ) func() {
 	if openAIGateway != nil {
 		openAIGateway.StartBPSWarmPool()
-		openAIGateway.StartBPS403Recovery()
-		openAIGateway.StartBPSModelRecovery()
+		if cfg == nil || cfg.RunsBackgroundJobs() {
+			openAIGateway.StartBPS403Recovery()
+			openAIGateway.StartBPSModelRecovery()
+		}
 	}
 	return func() {
+		if balanceNotify != nil {
+			balanceNotify.Stop()
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
