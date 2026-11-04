@@ -306,6 +306,8 @@ type RateLimitCacheInvalidator interface {
 }
 
 type APIKeyService struct {
+	autoCredit                AutoCreditRepository
+	autoCreditBilling         *BillingCacheService
 	balanceRejectionNotifier  BalanceRejectionNotifier
 	localAuth                 *RegionalAuthReader
 	regionalAuthRuntime       *regionalSchedulerRuntime

@@ -72,7 +72,9 @@ func ProvideAdminHandlers(
 	codexHarvest *service.CodexHarvestService,
 	openAIGatewayService *service.OpenAIGatewayService,
 	cfg *config.Config,
+	autoCredit service.AutoCreditRepository,
 ) *AdminHandlers {
+	userHandler.SetAutoCredit(autoCredit)
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
 	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)

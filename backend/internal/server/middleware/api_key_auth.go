@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -32,7 +33,10 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 // usage 允许过期/配额耗尽的 Key 查询自身用量，billing 用于读取当前 Key 的倍率配置，
 // 异步生图查询允许已耗尽额度的 Key 拉取自身任务结果。
 func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
-	return func(c *gin.Context) {
+	var authenticate gin.HandlerFunc
+	authenticate = func(c *gin.Context) {
+		authDone := requesttiming.Observe(c.Request.Context(), "api_key_auth")
+		defer authDone()
 		// ── 1. 提取 API Key ──────────────────────────────────────────
 
 		if apiKeyHeadersTooLarge(c) {
@@ -102,7 +106,11 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		// ── 2. 验证 Key 存在 ─────────────────────────────────────────
 
-		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
+		lookup := apiKeyService.GetByKey
+		if c.GetBool("auto_credit.attempted") {
+			lookup = apiKeyService.GetByKeyUncached
+		}
+		apiKey, err := lookup(c.Request.Context(), apiKeyString)
 		if err != nil {
 			if errors.Is(err, service.ErrUserNotFound) {
 				AbortWithError(c, 401, "USER_NOT_FOUND", "User associated with API key not found")
@@ -304,11 +312,22 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				} else {
 					// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
 					if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
+						if !c.GetBool("auto_credit.attempted") {
+							c.Set("auto_credit.attempted", true)
+							recovered, recoveryErr := apiKeyService.RecoverAutoCreditAdmission(c.Request.Context(), apiKey)
+							if recoveryErr != nil {
+								AbortWithError(c, 503, "AUTO_CREDIT_UNAVAILABLE", "Credit authorization unavailable")
+								return
+							}
+							if recovered {
+								authenticate(c)
+								return
+							}
+						}
 						apiKeyService.NotifyBalanceRejected(apiKey.User)
 						AbortWithError(c, 403, "INSUFFICIENT_BALANCE", service.InsufficientUserBalanceMessage)
 						return
 					}
-				}
 			}
 		}
 
@@ -330,6 +349,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		nextWithAPIKeyAdmissionOwner(c, apiKeyService, apiKeyString, ip.GetSecurityClientIP(c, cfg.TrustForwardedIPForAPIKeyACL()), apiKey, false)
 	}
+	return authenticate
 }
 
 func apiKeyHeadersTooLarge(c *gin.Context) bool {

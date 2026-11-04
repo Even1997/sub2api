@@ -990,6 +990,7 @@ func ProvideAPIKeyService(
 	concurrencyService *ConcurrencyService,
 	channelMonitorService *ChannelMonitorService,
 	authority RegionalAuthAuthority,
+	autoCredit AutoCreditRepository,
 ) (*APIKeyService, error) {
 	svc := NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, userGroupRateRepo, cache, cfg)
 	svc.SetRateLimitCacheInvalidator(billingCacheService)
@@ -1012,6 +1013,9 @@ func ProvideAPIKeyService(
 			}
 			svc.localAuth = reader
 		}
+	}
+	if cfg == nil || cfg.Runtime.Role != config.RuntimeRoleGateway {
+		svc.SetAutoCredit(autoCredit, billingCacheService)
 	}
 	return svc, nil
 }
