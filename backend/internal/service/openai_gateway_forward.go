@@ -1331,6 +1331,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return true, nil
 	}
 	for {
+		latest, admissionErr := s.admitOpenAITurn(ctx, c, account, extractOpenAICodexTicketModel(body), body)
+		if admissionErr != nil {
+			return nil, admissionErr
+		}
+		account = latest
+		token, _, err = s.GetAccessToken(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 		var headerGuard *openAIFirstOutputHeaderGuard

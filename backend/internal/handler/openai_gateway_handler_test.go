@@ -744,9 +744,10 @@ func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
 		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
 		groupID := int64(4101)
 		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-			ID:      5101,
-			GroupID: &groupID,
-			User:    &service.User{ID: 6101},
+			AllowLongContext: true,
+			ID:               5101,
+			GroupID:          &groupID,
+			User:             &service.User{ID: 6101},
 			Group: &service.Group{
 				ID:                    groupID,
 				Platform:              service.PlatformOpenAI,
@@ -769,9 +770,10 @@ func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
 		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"grok-4.3","messages":[{"role":"user","content":"hi"}]}`))
 		groupID := int64(4102)
 		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-			ID:      5102,
-			GroupID: &groupID,
-			User:    &service.User{ID: 6102},
+			AllowLongContext: true,
+			ID:               5102,
+			GroupID:          &groupID,
+			User:             &service.User{ID: 6102},
 			Group: &service.Group{
 				ID:                    groupID,
 				Platform:              service.PlatformGrok,
@@ -834,8 +836,9 @@ func TestOpenAIResponses_MissingDependencies_ReturnsServiceUnavailable(t *testin
 
 	groupID := int64(2)
 	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		ID:      10,
-		GroupID: &groupID,
+		AllowLongContext: true,
+		ID:               10,
+		GroupID:          &groupID,
 	})
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
 		UserID:      1,
@@ -887,9 +890,10 @@ func TestOpenAIResponses_RejectsMessageIDAsPreviousResponseID(t *testing.T) {
 
 	groupID := int64(2)
 	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		ID:      101,
-		GroupID: &groupID,
-		User:    &service.User{ID: 1},
+		AllowLongContext: true,
+		ID:               101,
+		GroupID:          &groupID,
+		User:             &service.User{ID: 1},
 	})
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
 		UserID:      1,
@@ -915,9 +919,10 @@ func TestOpenAIResponses_AcceptsHTTPContinuationPreviousResponseIDBeforeRouting(
 
 	groupID := int64(2)
 	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		ID:      101,
-		GroupID: &groupID,
-		User:    &service.User{ID: 1},
+		AllowLongContext: true,
+		ID:               101,
+		GroupID:          &groupID,
+		User:             &service.User{ID: 1},
 	})
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
 		UserID:      1,
@@ -944,10 +949,11 @@ func TestOpenAIResponses_RejectsHTTPContinuationOwnedByAnotherUser(t *testing.T)
 
 	groupID := int64(2)
 	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		ID:      202,
-		UserID:  2,
-		GroupID: &groupID,
-		User:    &service.User{ID: 2},
+		AllowLongContext: true,
+		ID:               202,
+		UserID:           2,
+		GroupID:          &groupID,
+		User:             &service.User{ID: 2},
 	})
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 2, Concurrency: 1})
 
@@ -970,7 +976,7 @@ func TestOpenAIResponses_RejectsUnownedHTTPContinuation(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	groupID := int64(2)
-	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 101, UserID: 1, GroupID: &groupID, User: &service.User{ID: 1}})
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 101, UserID: 1, GroupID: &groupID, User: &service.User{ID: 1}, AllowLongContext: true})
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1, Concurrency: 1})
 
 	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
@@ -992,9 +998,10 @@ func TestOpenAIResponses_FunctionCallOutputHTTPGuidanceDoesNotSuggestPreviousRes
 
 	groupID := int64(2)
 	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		ID:      101,
-		GroupID: &groupID,
-		User:    &service.User{ID: 1},
+		AllowLongContext: true,
+		ID:               101,
+		GroupID:          &groupID,
+		User:             &service.User{ID: 1},
 	})
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
 		UserID:      1,
@@ -1917,9 +1924,10 @@ func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject
 	t.Helper()
 	groupID := int64(2)
 	apiKey := &service.APIKey{
-		ID:      101,
-		GroupID: &groupID,
-		User:    &service.User{ID: subject.UserID},
+		AllowLongContext: true,
+		ID:               101,
+		GroupID:          &groupID,
+		User:             &service.User{ID: subject.UserID},
 	}
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
@@ -2286,7 +2294,8 @@ func TestOpenAIResponses_APIKeyPassthroughPool5xxRetriesThenExhaustsMaxSwitches(
 	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.2","input":"hello","stream":false}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		ID: 1803, GroupID: &groupID,
+		AllowLongContext: true,
+		ID:               1803, GroupID: &groupID,
 		User:  &service.User{ID: 1703, Status: service.StatusActive},
 		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
 	})
@@ -2387,7 +2396,8 @@ func TestOpenAIResponses_APIKeyPassthroughPoolAuthFailureRetriesThenSwitchesToHe
 			c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.2","input":"hello","stream":false}`))
 			c.Request.Header.Set("Content-Type", "application/json")
 			c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-				ID: 1803, GroupID: &groupID,
+				AllowLongContext: true,
+				ID:               1803, GroupID: &groupID,
 				User:  &service.User{ID: 1703, Status: service.StatusActive},
 				Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
 			})
@@ -2469,7 +2479,8 @@ func TestOpenAIResponses_APIKeyPassthroughSSERateLimitUsesConfiguredPoolRetry(t 
 	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello","stream":true}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		ID: 1804, GroupID: &groupID,
+		AllowLongContext: true,
+		ID:               1804, GroupID: &groupID,
 		User:  &service.User{ID: 1704, Status: service.StatusActive},
 		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
 	})
@@ -2630,10 +2641,11 @@ func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T
 	}
 
 	apiKey := &service.APIKey{
-		ID:      1802,
-		GroupID: &groupID,
-		User:    &service.User{ID: 1702, Status: service.StatusActive},
-		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+		AllowLongContext: true,
+		ID:               1802,
+		GroupID:          &groupID,
+		User:             &service.User{ID: 1702, Status: service.StatusActive},
+		Group:            &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
 	}
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
@@ -2816,10 +2828,11 @@ func TestOpenAIResponsesWebSocket_FirstOutputTimeoutWithoutDownstreamReusesClien
 	}
 
 	apiKey := &service.APIKey{
-		ID:      1812,
-		GroupID: &groupID,
-		User:    &service.User{ID: 1712, Status: service.StatusActive},
-		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+		AllowLongContext: true,
+		ID:               1812,
+		GroupID:          &groupID,
+		User:             &service.User{ID: 1712, Status: service.StatusActive},
+		Group:            &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
 	}
 	handlerDone := make(chan struct{})
 	router := gin.New()
@@ -3120,12 +3133,13 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	}
 
 	apiKey := &service.APIKey{
-		ID:      1801,
-		UserID:  1701,
-		Key:     "synthetic-ws-auth-key",
-		Status:  service.StatusActive,
-		GroupID: &groupID,
-		User:    &service.User{ID: 1701, Status: service.StatusActive},
+		AllowLongContext: true,
+		ID:               1801,
+		UserID:           1701,
+		Key:              "synthetic-ws-auth-key",
+		Status:           service.StatusActive,
+		GroupID:          &groupID,
+		User:             &service.User{ID: 1701, Status: service.StatusActive},
 	}
 	if tc.apiKeyService != nil {
 		h.apiKeyService = tc.apiKeyService
