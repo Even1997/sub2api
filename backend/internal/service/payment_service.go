@@ -199,6 +199,10 @@ type PaymentVerificationCooldown interface {
 // --- Service ---
 
 type PaymentService struct {
+	// This bounded scan cursor is only a fairness hint, never payment evidence.
+	// A restart/leader change starts again at the lowest eligible order ID.
+	easyPayRecoveryMu        sync.Mutex
+	easyPayRecoveryAfter     int64
 	lottery                  *LotteryService
 	providerMu               sync.Mutex
 	verificationFlight       singleflight.Group
