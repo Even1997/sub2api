@@ -128,6 +128,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/settings/AccountPerformanceSettings.spec.ts \
 	src/components/account/__tests__/AccountPerformanceCell.spec.ts \
 	src/components/account/__tests__/AccountPerformanceDialog.spec.ts \
+	src/api/__tests__/admin.accounts.performance.spec.ts \
 	src/views/admin/__tests__/SettingsView.spec.ts \
 	src/features/channel-monitor-v2/__tests__/designSystem.structure.spec.ts \
 	src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts \
