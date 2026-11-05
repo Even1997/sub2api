@@ -1,36 +1,74 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
+import { createI18n } from 'vue-i18n'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import { beforeEach, describe, expect, it } from 'vitest'
 import SmartOpsNav from '../SmartOpsNav.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useNewFeatureNoticeStore } from '@/stores/newFeatureNotices'
+import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
+import type { User } from '@/types'
 
-const route = vi.hoisted(() => ({ path: '/admin/priority-scheduling' }))
+const smartOpsPaths = ['/admin/lottery', '/admin/auto-config', '/admin/priority-scheduling',
+  '/admin/channel-operations', '/admin/profit-operations', '/admin/account-quality', '/admin/controlled-experiments', '/admin/account-ops', '/admin/token-guard', '/admin/token-guard-v2', '/admin/pelican-tests', '/admin/group-cache-tests']
 
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
-vi.mock('vue-router', () => ({
-  useRoute: () => route,
-  RouterLink: {
-    props: ['to'],
-    template: '<a :href="to"><slot :is-active="to === route.path" /></a>',
-    setup: () => ({ route }),
-  },
-}))
+async function mountAt(path: string) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [...smartOpsPaths, '/admin/ai-ops', '/admin/gateway-borrow'].map(route => ({ path: route, component: { template: '<div />' } }))
+  })
+  await router.push(path)
+  await router.isReady()
+  const i18n = createI18n({ legacy: false, locale: 'zh', missingWarn: false, fallbackWarn: false, messages: { zh: {} } })
+  return mount(SmartOpsNav, { global: { plugins: [router, i18n] } })
+}
+
+const hrefs = (wrapper: Awaited<ReturnType<typeof mountAt>>) => wrapper.findAll('a').map(link => link.attributes('href'))
 
 describe('SmartOpsNav', () => {
-  it('keeps existing operations links when priority scheduling is added', () => {
-    const wrapper = mount(SmartOpsNav)
-    expect(wrapper.findAll('a').map((link) => link.attributes('href'))).toEqual([
-      '/admin/lottery',
-      '/admin/auto-config',
-      '/admin/priority-scheduling',
-      '/admin/channel-operations',
-      '/admin/profit-operations',
-      '/admin/account-quality',
-      '/admin/controlled-experiments',
-      '/admin/account-ops',
-      '/admin/token-guard',
-      '/admin/token-guard-v2',
-      '/admin/pelican-tests',
-      '/admin/group-cache-tests',
-      '/admin/gateway-borrow',
-    ])
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    useAuthStore().user = { id: 41, role: 'admin' } as User
+  })
+
+  it('keeps lottery administration reachable and marks the selected pool management page', async () => {
+    const wrapper = await mountAt('/admin/lottery')
+    expect(hrefs(wrapper)).toContain('/admin/lottery')
+    expect(wrapper.find('[aria-current="page"]').text()).toBe('lottery.adminTitle')
+  })
+
+  it('keeps gateway borrow at the end and does not move request capture or harvest flow into this bar', async () => {
+    const wrapper = await mountAt('/admin/gateway-borrow')
+    expect(hrefs(wrapper)).toEqual([...smartOpsPaths, '/admin/ai-ops', '/admin/gateway-borrow'])
+    expect(hrefs(wrapper)).not.toContain('/admin/request-captures')
+    expect(hrefs(wrapper)).not.toContain('/admin/harvest-flow')
+    expect(wrapper.find('[aria-current="page"]').text()).toBe('nav.gatewayBorrow')
+  })
+
+  it('hides the AI operations entry from observers', async () => {
+    useAuthStore().user = { id: 42, role: 'observer' } as User
+    const wrapper = await mountAt('/admin/pelican-tests')
+    expect(hrefs(wrapper)).not.toContain('/admin/ai-ops')
+    expect(hrefs(wrapper)).toContain('/admin/gateway-borrow')
+  })
+
+  it('shares the AI notice dismissal across entries and retains it after reloading preferences', async () => {
+    useNewFeatureNoticeStore().dismiss(41, NEW_FEATURE_NOTICES.protocolFeatureSwitches)
+    const first = await mountAt('/admin/ai-ops')
+    const second = await mountAt('/admin/auto-config')
+    expect(first.find('[data-testid="new-feature-badge"]').exists()).toBe(true)
+    expect(second.find('[data-testid="new-feature-badge"]').exists()).toBe(true)
+    await first.get('[data-testid="new-feature-badge"]').trigger('click')
+    await nextTick()
+    expect(second.find('[data-testid="new-feature-badge"]').exists()).toBe(false)
+    first.unmount(); second.unmount()
+    setActivePinia(createPinia())
+    useAuthStore().user = { id: 41, role: 'admin' } as User
+    const reloaded = await mountAt('/admin/ai-ops')
+    expect(reloaded.find('[data-testid="new-feature-badge"]').exists()).toBe(false)
+    expect(useNewFeatureNoticeStore().isDismissed(41, NEW_FEATURE_NOTICES.protocolFeatureSwitches)).toBe(true)
+    reloaded.unmount()
   })
 })

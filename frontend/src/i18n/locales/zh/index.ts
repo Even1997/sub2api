@@ -19,6 +19,8 @@ import qualityOps from './qualityOps'
 import controlledExperiments from './controlledExperiments'
 import accountOps from './accountOps'
 import requestTiming from './requestTiming'
+import aiOps from './aiOps'
+import aiOpsControl from './aiOpsControl'
 import tokenGuard from './tokenGuard'
 import tokenGuardV2 from './tokenGuardV2'
 import pelicanTests from './pelicanTests'
@@ -60,6 +62,8 @@ export default {
   profitOps,
   controlledExperiments,
   accountOps,
+  aiOps,
+  aiOpsControl,
   tokenGuard,
   tokenGuardV2,
   pelicanTests,
