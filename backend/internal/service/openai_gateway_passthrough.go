@@ -2622,6 +2622,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	usage := s.parseSSEUsageFromBody(bodyText)
 	if ok {
 		if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
+			mergeOpenAIProtectionUsageEvidence(*usage, &parsedUsage)
 			*usage = parsedUsage
 		}
 		// When the terminal event has an empty output array, reconstruct

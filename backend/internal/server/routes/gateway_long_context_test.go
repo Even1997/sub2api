@@ -35,11 +35,12 @@ func TestGatewayRoutesLongContextIncludesNativeGeminiAndAliases(t *testing.T) {
 	for _, chain := range []string{"gateway", "gemini", "antigravityV1", "antigravityV1Beta"} {
 		require.Contains(t, string(source), chain+".Use(apiKeyLongContext)", "missing admission on %s", chain)
 	}
-	require.Contains(t, string(source), "gateway.Use(apiKeyLongContext)\n\tgateway.Use(podRoute)", "owner must enforce admission before proxying to another pod")
+	require.Contains(t, string(source), "gateway.Use(groupAntiDistillation)\n\tgateway.Use(apiKeyLongContext)\n\tgateway.Use(compositeTarget)", "owner must enforce admission before local target resolution")
 	for _, line := range strings.Split(string(source), "\n") {
 		if strings.Contains(line, "r.Handle(method, path,") || strings.Contains(line, "codexDirect.Use(") {
-			require.Contains(t, line, "apiKeyLongContext, podRoute", "aliases must enforce admission before pod proxying")
+			require.Contains(t, line, "groupAntiDistillation, apiKeyLongContext", "aliases must enforce admission before local target resolution")
 			require.Contains(t, line, "compositeTarget, apiKeyLongContext", "aliases must enforce resolved model thresholds")
+			require.NotContains(t, line, "podRoute")
 		}
 	}
 }

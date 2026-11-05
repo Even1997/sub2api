@@ -82,6 +82,7 @@ func RegisterGatewayRoutes(
 	}
 	// 分组「仅允许流式请求」准入：挂在模型白名单之后，同样早于合成路由改写与调度。
 	groupStreamOnly := middleware.GroupStreamOnly()
+	groupAntiDistillation := middleware.GroupAntiDistillation(apiKeyService.CheckGroupAntiDistillation)
 	groupCodexCLIOnly := middleware.GroupCodexCLIOnly(settingService)
 	groupBlockSubagents := middleware.GroupBlockSubagents()
 
@@ -256,6 +257,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly)
 	gateway.Use(groupStreamingPolicy)
 	// Enforce the key policy before target resolution and again after model rewriting.
+	gateway.Use(groupAntiDistillation)
 	gateway.Use(apiKeyLongContext)
 	gateway.Use(compositeTarget)
 	gateway.Use(apiKeyLongContext)
@@ -456,7 +458,7 @@ func RegisterGatewayRoutes(
 	// 根路径别名共用中间件链：白名单准入在 apiKeyAuth 之后、compositeTarget
 	// 之前，避免逐条路由手工维护链导致漏挂。
 	rootRoute := func(method, path string, limit gin.HandlerFunc, handler gin.HandlerFunc) {
-		r.Handle(method, path, traffic, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, groupModelAllowlist, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly, groupStreamingPolicy, apiKeyLongContext, compositeTarget, apiKeyLongContext, requireGroupAnthropic, handler)
+		r.Handle(method, path, traffic, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, groupModelAllowlist, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly, groupStreamingPolicy, groupAntiDistillation, apiKeyLongContext, compositeTarget, apiKeyLongContext, requireGroupAnthropic, handler)
 	}
 	for _, prefix := range []string{"/api/v3", "/v3", "/v1", ""} {
 		rootRoute(http.MethodPost, prefix+"/contents/generations/tasks", bodyLimit, h.OpenAIGateway.SeedanceTasks)
@@ -473,7 +475,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodGet, "/models/:model", bodyLimit, h.Gateway.Models)
 	rootRoute(http.MethodPost, "/messages/count_tokens", bodyLimit, countTokensHandler)
 	codexDirect := r.Group("/backend-api/codex")
-	codexDirect.Use(traffic, bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, groupModelAllowlist, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly, groupStreamingPolicy, apiKeyLongContext, compositeTarget, apiKeyLongContext, requireGroupAnthropic)
+	codexDirect.Use(traffic, bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, groupModelAllowlist, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly, groupStreamingPolicy, groupAntiDistillation, apiKeyLongContext, compositeTarget, apiKeyLongContext, requireGroupAnthropic)
 	{
 		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
 		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)

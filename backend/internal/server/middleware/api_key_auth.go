@@ -328,6 +328,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 						AbortWithError(c, 403, "INSUFFICIENT_BALANCE", service.InsufficientUserBalanceMessage)
 						return
 					}
+				}
 			}
 		}
 

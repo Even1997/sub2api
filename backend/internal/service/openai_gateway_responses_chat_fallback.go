@@ -192,6 +192,10 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 		responsesResp.Output = []apicompat.ResponsesOutput{}
 		responsesResp.Error = deepSeekToolTextError(c, requestID, toolTextErr)
 	}
+	if responsesResp.Status != "completed" {
+		usage.CacheReadKnown = false
+	}
+	recordChatReasoningOnlyFailure(c, requestID, upstreamModel, responsesResp)
 	s.cacheReasoningItemsFromOutput(responsesResp.Output)
 
 	if s.responseHeaderFilter != nil {
@@ -291,6 +295,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 			ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 			Stream:                        true,
+			ClientDisconnect:              clientDisconnected,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  scan.FirstTokenMs,
 		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
@@ -319,12 +324,20 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 			ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 			Stream:                        true,
+			ClientDisconnect:              clientDisconnected,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  scan.FirstTokenMs,
 		}, fmt.Errorf("invalid tool call arguments from upstream: %w", err)
 	}
 
 	finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)
+	protectionFailed := false
+	for _, event := range finalEvents {
+		if event.Type == "response.failed" {
+			protectionFailed = true
+			recordChatReasoningOnlyFailure(c, requestID, upstreamModel, event.Response)
+		}
+	}
 	s.cacheReasoningItemsFromEvents(finalEvents)
 	writeEvents(finalEvents)
 	if !clientDisconnected {
@@ -338,6 +351,9 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	}
 	if !scan.SawDone {
 		logCCStreamMissingDoneSentinel("openai responses chat fallback", requestID)
+	}
+	if !scan.SawDone || clientDisconnected || protectionFailed {
+		scan.Usage.CacheReadKnown = false
 	}
 
 	return &OpenAIForwardResult{
@@ -353,6 +369,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 		ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:                        true,
+		ClientDisconnect:              clientDisconnected,
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  scan.FirstTokenMs,
 	}, nil
@@ -413,6 +430,16 @@ func (s *OpenAIGatewayService) recacheReasoningItemsFromInput(inputRaw json.RawM
 		}
 		s.setReasoningContent(id, text)
 	}
+}
+
+func recordChatReasoningOnlyFailure(c *gin.Context, requestID, model string, response *apicompat.ResponsesResponse) {
+	if response == nil || response.Error == nil || response.Error.Code != "upstream_reasoning_only" {
+		return
+	}
+	setOpsUpstreamError(c, http.StatusOK, response.Error.Code, response.Error.Message)
+	logger.L().Warn("openai.responses_reasoning_only",
+		zap.String("request_id", requestID), zap.String("upstream_model", model),
+		zap.String("error_code", response.Error.Code))
 }
 
 // cacheReasoningItemsFromEvents 从 Responses 流事件里提取完成的 reasoning

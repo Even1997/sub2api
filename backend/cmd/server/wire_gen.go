@@ -60,6 +60,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	settingRepository := repository.NewSettingRepository(client)
 	emailCache := repository.NewEmailCache(redisClient)
 	emailService := service.NewEmailService(settingRepository, emailCache)
+	groupAntiDistillationCache := repository.NewGroupAntiDistillationCache(redisClient)
+	groupAntiDistillationService := service.NewGroupAntiDistillationService(settingRepository, groupRepository, groupAntiDistillationCache, userRepository, emailService)
 	schedulerCache := repository.ProvideSchedulerCache(redisClient, configConfig)
 	accountRepository := repository.NewAccountRepository(client, db, schedulerCache)
 	notificationEmailService := service.NewNotificationEmailService(settingRepository, emailService)
@@ -89,7 +91,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor, settingService, groupRepository)
 	regionalAuthAuthority := repository.NewRegionalAuthAuthority(db)
 	autoCreditRepository := repository.NewAutoCreditRepository(db)
-	apiKeyService, err := service.ProvideAPIKeyService(apiKeyRepository, userRepository, groupRepository, userSubscriptionRepository, userGroupRateRepository, apiKeyCache, configConfig, billingCacheService, concurrencyService, channelMonitorService, regionalAuthAuthority, autoCreditRepository)
+	apiKeyService, err := service.ProvideAPIKeyServiceWithGroupProtection(apiKeyRepository, userRepository, groupRepository, userSubscriptionRepository, userGroupRateRepository, apiKeyCache, configConfig, billingCacheService, concurrencyService, channelMonitorService, regionalAuthAuthority, autoCreditRepository, groupAntiDistillationService)
 	if err != nil {
 		return nil, err
 	}
@@ -196,6 +198,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	openAIGatewayService := service.ProvideOpenAIGatewayService(accountRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, grokTokenProvider, modelPricingResolver, channelService, balanceNotifyService, settingService, serviceUserPlatformQuotaRepository, codexHarvestService, proxyRepository, safetyPromptStore)
 	openAIGatewayService.SetRequestTimezoneProber(proxyExitInfoProber)
 	service.WithRegionalMetering(regionalMetering)(openAIGatewayService)
+	openAIGatewayService.SetGroupAntiDistillationService(groupAntiDistillationService)
 	geminiOAuthClient := repository.NewGeminiOAuthClient(configConfig)
 	geminiCliCodeAssistClient := repository.NewGeminiCliCodeAssistClient()
 	driveClient := repository.NewGeminiDriveClient()
@@ -247,7 +250,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	adminService := service.ProvideAdminService(configConfig, userRepository, adminGroupRepository, adminAccountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, userGroupRateRepository, userRPMCache, billingCacheService, proxyExitInfoProber, proxyLatencyCache, apiKeyAuthCacheInvalidator, client, settingService, subscriptionService, userSubscriptionRepository, privacyClientFactory, openAIGatewayService, affiliateService, compositeModelRouteRepository, compositeRouteResolver, channelService, lotteryService)
 	adminUserHandler := admin.NewUserHandler(adminService, concurrencyService, serviceUserPlatformQuotaRepository, billingCache, totpService, userService, settingService)
 	groupCapacityService := service.NewGroupCapacityService(accountRepository, groupRepository, concurrencyService, sessionLimitCache, rpmCache)
-	groupHandler := admin.NewGroupHandlerWithConfig(adminService, dashboardService, groupCapacityService, configConfig)
+	groupHandler := admin.ProvideGroupHandlerWithProtection(adminService, dashboardService, groupCapacityService, configConfig, groupAntiDistillationService)
 	claudeUsageFetcher := repository.NewClaudeUsageFetcher(httpUpstream)
 	antigravityQuotaFetcher := service.NewAntigravityQuotaFetcher(proxyRepository, configConfig)
 	grokQuotaFetcher := service.NewGrokQuotaFetcher()
