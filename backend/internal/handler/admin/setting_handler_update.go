@@ -455,6 +455,8 @@ type UpdateSettingsRequest struct {
 	ExcelBPSImageStorageMiB               *int    `json:"excel_bps_image_storage_mib"`
 	ExcelBPSImageStorageEntries           *int    `json:"excel_bps_image_storage_entries"`
 	ExcelBPSImageTTLMinutes               *int    `json:"excel_bps_image_ttl_minutes"`
+
+	SmartOpsHiddenMenuItems []string `json:"smart_ops_hidden_menu_items" binding:"max=100,dive,max=128"`
 }
 
 // UpdateSettings 更新系统设置
@@ -1832,6 +1834,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:                   req.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:            req.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                     req.BackendModeEnabled,
+		SmartOpsHiddenMenuItems: func() []string {
+			if _, sent := sentFields["smart_ops_hidden_menu_items"]; sent {
+				return req.SmartOpsHiddenMenuItems
+			}
+			return previousSettings.SmartOpsHiddenMenuItems
+		}(),
 		RequestCaptureEnabled: func() bool {
 			if req.RequestCaptureEnabled != nil {
 				return *req.RequestCaptureEnabled
@@ -2928,6 +2936,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		UsageShowCacheRate:                    updatedSettings.UsageShowCacheRate,
 		UsageShowCacheRateToUsers:             updatedSettings.UsageShowCacheRateToUsers,
 		UsageShowAverageTPS:                   updatedSettings.UsageShowAverageTPS,
+		UsageShowUpstreamResponseModelToUsers: updatedSettings.UsageShowUpstreamResponseModelToUsers,
+		SmartOpsHiddenMenuItems:               updatedSettings.SmartOpsHiddenMenuItems,
 		RequestCaptureEnabled:                 updatedSettings.RequestCaptureEnabled,
 		RequestCaptureQuotaMiB:                updatedSettings.RequestCaptureQuotaMiB,
 		RequestCaptureRetentionDays:           updatedSettings.RequestCaptureRetentionDays,
@@ -2938,7 +2948,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ExcelBPSImageLimitPolicy:              updatedSettings.ExcelBPSImageLimitPolicy,
 		ExcelBPSImageWarningRemaining:         updatedSettings.ExcelBPSImageWarningRemaining,
 		ExcelBPSImageCompactReserve:           updatedSettings.ExcelBPSImageCompactReserve,
-		UsageShowUpstreamResponseModelToUsers: updatedSettings.UsageShowUpstreamResponseModelToUsers,
 
 		ExcelBPSImageMaxTotalMiB:    updatedSettings.ExcelBPSImageMaxTotalMiB,
 		ExcelBPSImageStorageMiB:     updatedSettings.ExcelBPSImageStorageMiB,

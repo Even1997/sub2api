@@ -443,6 +443,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		UsageShowCacheRate:                    settings.UsageShowCacheRate,
 		UsageShowCacheRateToUsers:             settings.UsageShowCacheRateToUsers,
 		UsageShowAverageTPS:                   settings.UsageShowAverageTPS,
+		UsageShowUpstreamResponseModelToUsers: settings.UsageShowUpstreamResponseModelToUsers,
+		SmartOpsHiddenMenuItems:               settings.SmartOpsHiddenMenuItems,
 		RequestCaptureEnabled:                 settings.RequestCaptureEnabled,
 		RequestCaptureQuotaMiB:                settings.RequestCaptureQuotaMiB,
 		RequestCaptureRetentionDays:           settings.RequestCaptureRetentionDays,
@@ -461,7 +463,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ExcelBPSImageStorageMiB:               settings.ExcelBPSImageStorageMiB,
 		ExcelBPSImageStorageEntries:           settings.ExcelBPSImageStorageEntries,
 		ExcelBPSImageTTLMinutes:               settings.ExcelBPSImageTTLMinutes,
-		UsageShowUpstreamResponseModelToUsers: settings.UsageShowUpstreamResponseModelToUsers,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)
