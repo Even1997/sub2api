@@ -173,15 +173,40 @@ func (s *PaymentService) ResumeCloudcatOrder(ctx context.Context, orderID, userI
 
 func (s *PaymentService) cancelCore(ctx context.Context, o *dbent.PaymentOrder, fs, op, ad string) (string, error) {
 	if o.PaymentTradeNo != "" || o.PaymentType != "" {
-		// Cloudcat has no cancellation API. Reconcile it before closing so a
-		// payment that already settled upstream is still fulfilled, while never
-		// sending an upstream cancellation request for an unpaid checkout.
-		checkPaidOpts := checkPaidOptions{cancelIfUnpaid: true}
-		if isCloudcatOrder(o) {
-			checkPaidOpts.cancelIfUnpaid = false
-		}
-		if s.checkPaidWithOptions(ctx, o, checkPaidOpts) == checkPaidResultAlreadyPaid {
-			return checkPaidResultAlreadyPaid, nil
+		embedded := psStringValue(o.ProviderKey) == payment.TypeBEpusdt &&
+			psSnapshotStringValue(o.ProviderSnapshot["collection_mode"]) == "embedded"
+		if embedded {
+			if s.reconcilePaid(ctx, o) == checkPaidResultAlreadyPaid {
+				return checkPaidResultAlreadyPaid, nil
+			}
+			// Expiry must retain the engine's recovery window for transfers
+			// sent before the deadline but discovered after an RPC outage.
+			if fs == OrderStatusCancelled {
+				prov, err := s.getOrderProvider(ctx, o)
+				if err != nil {
+					return "", err
+				}
+				cp, ok := prov.(payment.CancelableProvider)
+				if !ok {
+					return "", fmt.Errorf("built-in payment cannot be cancelled")
+				}
+				// The engine atomically rejects cancellation after detection.
+				// Do not mark the merchant order cancelled if that check fails.
+				if err := cp.CancelPayment(ctx, paymentOrderQueryReference(o, prov)); err != nil {
+					return "", infraerrors.BadRequest("PAYMENT_NOT_CANCELLABLE", "payment is no longer waiting; refresh its status")
+				}
+			}
+		} else {
+			// Cloudcat has no cancellation API. Reconcile it before closing so a
+			// payment that already settled upstream is still fulfilled, while never
+			// sending an upstream cancellation request for an unpaid checkout.
+			checkPaidOpts := checkPaidOptions{cancelIfUnpaid: true}
+			if isCloudcatOrder(o) {
+				checkPaidOpts.cancelIfUnpaid = false
+			}
+			if s.checkPaidWithOptions(ctx, o, checkPaidOpts) == checkPaidResultAlreadyPaid {
+				return checkPaidResultAlreadyPaid, nil
+			}
 		}
 	}
 	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(o.ID), paymentorder.StatusEQ(OrderStatusPending)).SetStatus(fs).Save(ctx)

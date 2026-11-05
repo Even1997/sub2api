@@ -22,6 +22,7 @@ const (
 	TypeEasyPay      PaymentType = "easypay"
 	TypeAirwallex    PaymentType = "airwallex"
 	TypeCloudcat     PaymentType = "cloudcat"
+	TypeBEpusdt      PaymentType = "bepusdt"
 )
 
 // Order status constants shared across payment and service layers.
@@ -120,7 +121,8 @@ type CreatePaymentRequest struct {
 	// AlipayMobilePrecreate routes a mobile Alipay request through
 	// alipay.trade.precreate instead of alipay.trade.wap.pay.
 	AlipayMobilePrecreate bool
-	InstanceSubMethods    string // Comma-separated sub-methods from instance supported_types (for Stripe)
+	InstanceSubMethods    string    // Comma-separated sub-methods from instance supported_types (for Stripe)
+	ExpiresAt             time.Time // Local order deadline, used by BEpusdt's timeout parameter
 }
 
 // CreatePaymentResultType describes the shape of the create-payment result.

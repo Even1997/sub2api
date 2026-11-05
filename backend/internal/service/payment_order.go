@@ -194,6 +194,10 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if tm <= 0 {
 		tm = defaultOrderTimeoutMin
 	}
+	// BEpusdt requires at least two minutes for a transfer.
+	if sel != nil && sel.ProviderKey == payment.TypeBEpusdt && tm < 2 {
+		tm = 2
+	}
 	exp := time.Now().Add(time.Duration(tm) * time.Minute)
 	outTradeNo, err := s.allocateOutTradeNo(ctx, tx)
 	if err != nil {
@@ -337,8 +341,15 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		}
 		snapshot["currency"] = payment.DefaultPaymentCurrency
 	}
-	if providerKey == payment.TypeStripe {
+	if providerKey == payment.TypeStripe || providerKey == payment.TypeBEpusdt {
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
+	}
+	if providerKey == payment.TypeBEpusdt {
+		mode := strings.TrimSpace(sel.Config["mode"])
+		if mode == "" {
+			mode = "external"
+		}
+		snapshot["collection_mode"] = mode
 	}
 	if providerKey == payment.TypeAirwallex {
 		if accountID := strings.TrimSpace(sel.Config["accountId"]); accountID != "" {
@@ -496,6 +507,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		ReturnURL:   providerReturnURL,
 	}, sel, outTradeNo, payAmountStr, subject)
 	providerReq.AlipayMobilePrecreate = shouldUseAlipayMobilePrecreate(req, cfg, sel)
+	providerReq.ExpiresAt = order.ExpiresAt
 	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	pr, err := prov.CreatePayment(ctx, providerReq)
 	finishProviderCall()

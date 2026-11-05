@@ -97,6 +97,80 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
   })
 }
 
+describe('PaymentProviderDialog callback URLs', () => {
+  it('defaults to built-in collection and saves without gateway credentials', async () => {
+    const wrapper = mountDialog()
+    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset('bepusdt')
+    await nextTick()
+    expect((wrapper.get('[data-testid="bepusdt-mode"]').element as HTMLSelectElement).value).toBe('embedded')
+    expect(wrapper.text()).not.toContain('API Token')
+    await wrapper.findAll('input')[0].setValue('Built-in Crypto')
+    await wrapper.get('#provider-form').trigger('submit')
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string>; supported_types: string[] }
+    expect(payload.config.mode).toBe('embedded')
+    expect(payload.config.currency).toBe('CNY')
+    expect(payload.supported_types).toEqual(['usdt.bep20'])
+    expect(payload.config).not.toHaveProperty('apiToken')
+    expect(payload.config).not.toHaveProperty('apiBase')
+  })
+
+  it('preserves external mode when editing legacy BEpusdt providers', async () => {
+    const provider = providerFactory({ provider_key: 'bepusdt', config: { apiBase: 'https://gateway.example', currency: 'CNY' } })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    expect((wrapper.get('[data-testid="bepusdt-mode"]').element as HTMLSelectElement).value).toBe('external')
+    expect(wrapper.text()).toContain('API Token')
+  })
+
+  it('saves a BEpusdt instance with selected networks and generated callback URLs', async () => {
+    const wrapper = mountDialog()
+    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset('bepusdt')
+    await nextTick()
+    await wrapper.get('[data-testid="bepusdt-mode"]').setValue('external')
+    expect(wrapper.text()).toContain('USDT (TRC20)')
+    expect(wrapper.text()).toContain('USDT (BEP20)')
+    expect(wrapper.text()).toContain('USDC (Base)')
+    const fields = wrapper.findAll('input')
+    await fields[0].setValue('Crypto')
+    await fields[1].setValue('https://gateway.example')
+    await fields[2].setValue('test-token')
+    await wrapper.findAll('button').find(button => button.text() === 'USDT (TRC20)')!.trigger('click')
+    await wrapper.get('#provider-form').trigger('submit')
+    const payload = wrapper.emitted('save')?.[0]?.[0] as Record<string, unknown>
+    expect(payload.provider_key).toBe('bepusdt')
+    expect(payload.supported_types).toEqual(['usdt.bep20', 'usdt.trc20'])
+    expect(payload.refund_enabled).toBe(false)
+    expect(payload.config).toMatchObject({ apiBase: 'https://gateway.example', apiToken: 'test-token', currency: 'CNY' })
+    expect((payload.config as Record<string, string>).notifyUrl).toContain('/api/v1/payment/webhook/bepusdt')
+    expect((payload.config as Record<string, string>).returnUrl).toContain('/payment/result')
+  })
+
+  it.each([
+    ['https://notify.example.com/', 'https://return.example.com///', 'https://notify.example.com', 'https://return.example.com'],
+    [' https://notify.example.com/sub/ ', ' https://return.example.com/site/ ', 'https://notify.example.com/sub', 'https://return.example.com/site'],
+    ['https://notify.example.com', 'https://return.example.com', 'https://notify.example.com', 'https://return.example.com'],
+    ['', '', window.location.origin, window.location.origin],
+  ])('joins callback paths to %s and %s', async (notify, returnUrl, expectedNotify, expectedReturn) => {
+    const provider = providerFactory({
+      provider_key: 'easypay', name: 'EasyPay',
+      config: { pid: 'pid-1', apiBase: 'https://pay.example.com' },
+      supported_types: ['alipay'], payment_mode: 'qrcode',
+    })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    const bases = wrapper.findAll('input').filter(input => input.classes().includes('!rounded-r-none'))
+    await bases[0].setValue(notify)
+    await bases[1].setValue(returnUrl)
+    await wrapper.find('form').trigger('submit')
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    expect(payload.config.notifyUrl).toBe(expectedNotify + '/api/v1/payment/webhook/easypay')
+    expect(payload.config.returnUrl).toBe(expectedReturn + '/payment/result')
+    wrapper.unmount()
+  })
+})
+
 describe('PaymentProviderDialog payment guide', () => {
   it('shows no payment guide for providers without a flow guide', () => {
     const wrapper = mountDialog()
