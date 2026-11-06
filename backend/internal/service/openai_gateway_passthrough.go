@@ -474,7 +474,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 
 		if reqStream {
-			result, handleErr := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
+			var reasoningEfforts []string
+			if reasoningEffort != nil && strings.TrimSpace(*reasoningEffort) != "" {
+				reasoningEfforts = []string{*reasoningEffort}
+			}
+			result, handleErr := s.handleStreamingResponsePassthroughWithImage(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel, imageBillingModel, reasoningEfforts...)
 			if phaseErr := openAIHTTPPhaseError(resp); phaseErr != nil {
 				return nil, handleOpenAIHTTPPhaseError(c, account, phaseErr)
 			}
@@ -1163,6 +1167,10 @@ func openAIStreamEventIsPreamble(eventType string) bool {
 	default:
 		return false
 	}
+}
+
+func openAIStreamEventIsMetadata(eventType string) bool {
+	return openAIStreamEventIsPreamble(eventType)
 }
 
 func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) bool {
@@ -2003,6 +2011,25 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	originalModel string,
 	mappedModel string,
 ) (*openaiStreamingResultPassthrough, error) {
+	return s.handleStreamingResponsePassthroughWithImage(ctx, resp, c, account, startTime, originalModel, mappedModel, "")
+}
+
+func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	startTime time.Time,
+	originalModel string,
+	mappedModel string,
+	imageBillingModel string,
+	reasoningEfforts ...string,
+) (*openaiStreamingResultPassthrough, error) {
+	earlyPluginEvents := s.openAIPluginSSEEarlyEvents(resp, account)
+	pluginEarlyCommitted := false
+	earlyMetadataPending := false
+	var pluginMetadataEvent openAIPluginMetadataEvent
+	var deliveryObservation openAISSEDeliveryObservation
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -2061,6 +2088,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	// pendingLines 在首个可见输出前保留前导事件，确保无输出失败仍可安全 failover。
 	pendingLines := make([]string, 0, 8)
+	pluginPendingBytes := int64(0)
+	pluginEventOpen := false
 
 	// ── 首个可见输出之前的下游 keepalive ──────────────────────────────────
 	//
@@ -2112,9 +2141,26 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return
 		}
 		requesttiming.OutputFlushed(ctx)
+		deliveryObservation.flushed(ctx)
+		if earlyMetadataPending && !pluginEventOpen {
+			pluginEarlyCommitted = true
+			MarkResponseCommitted(c)
+			earlyMetadataPending = false
+		}
 		flushPending = false
 	}
 	defer flushPendingOutput()
+	defer func() {
+		if pluginEarlyCommitted && !sawTerminalEvent && !sawDone && !failureDelivered && !clientDisconnected && c.Request.Context().Err() == nil {
+			if _, err := fmt.Fprint(w, buildOpenAIResponseFailedSSE(responseID, originalModel, createdAtTracker.Value(), nil, "Upstream stream ended before completion")); err == nil {
+				if FlushGatewayResponse(w) == nil {
+					requesttiming.SSEEventFlushed(ctx)
+				}
+				failureDelivered = true
+				MarkResponseCommitted(c)
+			}
+		}
+	}()
 	writePendingLines := func() bool {
 		for _, pending := range pendingLines {
 			if _, err := fmt.Fprintln(w, reduceClientVisibleSSELine(pending, downstreamPercent)); err != nil {
@@ -2124,6 +2170,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			}
 		}
 		pendingLines = pendingLines[:0]
+		pluginPendingBytes = 0
 		return true
 	}
 	ensureResponseFailedTerminal := func() {
@@ -2153,6 +2200,16 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	}
 	documentScanner := newOpenAISSEReadPump(resp.Body, maxLineSize)
 	defer documentScanner.Close()
+	if account != nil && account.Platform == PlatformOpenAI {
+		effort := ""
+		if len(reasoningEfforts) > 0 {
+			effort = reasoningEfforts[0]
+		}
+		if timeout := s.openAIFirstOutputTimeout(effort); timeout > 0 {
+			documentScanner.firstOutputDeadline = startTime.Add(timeout)
+		}
+	}
+	streamInterval := s.openAIPassthroughStreamDataInterval(imageBillingModel)
 	upstreamReadCtx, releaseUpstreamReadCtx := openAIPassthroughContext(ctx, account)
 	defer releaseUpstreamReadCtx()
 
@@ -2171,8 +2228,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 	}
 
-	for documentScanner.Next(upstreamReadCtx, 0, nil, nil) {
+	for documentScanner.Next(upstreamReadCtx, streamInterval, nil, nil) {
 		line := documentScanner.Text()
+		pluginEventOpen = line != ""
 		if _, dataLine := extractOpenAISSEDataLine(line); !dataLine {
 			metricEvent.observeLine(line)
 		}
@@ -2343,7 +2401,16 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				trimmedData = strings.TrimSpace(string(sanitizedData))
 				line = "data: " + string(sanitizedData)
 			}
+			metricPayload, metricType := metricEvent.observeLine("data: " + trimmedData)
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+			if earlyPluginEvents && !forceFlushFailedEvent {
+				lineStartsClientOutput = len(metricPayload) > 0 && openAIStreamDataStartsClientOutput(string(metricPayload), metricType)
+			}
+			lineStartsClientOutput = lineStartsClientOutput || (firstResponseEnabled && !clientOutputStarted && isStreamFirstResponse(trimmedData, eventType))
+			if lineStartsClientOutput {
+				documentScanner.firstOutputDeadline = time.Time{}
+				stopKeepalive()
+			}
 			if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
 				semanticOutputSeen = true
 				budgetProgressPending = true
@@ -2377,7 +2444,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					requesttiming.Stage(ctx, "sse_visible_first")
 				}
 			}
-			metricPayload, metricType := metricEvent.observeLine("data: " + trimmedData)
+			deliveryObservation.data(metricPayload, metricType)
+			pluginMetadataEvent.data(metricPayload, metricType)
 			startsSemanticOutput := openAIStreamDataStartsSemanticTTFT(string(metricPayload), metricType)
 			startsTTFTOutput := startsSemanticOutput
 			if ttftMode == OpenAITTFTModeVisible {
@@ -2392,29 +2460,54 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			s.parseSSEUsageBytesWithType(dataBytes, eventType, usage)
 		}
 		if line == "" {
+			earlyMetadataPending = pluginMetadataEvent.boundary() && earlyPluginEvents
 			if budgetProgressPending && !sawFailedEvent {
 				observeOpenAIHTTPProgress(ctx)
 				budgetProgressPending = false
 			}
 			pendingSSEEventType = ""
 			if suppressCurrentEvent {
+				deliveryObservation.discard()
+				earlyMetadataPending = false
 				suppressCurrentEvent = false
 				responseFailedPending = false
 				continue
 			}
+			deliveryObservation.boundary()
 		}
 
 		if !clientDisconnected && !failureDelivered && !suppressCurrentEvent {
-			if !clientOutputStarted && !lineStartsClientOutput {
+			if pluginEarlyCommitted && line != "" {
+				// Bound the next event until its real blank-line boundary. In
+				// particular, EOF/read errors must not splice a local failure
+				// into a partially delivered metadata event.
+				lineBytes := int64(len(line)) + 1
+				if lineBytes > openAIFirstOutputStageMaxBytes-pluginPendingBytes {
+					return resultWithUsage(), errors.New("plugin SSE event exceeds guarded staging limit")
+				}
+				pendingLines = append(pendingLines, line)
+				pluginPendingBytes += lineBytes
+				continue
+			}
+			if !clientOutputStarted && !lineStartsClientOutput && (line != "" || !earlyMetadataPending) {
+				if earlyPluginEvents {
+					lineBytes := int64(len(line)) + 1
+					if lineBytes > openAIFirstOutputStageMaxBytes-pluginPendingBytes {
+						failoverErr := s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, "OpenAI first-output staging limit exceeded")
+						failoverErr.SafeToFailoverAfterWrite = true
+						return resultWithUsage(), failoverErr
+					}
+					pluginPendingBytes += lineBytes
+				}
 				pendingLines = append(pendingLines, line)
 				continue
 			}
 			// 真实输出开始，心跳的使命结束。停拍是幂等的，且会与心跳 goroutine
 			// 建立 happens-before —— 之后 ResponseWriter 由本循环独占。
-			if !clientOutputStarted {
+			if !clientOutputStarted && !earlyMetadataPending {
 				stopKeepalive()
 			}
-			if !clientOutputStarted && len(pendingLines) > 0 {
+			if len(pendingLines) > 0 && (!clientOutputStarted || pluginEarlyCommitted) {
 				if !writePendingLines() {
 					continue
 				}
@@ -2433,6 +2526,20 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if line == "" && responseFailedPending {
 			responseFailedPending = false
 			failureDelivered = true
+		}
+	}
+	if pluginEarlyCommitted && pluginEventOpen {
+		if sawTerminalEvent || sawDone {
+			// Keep the pre-existing terminal-at-EOF behavior. This does not
+			// turn a missing boundary into an early-metadata observation.
+			if writePendingLines() {
+				flushPending = true
+			}
+		} else {
+			pendingLines = pendingLines[:0]
+			pluginPendingBytes = 0
+			earlyMetadataPending = false
+			deliveryObservation.discard()
 		}
 	}
 	ensureResponseFailedTerminal()
@@ -2457,6 +2564,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					// The timeout event is the terminal response. Tell the
 					// handler not to append a second failure event.
 					MarkResponseCommitted(c)
+					failureDelivered = true
 				}
 			}
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
@@ -2517,6 +2625,19 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	}
 
 	return resultWithUsage(), nil
+}
+
+func (s *OpenAIGatewayService) openAIPassthroughStreamDataInterval(imageBillingModel string) time.Duration {
+	if imageBillingModel != "" {
+		// Image-generation passthroughs can legitimately remain silent much
+		// longer than text streams. Keep them aligned with the dedicated image
+		// endpoint instead of applying the ordinary interval.
+		return s.openAIImageStreamDataInterval()
+	}
+	if s != nil && s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
+		return time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+	}
+	return 0
 }
 
 func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
