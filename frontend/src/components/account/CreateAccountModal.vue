@@ -1693,6 +1693,7 @@
             <div v-if="modelRestrictionMode === 'whitelist'">
               <ModelWhitelistSelector
                 v-model="allowedModels"
+                @update:model-mappings="modelMappings = $event"
                 :platform="form.platform"
                 :sync-credentials="syncPreviewCredentials"
                 :model-mappings="modelMappings"
@@ -2223,6 +2224,7 @@
           <div v-if="modelRestrictionMode === 'whitelist'">
             <ModelWhitelistSelector
               v-model="allowedModels"
+              @update:model-mappings="modelMappings = $event"
               platform="anthropic"
               :sync-credentials="syncPreviewCredentials"
               :model-mappings="modelMappings"
@@ -2565,6 +2567,7 @@
           <div v-if="modelRestrictionMode === 'whitelist'">
             <ModelWhitelistSelector
               v-model="allowedModels"
+              @update:model-mappings="modelMappings = $event"
               :platform="form.platform"
               :sync-credentials="syncPreviewCredentials"
               :model-mappings="modelMappings"
