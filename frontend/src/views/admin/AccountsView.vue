@@ -369,7 +369,7 @@
             </button>
           </template>
           <template #cell-performance="{ row }">
-            <AccountPerformanceCell :metrics="performanceMetrics[row.id]" :unavailable="performanceUnavailable" :can-configure="authStore.isAdmin" :notice-user-id="authStore.isAdmin ? authStore.user?.id : null" @configure="performanceAccount = row" />
+            <AccountPerformanceCell :metrics="performanceMetrics[row.id]" :unavailable="performanceUnavailable" :can-configure="authStore.isAdmin" :notice-user-id="authStore.isAdmin ? authStore.user?.id : null" :upstream-error-threshold="performanceErrorThreshold" @configure="performanceAccount = row" />
           </template>
           <template #cell-today_stats="{ row }">
             <AccountTodayStatsCell
@@ -585,7 +585,7 @@
     <ErrorPassthroughRulesModal v-if="authStore.isAdmin" :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal v-if="authStore.isAdmin" :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
     <TotpStepUpDialog :controller="accountExportStepUp" />
-    <AccountPerformanceDialog v-if="performanceAccount" :key="performanceAccount.id" :account-id="performanceAccount.id" :account-name="performanceAccount.name" :notice-user-id="authStore.isAdmin ? authStore.user?.id : null" @close="performanceAccount = null" @updated="refreshPerformance" />
+    <AccountPerformanceDialog v-if="performanceAccount" :key="performanceAccount.id" :account-id="performanceAccount.id" :account-name="performanceAccount.name" :notice-user-id="authStore.isAdmin ? authStore.user?.id : null" :upstream-error-threshold="performanceErrorThreshold" @close="performanceAccount = null" @updated="refreshPerformance" />
     <BulkExport2FADialog v-if="authStore.isAdmin && export2faIds.length" :account-ids="export2faIds" @close="export2faIds = []" />
   </AppLayout>
 </template>
@@ -1497,6 +1497,17 @@ const performanceMetrics = ref<Record<number, AccountPerformance>>({})
 const performanceMinutes = computed(() => performanceWindowMinutes(Object.values(performanceMetrics.value)[0]))
 const performanceUnavailable = ref(false)
 const performanceAccount = ref<Account | null>(null)
+// Load once for the page, then share the Ops threshold with every row and dialog.
+// undefined means unavailable; null is an explicitly disabled Ops threshold.
+const performanceErrorThreshold = ref<number | null | undefined>(undefined)
+const loadPerformanceErrorThreshold = async () => {
+  try {
+    const thresholds = await adminAPI.ops.getMetricThresholds()
+    if (!accountViewDisposed) performanceErrorThreshold.value = thresholds.upstream_error_rate_percent_max ?? null
+  } catch {
+    if (!accountViewDisposed) performanceErrorThreshold.value = undefined
+  }
+}
 let performanceAbort: AbortController | null = null
 let performanceRequest = 0
 const refreshPerformance = async () => {
@@ -3186,6 +3197,7 @@ onMounted(async () => {
   }
 
   load()
+  void loadPerformanceErrorThreshold()
   loadUpstreamBillingProbeGlobalState()
   const [proxiesResult, groupsResult] = await Promise.allSettled([
     adminAPI.proxies.getAll(),
