@@ -45,6 +45,7 @@ export interface OAuthCompactModelMapping {
 }
 export interface AutoConfig {
  openai_two_fa_admission?: OpenAITwoFAAdmissionConfig
+ openai_totp_rotate_on_429?: boolean
  quality_rule?: OAuthInitialQualityRule | null
  selected_models?: string[] | null
  model_mappings?: OAuthModelMappingRule[] | null

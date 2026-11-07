@@ -102,6 +102,10 @@ export default {
   "load_factor": "Load factor",
   "concurrency": "Initial concurrency",
   "groups": "Initial groups",
+  totp429: {
+    label: 'Automatically rotate 2FA after a 429',
+    hint: 'Enable for new OpenAI OAuth accounts through initial configuration. After a 429, use the email, password and current 2FA saved in Credential Operations to rotate the secret and store it encrypted. At most one rotation task per account per hour; incomplete credentials or an unresolved rotation prevent automatic rotation.'
+  },
   "noGroups": "No active matching groups. Create one in group management first.",
   "loadHint": "Lower priority values run first. Load factor controls scheduling frequency independently of concurrency limits and billing multipliers.",
   "account": {
