@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -861,7 +862,8 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 	if s.cfg != nil && s.cfg.Runtime.Role == config.RuntimeRoleGateway && s.cfg.Runtime.RegionalAuthFile != "" {
 		return nil, ErrRegionalAuthUnavailable
 	}
-	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes {
+	// Reject malformed credentials before any cache or PostgreSQL lookup.
+	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes || !utf8.ValidString(key) {
 		return nil, ErrAPIKeyNotFound
 	}
 	cacheKey := s.authCacheKey(key)
@@ -926,7 +928,7 @@ func (s *APIKeyService) GetByKeyUncached(ctx context.Context, key string) (*APIK
 	if s.cfg != nil && s.cfg.Runtime.Role == config.RuntimeRoleGateway && s.cfg.Runtime.RegionalAuthFile != "" {
 		return nil, ErrRegionalAuthUnavailable
 	}
-	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes {
+	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes || !utf8.ValidString(key) {
 		return nil, ErrAPIKeyNotFound
 	}
 	apiKey, err := s.lookupAPIKeyForAuth(ctx, key)
