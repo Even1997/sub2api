@@ -723,14 +723,14 @@ type UpstreamFailoverError struct {
 	// HeaderTimeoutSubmitted marks a failover caused by an OpenAI response-header
 	// timeout after the request was written. The upstream may have billed the
 	// attempt; the successful usage record adds one retry surcharge unit.
-	HeaderTimeoutSubmitted    bool
-	BoundUpstreamPassthrough  bool          // 绑定显式缓存的请求在上游网关账号上收到的 429 / 5xx：反映持有缓存的上游账号状态，原样回写不走错误映射
-	Stage                     GatewayFailureStage
-	Scope                     GatewayFailureScope
-	Reason                    GatewayFailureReason
-	NextAccountAction         NextAccountAction
-	ClientStatusCode          int
-	ClientMessage             string
+	HeaderTimeoutSubmitted   bool
+	BoundUpstreamPassthrough bool // 绑定显式缓存的请求在上游网关账号上收到的 429 / 5xx：反映持有缓存的上游账号状态，原样回写不走错误映射
+	Stage                    GatewayFailureStage
+	Scope                    GatewayFailureScope
+	Reason                   GatewayFailureReason
+	NextAccountAction        NextAccountAction
+	ClientStatusCode         int
+	ClientMessage            string
 }
 
 func (e *UpstreamFailoverError) Error() string {
@@ -1453,7 +1453,20 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		return nil
 	}
 
-	// Filter by platform if specified
+	models := availableModelsFromAccounts(accounts, groupID, platform)
+	if s.modelsListCache != nil {
+		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
+		modelsListCacheStoreTotal.Add(1)
+	}
+	return models
+}
+
+// availableModelsFromAccounts is shared by legacy discovery and strict multi-group
+// discovery so mappings, mixed scheduling and account/group limits stay aligned.
+func availableModelsFromAccounts(accounts []Account, groupID *int64, platform string) []string {
+	// Filter by platform if specified. Mixed scheduling (a gemini group routing
+	// to antigravity accounts) is honoured here as well, so the advertised list
+	// stays in sync with what the request path can actually serve.
 	if platform != "" {
 		filtered := make([]Account, 0)
 		for _, acc := range accounts {
@@ -1473,21 +1486,20 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		// mapping on any eligible passthrough account therefore cannot define the
 		// public whitelist; return nil so the handler uses its default model set.
 		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() {
-			if s.modelsListCache != nil {
-				s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
-				modelsListCacheStoreTotal.Add(1)
-			}
 			return nil
 		}
 
 		mapping := acc.GetModelMapping()
 		if len(mapping) > 0 {
-			hasAnyMapping = true
 			for model := range mapping {
 				if platform != "" && acc.Platform != platform && !mixedListingModelAllowed(platform, model) {
 					continue
 				}
+				if !acc.IsModelAllowedInGroup(groupID, model) {
+					continue
+				}
 				modelSet[model] = struct{}{}
+				hasAnyMapping = true
 			}
 		}
 		// 没有映射的账号默认支持全部模型；在本分组被限制时改为公布限制清单里的具体模型名。
@@ -1510,10 +1522,6 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		}
 	}
 	if !hasAnyMapping {
-		if s.modelsListCache != nil {
-			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
-			modelsListCacheStoreTotal.Add(1)
-		}
 		return nil
 	}
 
@@ -1534,10 +1542,6 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		}
 	}
 
-	if s.modelsListCache != nil {
-		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
-		modelsListCacheStoreTotal.Add(1)
-	}
 	return cloneStringSlice(models)
 }
 
