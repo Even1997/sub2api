@@ -1779,6 +1779,12 @@ func (a *Account) GetCodingPlanProvider() string {
 		}
 		return ""
 	}
+	if a.IsMistral() {
+		if a.mistralUsageSupported() {
+			return PlatformMistral
+		}
+		return ""
+	}
 	if a.GetAccountMode() != AccountModeCoding {
 		return ""
 	}

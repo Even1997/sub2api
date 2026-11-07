@@ -434,6 +434,7 @@
           <template #cell-usage="{ row }">
             <AccountUsageCell
               :account="row"
+              :notice-user-id="authStore.isAdmin ? authStore.user?.id : null"
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
