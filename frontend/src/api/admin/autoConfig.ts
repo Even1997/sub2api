@@ -46,6 +46,7 @@ export interface OAuthCompactModelMapping {
 export interface AutoConfig {
  openai_two_fa_admission?: OpenAITwoFAAdmissionConfig
  quality_rule?: OAuthInitialQualityRule | null
+ selected_models?: string[] | null
  model_mappings?: OAuthModelMappingRule[] | null
  model_billing?: ModelBillingConfig
  excel_bps?: ExcelBPSDefaults
