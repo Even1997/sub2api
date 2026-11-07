@@ -16,8 +16,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/iprisk"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
-	"github.com/Wei-Shaw/sub2api/internal/serverless"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/serverless"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/setup"
 
@@ -100,6 +100,14 @@ func ProvideRouter(
 	settingService.IPRisk.Start()
 	if lifecycle != nil && settingService.IPRisk != nil {
 		lifecycle.onDrain = append(lifecycle.onDrain, settingService.IPRisk.Stop)
+	}
+	if cfg.Runtime.Role != config.RuntimeRoleGateway && handlers.Admin != nil && handlers.Admin.Setting != nil {
+		stop, err := handlers.Admin.Setting.StartKeyRisk(cfg.Database.DSN())
+		if err != nil {
+			slog.Warn("key risk initialization failed")
+		} else if lifecycle != nil {
+			lifecycle.onDrain = append(lifecycle.onDrain, stop)
+		}
 	}
 	if handlers.Admin != nil && handlers.Admin.Setting != nil {
 		if handlers.Admin.PromptAudit != nil {

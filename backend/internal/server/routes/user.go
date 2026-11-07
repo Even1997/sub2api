@@ -46,6 +46,10 @@ func RegisterUserRoutes(
 				user.GET("/bills/:month/:version", h.MonthlyBill.Get)
 				user.POST("/bills", panelRateLimiter.Heavy(), h.MonthlyBill.Generate)
 			}
+			if h.Admin != nil && h.Admin.Setting != nil {
+				user.GET("/key-risks", h.Admin.Setting.GetMyKeyRisks)
+				user.POST("/key-risks/:id/acknowledge", h.Admin.Setting.AcknowledgeMyKeyRisk)
+			}
 			if h.Admin != nil && h.Admin.PromptAudit != nil {
 				user.GET("/security/summary", h.Admin.PromptAudit.MyPenaltySummary)
 				user.GET("/security/events", h.Admin.PromptAudit.MyPenaltyEvents)
