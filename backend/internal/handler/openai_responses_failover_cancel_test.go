@@ -124,6 +124,41 @@ func newOpenAIResponsesFailoverTestHandlerWithSettings(t *testing.T, upstream se
 	return handler
 }
 
+func newOpenAIResponsesFailoverTestHandlerWithCache(t *testing.T, upstream service.HTTPUpstream, cache service.GatewayCache, fixtureAccounts ...service.Account) *OpenAIGatewayHandler {
+	t.Helper()
+	accounts := []service.Account{
+		{
+			ID: 1, Name: "responses-account-1", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+			Status: service.StatusActive, Schedulable: true, Priority: 0, Credentials: map[string]any{"access_token": "token-1"},
+		},
+		{
+			ID: 2, Name: "responses-account-2", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+			Status: service.StatusActive, Schedulable: true, Priority: 1, Credentials: map[string]any{"access_token": "token-2"},
+		},
+	}
+	if len(fixtureAccounts) > 0 {
+		accounts = fixtureAccounts
+	}
+	for i := range accounts {
+		accounts[i].GroupIDs = []int64{3131, 3132}
+	}
+	accountRepo := openAIImagesFailoverAccountRepo{accounts: accounts}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	gatewayService := service.NewOpenAIGatewayService(
+		accountRepo, nil, nil, nil, nil, nil, cache, cfg,
+		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billingService.Stop)
+	handler := NewOpenAIGatewayHandler(
+		gatewayService, service.NewConcurrencyService(nil), billingService,
+		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
+		nil, nil, nil, nil, cfg,
+	)
+	handler.maxAccountSwitches = 10
+	return handler
+}
+
 func newOpenAIResponsesFailoverTestContext(t *testing.T, ctx context.Context) (*gin.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	groupID := int64(3131)

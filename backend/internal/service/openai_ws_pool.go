@@ -297,6 +297,7 @@ type openAIWSConn struct {
 	ws openAIWSClientConn
 
 	handshakeHeaders       http.Header
+	agentRecoveryHeaders   http.Header
 	handshakeCompatibility openAIWSHandshakeCompatibilityKey
 	routingAffinity        string
 	turnBinding            *openAIWSTurnBinding
@@ -2210,6 +2211,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	}
 	id := p.nextConnID(req.Account.ID)
 	pooledConn := newOpenAIWSConn(id, req.Account.ID, conn, handshakeHeaders)
+	pooledConn.agentRecoveryHeaders = cloneHeader(headers)
 	accountID := req.Account.ID
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)
