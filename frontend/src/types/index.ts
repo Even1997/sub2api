@@ -2931,6 +2931,7 @@ export interface QualityPolicy {
   remove_group_ids: number[]
   remove_models?: string[]
   recovery_concurrency?: number
+  retest_rest_minutes?: number
   auto_restore: boolean
   bps?: QualityBPSPolicy
 }
