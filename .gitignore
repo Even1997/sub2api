@@ -156,6 +156,7 @@ user-traffic-pending/
 docs/*
 !docs/ANTIGRAVITY_ATTRIBUTION_429.md
 !docs/ai-ops-codex.md
+!docs/reauth-identity-validation.md
 !docs/openai-context-limit-errors.md
 !docs/ops-client-rejections.md
 !docs/stream-timing.md
