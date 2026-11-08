@@ -1,4 +1,5 @@
 export default {
+  reading: { configuration: '调度配置', diagnostics: '诊断详情', buckets: '当前页账号时间桶', pageSize: '每页数量', refreshing: '后台更新中，保留当前内容', stale: '更新失败，显示上次成功数据；将自动重试', stableOrder: '账号按 ID 稳定展示；新增追加、删除移除，不随实时指标重排。' },
   errorRate: "上游尝试错误率",
   error_rate_weight: "错误惩罚权重（%）",
   error_rate_window_minutes: "错误窗口（分钟）",
@@ -40,7 +41,7 @@ export default {
   },
   softPenalty: '软惩罚：仍可作为后备，不是停用',
   recoveryNote: '恢复期：P90 仍超目标，只参与兜底/显式探索',
-  latencyFallback: '候选池没有正常账号，已允许降级/恢复期账号兜底；候选按实际顺序展示',
+  latencyFallback: '候选池没有正常账号，已允许降级/恢复期账号兜底；展示顺序不代表实际选号顺序',
   oauthQuotaPriority: '优先消耗 OAuth 额度，末位 API Key 自动后备',
   oauthQuotaHint: '质量正常且 7d 已用低于阈值的 OAuth 有可用容量时，从调度队尾让 API Key 转为后备，数量随 OAuth 容量变化。OAuth 满载、额度不足或不可用时自动恢复；不更改手动启停状态。需要有效质量检测和 5 分钟内的额度数据。',
   oauthQuotaThreshold: 'OAuth 优先消耗截止值（7d 已用 %）',
@@ -86,7 +87,7 @@ export default {
   evaluatedAt: '评分重算时间', historyObservedAt: '历史统计读取时间',
   historyRetry: '历史查询失败，暂用有效期内的已有统计，稍后重试。',
   historyStates: { ready: '历史已就绪', stale: '暂用近期缓存统计，正在等待更新。', partial: '部分候选历史正在加载；已有统计继续使用。', loading: '正在读取历史统计，缺失部分暂按未知处理。', error: '历史统计读取失败，请稍后刷新重试。', unavailable: '当前实例无法读取历史统计。', limited: '候选或缓存达到处理上限，暂按实时容量调度。' },
-  snapshotHint: '展示当前实例最近一次候选池，最多 100 个账号。刷新会异步读取历史并重算评分；候选、配置与并发占用仍取自该次选号，顶部时间不会改变，重算结果不代表当时实际选路。按风险、恢复/惩罚状态、预计占用档位及分流偏好展示；恢复期与惩罚期账号排在正常候选之后，只有正常候选都拿不到槽位时才兜底，显式恢复探索按配置比例另计。占用接近的候选会加权抽样，分流权重不是全局概率，表格不是固定选取顺序或流量比例。历史未就绪也会展示实时容量候选。',
+  snapshotHint: '展示当前实例最近一次候选池，最多 100 个账号。刷新会异步读取历史并重算评分；候选、配置与并发占用仍取自该次选号，顶部时间不会改变，重算结果不代表当时实际选路。表格按账号 ID 稳定展示，新增追加、删除移除，实时指标不会重排；调度仍按风险、恢复/惩罚状态、预计占用档位及分流偏好评估。恢复期与惩罚期账号排在正常候选之后，只有正常候选都拿不到槽位时才兜底，显式恢复探索按配置比例另计。占用接近的候选会加权抽样，分流权重不是全局概率，表格不是固定选取顺序或流量比例。历史未就绪也会展示实时容量候选。',
   model: '模型', group: '分组', account: '账号', score: '得分', tier: '状态', latency: '选定首 token', load: '并发占用', rate: '成本倍率', quality: '质量通过', samples: '条样本', unknown: '未知',
   tiers: { eligible: '体验达标', insufficient: '数据不足', degraded: '体验未达标' },
   reasons: { latency_recovery: '延迟惩罚到期，P90 仍超目标（恢复期仅兜底/探索）', quality_below_target: '质量低于目标', quality_unknown: '无有效质量结果', latency_above_target: '延迟超过目标', latency_insufficient: '延迟样本不足', busy: '并发偏高或有排队', load_unknown: '并发数据未知', cost_unknown: '成本未知', recent_errors: '近期错误偏多', historical_loss: '近期用户扣费低于理论成本', profit_insufficient: '利润样本不足', teams_recovery: '本窗口收入尚未超过单号成本', teams_window_unavailable: 'Teams 成本窗口未设置或已失效' },

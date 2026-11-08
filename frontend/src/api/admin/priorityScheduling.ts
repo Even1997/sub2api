@@ -156,6 +156,7 @@ export interface PriorityLatencyAccount {
   buckets: PriorityLatencyBucket[]
 }
 export interface PriorityLatencySeries {
+  config_revision?: string
   at: string
   model: string
   group_id: number | null
