@@ -82,7 +82,7 @@ func TestOpenAIGatewayTOTPRotationOn429AndBPS(t *testing.T) {
 			account := totp429Account()
 			switch path {
 			case "bps":
-				gateway.coolDownExcelBPS(t.Context(), account, "5")
+				gateway.coolDownExcelBPS(t.Context(), account, http.Header{"Retry-After": []string{"5"}}, nil)
 			case "image":
 				gateway.handleOpenAIAccountUpstreamError(t.Context(), account, 429, http.Header{}, []byte(`{"error":{"message":"Rate limit reached for gpt-image-2-codex (for limit gpt-image)"}}`))
 			default:

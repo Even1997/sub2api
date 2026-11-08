@@ -81,6 +81,7 @@ func WithExcelBPSScheduling(ctx context.Context, body []byte) context.Context {
 
 func (s *OpenAIGatewayService) coolDownExcelBPS(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
 	if s != nil {
+		ctx, _ = s.rateLimitService.maybeDisableOpenAISchedulingOn429(ctx, account, http.StatusTooManyRequests)
 		ctx = s.rateLimitService.maybeRotateOpenAITOTPOn429(ctx, account, http.StatusTooManyRequests)
 	}
 	disposition, _ := classifyOpenAIOAuth429(headers, responseBody)
