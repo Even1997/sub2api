@@ -6,6 +6,7 @@ import { apiClient } from '../client'
 import type { ModelBillingConfig } from '@/utils/modelBilling'
 import type { ExcelBPSDefaults } from '@/utils/excelBPSDefaults'
 import type { OAuthModelMappingRule } from '@/utils/oauthModelMappings'
+import type { OpenAIWSMode } from '@/utils/openaiWsMode'
 export type OAuthInitialQualityRule = Pick<ScheduledTestPlan, 'model_id' | 'cron_expression' | 'enabled' | 'max_results' | 'pelican_config'>
 export interface OAuthInitialAccountSettings {
   rate_multiplier?: number | null
@@ -47,6 +48,8 @@ export interface AutoConfig {
  openai_two_fa_admission?: OpenAITwoFAAdmissionConfig
  openai_totp_rotate_on_429?: boolean
  openai_disable_scheduling_on_429?: boolean
+ openai_ws_mode?: OpenAIWSMode
+ openai_ws_sse_acceleration?: boolean
  quality_rule?: OAuthInitialQualityRule | null
  selected_models?: string[] | null
  model_mappings?: OAuthModelMappingRule[] | null

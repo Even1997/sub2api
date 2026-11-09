@@ -45,7 +45,7 @@
             <header class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold">{{ t('autoConfig.initial') }}</h2><label class="flex items-center gap-2 text-sm"><input v-model="draft.enabled" data-testid="initial-enabled" type="checkbox" role="switch" />{{ t('autoConfig.enable') }}</label></header>
             <div class="initial-scroll space-y-5">
             <p class="text-sm leading-6 text-gray-500">{{ t('autoConfig.initialHint') }}</p>
-            <label class="block"><span class="field-label">{{ t('autoConfig.platform') }}</span><select v-model="draft.platform" data-testid="platform" class="input w-full" @change="draft.group_ids = []; draft.model_mappings = defaultOAuthModelMappings(draft.platform); draft.selected_models = null; draft.quality_rule = null; draft.openai_totp_rotate_on_429 = false; draft.openai_disable_scheduling_on_429 = false; selectedQualityRule = ''"><option v-for="p in platforms" :key="p.value" :value="p.value">{{ p.label }}</option></select></label>
+            <label class="block"><span class="field-label">{{ t('autoConfig.platform') }}</span><select v-model="draft.platform" data-testid="platform" class="input w-full" @change="draft.group_ids = []; draft.model_mappings = defaultOAuthModelMappings(draft.platform); draft.selected_models = null; draft.quality_rule = null; draft.openai_totp_rotate_on_429 = false; draft.openai_disable_scheduling_on_429 = false; draft.openai_ws_mode = OPENAI_WS_MODE_CTX_POOL; draft.openai_ws_sse_acceleration = false; selectedQualityRule = ''"><option v-for="p in platforms" :key="p.value" :value="p.value">{{ p.label }}</option></select></label>
             <div class="grid gap-4 sm:grid-cols-3"><label v-for="field in initialFields" :key="field.key"><span class="field-label">{{ t('autoConfig.' + field.key) }}</span><input v-model.number="draft[field.key]" :data-testid="field.key" type="number" :min="field.min" max="10000" step="1" required class="input w-full" /></label></div>
             <p class="text-xs leading-5 text-gray-500">{{ t('autoConfig.loadHint') }}</p>
             <fieldset v-if="draft.platform === 'openai'" class="space-y-2">
@@ -61,6 +61,25 @@
                 <NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.oauthInitialDisableScheduling429" :user-id="auth.user?.id" />
               </div>
               <p class="text-xs leading-5 text-gray-500">{{ t('autoConfig.disableScheduling429.hint') }}</p>
+            </fieldset>
+            <fieldset v-if="draft.platform === 'openai'" class="space-y-2" data-testid="initial-ws-mode">
+              <div class="flex flex-wrap items-center gap-2">
+                <label for="initial-openai-ws-mode" class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ t('admin.accounts.openai.wsMode') }}</label>
+                <NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.oauthInitialWSSettings" :user-id="auth.user?.id" />
+              </div>
+              <select id="initial-openai-ws-mode" v-model="draft.openai_ws_mode" data-testid="initial-ws-mode-select" class="input w-full">
+                <option v-for="mode in openAIWSModeOptions" :key="mode.value" :value="mode.value">{{ mode.label }}</option>
+              </select>
+              <p class="text-xs leading-5 text-gray-500">{{ t('autoConfig.ws.modeHint') }}</p>
+              <p v-if="openAIWSModeHintKey" class="text-xs leading-5 text-gray-500">{{ t(openAIWSModeHintKey) }}</p>
+            </fieldset>
+            <fieldset v-if="draft.platform === 'openai'" class="space-y-2" data-testid="initial-ws-sse-acceleration">
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="flex items-center gap-2 text-sm"><input v-model="draft.openai_ws_sse_acceleration" data-testid="initial-ws-sse-acceleration-enabled" type="checkbox" />{{ t('admin.accounts.openai.wsSseAcceleration') }}</label>
+                <NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.oauthInitialWSSettings" :user-id="auth.user?.id" />
+              </div>
+              <p class="text-xs leading-5 text-gray-500">{{ t('autoConfig.ws.accelerationHint') }}</p>
+              <p class="text-xs leading-5 text-gray-500">{{ t('admin.accounts.openai.wsSseAccelerationDesc') }}</p>
             </fieldset>
             <fieldset><legend class="field-label">{{ t('autoConfig.groups') }}</legend><p class="mb-2 text-xs leading-5 text-gray-500">{{ t('autoConfig.groupsOptional') }}</p><div class="group-list"><label v-for="g in initialGroups" :key="g.id" class="group-option"><input v-model="draft.group_ids" :value="g.id" type="checkbox" :data-testid="'initial-group-' + g.id" /><span>{{ g.name }} <small class="text-gray-400">#{{ g.id }}</small></span></label><p v-if="!initialGroups.length" class="text-sm text-gray-500">{{ t('autoConfig.noGroups') }}</p></div></fieldset>
             <fieldset class="space-y-3 border-t border-gray-100 pt-4 dark:border-dark-700" data-testid="initial-account-settings">
@@ -119,6 +138,7 @@ import SmartOpsNav from '@/components/admin/operations/SmartOpsNav.vue'
 import BPSDefaultsCard from '@/components/admin/operations/BPSDefaultsCard.vue'
 import OpenAITwoFAAdmissionCard from '@/components/admin/operations/OpenAITwoFAAdmissionCard.vue'
 import { defaultOpenAITwoFAAdmissionConfig, openaiTwoFAAdmissionError, type OpenAITwoFAAdmissionConfig } from '@/utils/openaiTwoFAAdmission'
+import { OPENAI_WS_MODE_OFF, OPENAI_WS_MODE_CTX_POOL, OPENAI_WS_MODE_PASSTHROUGH, OPENAI_WS_MODE_HTTP_BRIDGE, resolveOpenAIWSModeHintKey, type OpenAIWSMode } from '@/utils/openaiWsMode'
 import { defaultOAuthModelMappings, oauthModelMappingsError, oauthModelMappingsPayload, type OAuthModelMappingRule } from '@/utils/oauthModelMappings'
 import { defaultExcelBPSDefaults, excelBPSDefaultsError, excelBPSDefaultsPayload, type ExcelBPSDefaults } from '@/utils/excelBPSDefaults'
 import OAuthInitialModelSelection from '@/components/admin/operations/OAuthInitialModelSelection.vue'
@@ -133,7 +153,7 @@ import type { ScheduledTestPlan } from '@/types'
 import type { Group } from '@/types'
 import { defaultModelBillingConfig, modelBillingConfigError, modelBillingPayload, type ModelBillingConfig, type ModelBillingRule } from '@/utils/modelBilling'
 const { t } = useI18n(), auth = useAuthStore()
-const draft = ref<(AutoConfig & { openai_two_fa_admission: OpenAITwoFAAdmissionConfig; excel_bps: ExcelBPSDefaults; model_mappings: OAuthModelMappingRule[]; model_billing: ModelBillingConfig }) | null>(null), groups = ref<Group[]>([])
+const draft = ref<(AutoConfig & { openai_ws_mode: OpenAIWSMode; openai_ws_sse_acceleration: boolean; openai_two_fa_admission: OpenAITwoFAAdmissionConfig; excel_bps: ExcelBPSDefaults; model_mappings: OAuthModelMappingRule[]; model_billing: ModelBillingConfig }) | null>(null), groups = ref<Group[]>([])
 const modelBillingGroups = ref<Group[]>([]), modelBillingGroupsLoading = ref(true), modelBillingGroupsFailed = ref(false)
 const loading = ref(false), saving = ref(false), error = ref(''), notice = ref('')
 const qualityPlans = ref<ScheduledTestPlan[]>([]), selectedQualityRule = ref(''), qualityLoadFailed = ref(false)
@@ -161,6 +181,13 @@ const proxies = ref<Proxy[]>([])
 const initialFields = [{ key: 'priority', min: 0 }, { key: 'load_factor', min: 1 }, { key: 'concurrency', min: 1 }] as const
 const upgradeFields = [{ key: 'successes_per_step', max: 100000 }, { key: 'upgrade_step', max: 1000 }, { key: 'max_concurrency', max: 10000 }, { key: 'cooldown_seconds', max: 86400 }] as const
 const initialGroups = computed(() => groups.value.filter(g => g.platform === draft.value?.platform))
+const openAIWSModeOptions = computed(() => [
+ { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
+ { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
+ { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') },
+ { value: OPENAI_WS_MODE_HTTP_BRIDGE, label: t('admin.accounts.openai.wsModeHttpBridge') }
+])
+const openAIWSModeHintKey = computed(() => resolveOpenAIWSModeHintKey(draft.value?.openai_ws_mode ?? OPENAI_WS_MODE_CTX_POOL))
 async function loadModelBillingGroups() {
  const v = generation
  modelBillingGroupsLoading.value = true; modelBillingGroupsFailed.value = false
@@ -175,7 +202,7 @@ function unavailableModelBillingGroups(rule: ModelBillingRule) {
 
 async function load() {
  const v = generation; loading.value = true; error.value = ''
- try { const [config, available] = await Promise.all([getAutoConfig(), getAll()]); if (validGeneration(v)) { draft.value = { ...config, openai_totp_rotate_on_429: config.openai_totp_rotate_on_429 ?? false, openai_disable_scheduling_on_429: config.openai_disable_scheduling_on_429 ?? false, openai_two_fa_admission: config.openai_two_fa_admission ?? defaultOpenAITwoFAAdmissionConfig(), model_billing: modelBillingPayload(config.model_billing ?? defaultModelBillingConfig()), excel_bps: config.excel_bps ?? defaultExcelBPSDefaults(), model_mappings: config.model_mappings ?? defaultOAuthModelMappings(config.platform) }; selectedQualityRule.value = config.quality_rule ? 'saved' : ''; groups.value = available.filter(g => g.status === 'active') } }
+ try { const [config, available] = await Promise.all([getAutoConfig(), getAll()]); if (validGeneration(v)) { draft.value = { ...config, openai_ws_mode: config.openai_ws_mode ?? OPENAI_WS_MODE_CTX_POOL, openai_ws_sse_acceleration: config.openai_ws_sse_acceleration ?? false, openai_totp_rotate_on_429: config.openai_totp_rotate_on_429 ?? false, openai_disable_scheduling_on_429: config.openai_disable_scheduling_on_429 ?? false, openai_two_fa_admission: config.openai_two_fa_admission ?? defaultOpenAITwoFAAdmissionConfig(), model_billing: modelBillingPayload(config.model_billing ?? defaultModelBillingConfig()), excel_bps: config.excel_bps ?? defaultExcelBPSDefaults(), model_mappings: config.model_mappings ?? defaultOAuthModelMappings(config.platform) }; selectedQualityRule.value = config.quality_rule ? 'saved' : ''; groups.value = available.filter(g => g.status === 'active') } }
  catch { if (validGeneration(v)) error.value = t('autoConfig.loadFailed') }
  finally { if (validGeneration(v)) loading.value = false }
 }
@@ -192,7 +219,7 @@ async function save() {
  if (mappingError) { error.value = t(mappingError); return }
  if (c.upgrade_enabled && !c.upgrade_group_ids.length || accountSettingsInvalid(c.account_settings) || [...initialFields, ...upgradeFields].some(f => !Number.isInteger(c[f.key]) || c[f.key] < ('min' in f ? f.min : 1) || c[f.key] > ('max' in f ? f.max : 10000))) { error.value = t('autoConfig.invalid'); return }
  const v = generation; saving.value = true; error.value = ''; notice.value = ''
- try { const { runtime_blocked: _blocked, account_settings, ...payload } = c; const body = account_settings && Object.keys(account_settings).length ? { ...payload, account_settings } : payload; const result = await saveAutoConfig({ ...body, model_billing: modelBillingPayload(c.model_billing), excel_bps: excelBPSDefaultsPayload(c.excel_bps), model_mappings: oauthModelMappingsPayload(c.model_mappings) }); if (validGeneration(v)) { draft.value = { ...result, openai_totp_rotate_on_429: result.openai_totp_rotate_on_429 ?? false, openai_disable_scheduling_on_429: result.openai_disable_scheduling_on_429 ?? false, openai_two_fa_admission: result.openai_two_fa_admission ?? defaultOpenAITwoFAAdmissionConfig(), model_billing: modelBillingPayload(result.model_billing ?? defaultModelBillingConfig()), excel_bps: result.excel_bps ?? defaultExcelBPSDefaults(), model_mappings: result.model_mappings ?? defaultOAuthModelMappings(result.platform) }; selectedQualityRule.value = result.quality_rule ? 'saved' : ''; notice.value = t('autoConfig.saved'); historyRefreshKey.value++ } }
+ try { const { runtime_blocked: _blocked, account_settings, ...payload } = c; const body = account_settings && Object.keys(account_settings).length ? { ...payload, account_settings } : payload; const result = await saveAutoConfig({ ...body, model_billing: modelBillingPayload(c.model_billing), excel_bps: excelBPSDefaultsPayload(c.excel_bps), model_mappings: oauthModelMappingsPayload(c.model_mappings) }); if (validGeneration(v)) { draft.value = { ...result, openai_ws_mode: result.openai_ws_mode ?? OPENAI_WS_MODE_CTX_POOL, openai_ws_sse_acceleration: result.openai_ws_sse_acceleration ?? false, openai_totp_rotate_on_429: result.openai_totp_rotate_on_429 ?? false, openai_disable_scheduling_on_429: result.openai_disable_scheduling_on_429 ?? false, openai_two_fa_admission: result.openai_two_fa_admission ?? defaultOpenAITwoFAAdmissionConfig(), model_billing: modelBillingPayload(result.model_billing ?? defaultModelBillingConfig()), excel_bps: result.excel_bps ?? defaultExcelBPSDefaults(), model_mappings: result.model_mappings ?? defaultOAuthModelMappings(result.platform) }; selectedQualityRule.value = result.quality_rule ? 'saved' : ''; notice.value = t('autoConfig.saved'); historyRefreshKey.value++ } }
  catch { if (validGeneration(v)) error.value = t('autoConfig.saveFailed') }
  finally { if (validGeneration(v)) saving.value = false }
 }
