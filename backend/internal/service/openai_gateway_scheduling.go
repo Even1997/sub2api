@@ -1219,10 +1219,10 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	// 分组利润控制：legacy 公共入口同样装门，保证不经
 	// selectAccountWithScheduler 的调用方也无法绕过利润准入。
 	ctx = s.withOpenAIProfitControlGate(ctx, groupID)
-	return s.selectAccountWithLoadAwareness(ctx, groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "", true)
+	return s.selectAccountWithLoadAwareness(ctx, groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "", true, nil)
 }
 
-func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, useUpstreamTokenCost bool) (*AccountSelectionResult, error) {
+func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, useUpstreamTokenCost bool, stickyBindingAllowed ...func(*Account) bool) (*AccountSelectionResult, error) {
 	SetAccountSlotReservationSession(ctx, sessionHash)
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	routingGroup := openAIAccountRoutingGroup(ctx, groupID)
@@ -1252,6 +1252,12 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 	if openAIStickyBindingSnapshotFromContext(ctx, groupID, sessionHash) == nil {
 		ctx = withOpenAIStickyBindingSnapshot(ctx, groupID, sessionHash, stickyAccountID, stickyReadErr == nil || errors.Is(stickyReadErr, ErrStickySessionNotFound))
+	}
+	// The scheduler wrapper may reject a candidate after slot acquisition. Do
+	// not publish that candidate: its write would make the final account conflict
+	// with this selection's original CAS snapshot. Slot release stays with the caller.
+	canBindSticky := func(account *Account) bool {
+		return len(stickyBindingAllowed) == 0 || stickyBindingAllowed[0] == nil || stickyBindingAllowed[0](account)
 	}
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
 		localExcluded := cloneExcludedAccountIDs(excludedIDs)
@@ -1321,11 +1327,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	// ============ Layer 1: Sticky session ============
-	// A healthy sticky account whose bounded wait queue is full may be used as a
-	// one-request capacity spillover in Layer 2. Keep that spillover temporary:
-	// rewriting the durable binding here would make a short burst migrate the
-	// whole conversation to a cache-cold account.
-	stickySpillover := false
+	// If a healthy sticky account spills into Layer 2, the next account becomes
+	// sticky only after it acquires a slot. A failed selection keeps the binding.
 	if sessionHash != "" && !groupFocusOverridesSticky(routingGroup, stickyAccountID, nil) {
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
@@ -1367,7 +1370,6 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 								MaxWaiting:     cfg.StickySessionMaxWaiting,
 							})
 						}
-						stickySpillover = true
 					}
 				}
 			}
@@ -1556,7 +1558,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if selectErr != nil {
 					return nil, true, selectErr
 				}
-				if sessionHash != "" && !stickySpillover && !gatewayProfitControlGateActive(ctx) {
+				if sessionHash != "" && !gatewayProfitControlGateActive(ctx) && canBindSticky(selection.Account) {
 					_ = s.setStickySessionAccountIDIfUnchanged(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 				}
 				return selection, true, nil
@@ -1597,7 +1599,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if selectErr != nil {
 					return nil, selectErr
 				}
-				if sessionHash != "" && !stickySpillover && !gatewayProfitControlGateActive(ctx) {
+				if sessionHash != "" && !gatewayProfitControlGateActive(ctx) && canBindSticky(selection.Account) {
 					_ = s.setStickySessionAccountIDIfUnchanged(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 				}
 				return selection, nil
@@ -1910,13 +1912,17 @@ func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *
 	if err != nil {
 		return nil, err
 	}
-	return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+	selection := &AccountSelectionResult{
 		Account:          hydrated,
 		Acquired:         acquired,
 		ReleaseFunc:      release,
 		AccountRequestID: requestID,
 		WaitPlan:         waitPlan,
-	}), nil
+	}
+	if snapshot, _ := ctx.Value(openAIStickyBindingSnapshotContextKey{}).(*openAIStickyBindingSnapshot); snapshot != nil && snapshot.known && snapshot.accountID > 0 && hydrated != nil && hydrated.ID == snapshot.accountID {
+		selection.stickySessionHit = true
+	}
+	return attachSelectionProfitGate(ctx, selection), nil
 }
 
 func (s *OpenAIGatewayService) newAcquiredSelectionResult(ctx context.Context, account *Account, release func(), requestID string) (*AccountSelectionResult, error) {
