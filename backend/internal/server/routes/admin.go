@@ -946,6 +946,8 @@ func registerScheduledTestRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	admin.GET("/priority-scheduling/config", h.Admin.Setting.GetPriorityScheduling)
 	admin.PUT("/priority-scheduling/config", h.Admin.Setting.SavePriorityScheduling)
 	admin.GET("/priority-scheduling/snapshot", h.Admin.Account.PrioritySchedulingSnapshot)
+	admin.GET("/priority-scheduling/analysis", h.Admin.Account.PrioritySchedulingAnalysis)
+	admin.GET("/priority-scheduling/models", h.Admin.Account.PrioritySchedulingModels)
 	admin.GET("/account-ops/config", h.Admin.AccountOps.GetConfig)
 	admin.PUT("/account-ops/config", h.Admin.AccountOps.SaveConfig)
 	admin.PUT("/account-ops/notification-settings", h.Admin.AccountOps.SaveNotificationSettings)
