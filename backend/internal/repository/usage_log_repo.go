@@ -169,6 +169,7 @@ func appendUsageLogProviderWhereCondition(conditions []string, args []any, provi
 }
 
 type usageLogRepository struct {
+	configuredTimezone
 	connectionOnce  sync.Once
 	connectionQueue chan service.ConnectionTrace
 	timingOnce      sync.Once

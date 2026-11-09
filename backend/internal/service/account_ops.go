@@ -124,6 +124,7 @@ type AccountOpsService struct {
 	robotClient       *http.Client
 	robotMu           sync.Mutex
 	robotLast         map[string]time.Time
+	degradationCursor int64
 	autoSeen          map[int64]bool
 	autoConfigMu      sync.Mutex
 	autoGroups        GroupRepository

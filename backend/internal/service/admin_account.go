@@ -145,7 +145,8 @@ func cloneAccountJSONMap(value map[string]any) (map[string]any, error) {
 }
 
 var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
-	OpenAITwoFAAdmissionExtraKey: {},
+	OAuthDegradationActionExtraKey: {},
+	OpenAITwoFAAdmissionExtraKey:   {},
 	// A retry identity belongs to the operation that created one copy, not to later copies.
 	duplicateAccountOperationIDExtraKey: {},
 	// External sync identity belongs to one local account only.
@@ -478,6 +479,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	}
 	accountExtra = MergeOpenAICodexTicketExtra(accountExtra, nil)
 	StripRetiredCodexTurnStateExtra(accountExtra)
+	delete(accountExtra, OAuthDegradationActionExtraKey)
 	if (input.Platform == PlatformTypeSafe || input.Platform == PlatformMistral) && input.Type != AccountTypeAPIKey {
 		return nil, fmt.Errorf("%s accounts only support apikey credentials", input.Platform)
 	}
@@ -1076,6 +1078,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	// Dedicated quality restore/runtime paths use their own transaction/UpdateExtra.
 	updates = maps.Clone(updates)
 	delete(updates, QualityModelIsolationKey)
+	delete(updates, OAuthDegradationActionExtraKey)
 	if err := ValidateAccountCostMultiplierExtra(updates); err != nil {
 		return err
 	}
@@ -1189,6 +1192,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
 	delete(input.Extra, OpenAITwoFAAdmissionExtraKey)
+	delete(input.Extra, OAuthDegradationActionExtraKey)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingProbeExtraKey)

@@ -167,4 +167,15 @@ func TestAccountHTTPResponseCancellationHeaderBoundary(t *testing.T) {
 	}
 }
 
+func lifecycleClient(t *testing.T, _ *httptest.Server, fingerprinted bool) (service.HTTPUpstream, func(*http.Request) (*http.Response, error)) {
+	t.Helper()
+	client := NewHTTPUpstream(nil)
+	return client, func(req *http.Request) (*http.Response, error) {
+		if !fingerprinted {
+			return client.Do(req, "", 1, 1)
+		}
+		return client.DoWithTLS(req, "", 1, 1, &tlsfingerprint.Profile{Name: "lifecycle-fixture"})
+	}
+}
+
 var _ service.HTTPUpstream = (*httpUpstreamService)(nil)

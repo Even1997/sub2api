@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 )
 
 type dashboardAggregationRepository struct {
+	configuredTimezone
 	sql   sqlExecutor
 	clock func() time.Time
 }
@@ -38,6 +38,13 @@ func newDashboardAggregationRepositoryWithSQL(sqlq sqlExecutor) *dashboardAggreg
 	return &dashboardAggregationRepository{sql: sqlq, clock: time.Now}
 }
 
+// withSQL preserves the instance's clock and timezone inside transactions.
+func (r *dashboardAggregationRepository) withSQL(sqlq sqlExecutor) *dashboardAggregationRepository {
+	txRepo := *r
+	txRepo.sql = sqlq
+	return &txRepo
+}
+
 func (r *dashboardAggregationRepository) now() time.Time {
 	if r.clock != nil {
 		return r.clock()
@@ -57,7 +64,7 @@ func (r *dashboardAggregationRepository) AggregateRange(ctx context.Context, sta
 	if r == nil || r.sql == nil {
 		return nil
 	}
-	loc := timezone.Location()
+	loc := r.timezoneLocation()
 	startLocal := start.In(loc)
 	endLocal := end.In(loc)
 	if !endLocal.After(startLocal) {
@@ -70,8 +77,8 @@ func (r *dashboardAggregationRepository) AggregateRange(ctx context.Context, sta
 		hourEnd = hourEnd.Add(time.Hour)
 	}
 
-	dayStart := truncateToDay(startLocal)
-	dayEnd := truncateToDay(endLocal)
+	dayStart := r.startOfDay(startLocal)
+	dayEnd := r.startOfDay(endLocal)
 	if endLocal.After(dayEnd) {
 		dayEnd = dayEnd.Add(24 * time.Hour)
 	}
@@ -81,7 +88,7 @@ func (r *dashboardAggregationRepository) AggregateRange(ctx context.Context, sta
 		if err != nil {
 			return err
 		}
-		txRepo := newDashboardAggregationRepositoryWithSQL(tx)
+		txRepo := r.withSQL(tx)
 		if err := txRepo.aggregateRangeInTx(ctx, hourStart, hourEnd, dayStart, dayEnd); err != nil {
 			_ = tx.Rollback()
 			return err
@@ -112,7 +119,7 @@ func (r *dashboardAggregationRepository) RecomputeRange(ctx context.Context, sta
 	if r == nil || r.sql == nil {
 		return nil
 	}
-	loc := timezone.Location()
+	loc := r.timezoneLocation()
 	startLocal := start.In(loc)
 	endLocal := end.In(loc)
 	if !endLocal.After(startLocal) {
@@ -125,8 +132,8 @@ func (r *dashboardAggregationRepository) RecomputeRange(ctx context.Context, sta
 		hourEnd = hourEnd.Add(time.Hour)
 	}
 
-	dayStart := truncateToDay(startLocal)
-	dayEnd := truncateToDay(endLocal)
+	dayStart := r.startOfDay(startLocal)
+	dayEnd := r.startOfDay(endLocal)
 	if endLocal.After(dayEnd) {
 		dayEnd = dayEnd.Add(24 * time.Hour)
 	}
@@ -141,16 +148,16 @@ func (r *dashboardAggregationRepository) RecomputeRange(ctx context.Context, sta
 			_ = tx.Rollback()
 			return err
 		}
-		if err := invalidateGroupUsageRollupsAt(ctx, tx, start); err != nil {
+		if err := invalidateGroupUsageRollupsAt(ctx, tx, start, r.timezoneLocation().String()); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
-		txRepo := newDashboardAggregationRepositoryWithSQL(tx)
+		txRepo := r.withSQL(tx)
 		if err := txRepo.recomputeRangeInTx(ctx, hourStart, hourEnd, dayStart, dayEnd); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
-		if err := txRepo.syncGroupUsageRollupsInTx(ctx, service.GroupUsageTodayStart(r.now())); err != nil {
+		if err := txRepo.syncGroupUsageRollupsInTx(ctx, r.groupUsageTodayStart(r.now())); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
@@ -242,14 +249,14 @@ func (r *dashboardAggregationRepository) CleanupUsageLogs(ctx context.Context, c
 	} else if err := r.cleanupUsageLogsBatches(ctx, cutoff); err != nil {
 		return err
 	}
-	return r.SyncGroupUsageRollups(ctx, service.GroupUsageTodayStart(r.now()))
+	return r.SyncGroupUsageRollups(ctx, r.groupUsageTodayStart(r.now()))
 }
 
 func (r *dashboardAggregationRepository) cleanupUsageLogsBatches(ctx context.Context, cutoff time.Time) error {
 	db, transactional := r.sql.(*sql.DB)
 	for {
 		if transactional {
-			affected, err := cleanupUsageLogsBatchWithRollupInvalidation(ctx, db, cutoff)
+			affected, err := r.cleanupUsageLogsBatchWithRollupInvalidation(ctx, db, cutoff)
 			if err != nil {
 				return err
 			}
@@ -283,7 +290,7 @@ func (r *dashboardAggregationRepository) cleanupUsageLogsBatches(ctx context.Con
 	}
 }
 
-func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB, cutoff time.Time) (int64, error) {
+func (r *dashboardAggregationRepository) cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB, cutoff time.Time) (int64, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -333,7 +340,7 @@ func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB
 		return rollback(err)
 	}
 	if affected > 0 {
-		if err := invalidateGroupUsageRollupsAt(ctx, tx, earliestDeletedAt); err != nil {
+		if err := invalidateGroupUsageRollupsAt(ctx, tx, earliestDeletedAt, r.timezoneLocation().String()); err != nil {
 			return rollback(err)
 		}
 	}
@@ -391,7 +398,7 @@ func (r *dashboardAggregationRepository) EnsureUsageLogsPartitions(ctx context.C
 }
 
 func (r *dashboardAggregationRepository) insertHourlyActiveUsers(ctx context.Context, start, end time.Time) error {
-	tzName := timezone.Name()
+	tzName := r.timezoneName()
 	query := `
 		INSERT INTO usage_dashboard_hourly_users (bucket_start, user_id)
 		SELECT DISTINCT
@@ -406,7 +413,7 @@ func (r *dashboardAggregationRepository) insertHourlyActiveUsers(ctx context.Con
 }
 
 func (r *dashboardAggregationRepository) insertDailyActiveUsers(ctx context.Context, start, end time.Time) error {
-	tzName := timezone.Name()
+	tzName := r.timezoneName()
 	query := `
 		INSERT INTO usage_dashboard_daily_users (bucket_date, user_id)
 		SELECT DISTINCT
@@ -421,7 +428,7 @@ func (r *dashboardAggregationRepository) insertDailyActiveUsers(ctx context.Cont
 }
 
 func (r *dashboardAggregationRepository) upsertHourlyAggregates(ctx context.Context, start, end time.Time) error {
-	tzName := timezone.Name()
+	tzName := r.timezoneName()
 	query := `
 		WITH hourly AS (
 			SELECT
@@ -493,7 +500,7 @@ func (r *dashboardAggregationRepository) upsertHourlyAggregates(ctx context.Cont
 }
 
 func (r *dashboardAggregationRepository) upsertDailyAggregates(ctx context.Context, start, end time.Time) error {
-	tzName := timezone.Name()
+	tzName := r.timezoneName()
 	query := `
 		WITH daily AS (
 			SELECT
@@ -629,7 +636,7 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 	})
 	if db, ok := r.sql.(*sql.DB); ok {
 		for _, partition := range partitions {
-			if err := dropUsageLogsPartitionWithRollupInvalidation(ctx, db, partition.name, partition.month); err != nil {
+			if err := r.dropUsageLogsPartitionWithRollupInvalidation(ctx, db, partition.name, partition.month); err != nil {
 				return err
 			}
 		}
@@ -641,7 +648,7 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 	return nil
 }
 
-func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.DB, name string, monthStart time.Time) error {
+func (r *dashboardAggregationRepository) dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.DB, name string, monthStart time.Time) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -665,13 +672,17 @@ func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.D
 	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
 		return rollback(err)
 	}
-	if err := invalidateGroupUsageRollupsAt(ctx, tx, monthStart); err != nil {
+	if err := invalidateGroupUsageRollupsAt(ctx, tx, monthStart, r.timezoneLocation().String()); err != nil {
 		return rollback(err)
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(name))); err != nil {
 		return rollback(err)
 	}
 	return tx.Commit()
+}
+
+func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.DB, name string, monthStart time.Time) error {
+	return (&dashboardAggregationRepository{}).dropUsageLogsPartitionWithRollupInvalidation(ctx, db, name, monthStart)
 }
 
 func (r *dashboardAggregationRepository) createUsageLogsPartition(ctx context.Context, month time.Time) error {
@@ -686,10 +697,6 @@ func (r *dashboardAggregationRepository) createUsageLogsPartition(ctx context.Co
 	)
 	_, err := r.sql.ExecContext(ctx, query)
 	return err
-}
-
-func truncateToDay(t time.Time) time.Time {
-	return timezone.StartOfDay(t)
 }
 
 func truncateToMonthUTC(t time.Time) time.Time {
