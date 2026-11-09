@@ -25,7 +25,7 @@
         <!-- Quick presets -->
         <div class="date-picker-presets">
           <button
-            v-for="preset in presets"
+            v-for="preset in visiblePresets"
             :key="preset.value"
             @click="selectPreset(preset)"
             :class="['date-picker-preset', isPresetActive(preset) && 'date-picker-preset-active']"
@@ -92,6 +92,8 @@ interface Props {
   allowAll?: boolean
   // Opt in where the consumer accepts RFC3339 instants as well as calendar dates.
   rolling24Hours?: boolean
+  // Calendar-only consumers can omit the rolling-window shortcut.
+  showLast24Hours?: boolean
 }
 
 interface Emits {
@@ -100,7 +102,9 @@ interface Emits {
   (e: 'change', range: { startDate: string; endDate: string; preset: string | null }): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  showLast24Hours: true
+})
 const emit = defineEmits<Emits>()
 
 const { t, locale } = useI18n()
@@ -232,9 +236,13 @@ const presets = computed<DatePreset[]>(() => [
   }
 ])
 
+const visiblePresets = computed(() => props.showLast24Hours
+  ? presets.value
+  : presets.value.filter(preset => preset.value !== 'last24Hours'))
+
 const displayValue = computed(() => {
   if (activePreset.value) {
-    const preset = presets.value.find((p) => p.value === activePreset.value)
+    const preset = visiblePresets.value.find((p) => p.value === activePreset.value)
     if (preset) return t(preset.labelKey)
   }
 
@@ -268,14 +276,14 @@ const selectPreset = (preset: DatePreset) => {
 const detectPreset = () => {
   // Recognize an applied snapshot without requiring it to equal the current clock.
   // Date-only pairs must never be mistaken for a rolling window.
-  if (props.rolling24Hours && localStartDate.value.includes('T') && localEndDate.value.includes('T') &&
+  if (props.showLast24Hours && props.rolling24Hours && localStartDate.value.includes('T') && localEndDate.value.includes('T') &&
       Date.parse(localEndDate.value) - Date.parse(localStartDate.value) === 86_400_000) {
     activePreset.value = 'last24Hours'
     return
   }
   // Check if current dates match any preset
   activePreset.value = null
-  for (const preset of presets.value) {
+  for (const preset of visiblePresets.value) {
     if (props.rolling24Hours && preset.value === 'last24Hours') continue
     const range = preset.getRange()
     if (range.start === localStartDate.value && range.end === localEndDate.value) {
@@ -297,7 +305,7 @@ const toggle = () => {
 }
 
 const apply = () => {
-  if (props.rolling24Hours && activePreset.value === 'last24Hours') {
+  if (props.showLast24Hours && props.rolling24Hours && activePreset.value === 'last24Hours') {
     selectPreset(presets.value.find(preset => preset.value === 'last24Hours')!)
   }
   emit('update:startDate', localStartDate.value)
@@ -337,6 +345,7 @@ const detectAppliedRange = () => {
   detectPreset()
 }
 watch(() => [props.startDate, props.endDate], detectAppliedRange)
+watch(() => [props.showLast24Hours, props.rolling24Hours], detectPreset)
 
 detectPreset()
 
