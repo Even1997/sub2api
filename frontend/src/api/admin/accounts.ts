@@ -41,6 +41,14 @@ import type {
   OpenCodeGoUsageState
 } from '@/types'
 
+/** Current account slots in use, independent of dashboard history and ops settings. */
+export async function getConcurrencySummary(): Promise<{ current_concurrency: number }> {
+  const { data } = await apiClient.get<{ current_concurrency: number }>(
+    '/admin/accounts/concurrency-summary'
+  )
+  return data
+}
+
 /**
  * List all accounts with pagination
  * @param page - Page number (default: 1)
@@ -1667,6 +1675,7 @@ export async function getOpenAIRequestTimezones(): Promise<{ default: string; ti
 }
 
 export const accountsAPI = {
+  getConcurrencySummary,
  getPerformance, savePerformance, releasePerformance, getPerformanceEvents,
   getOpenAIRequestTimezones,
   list,

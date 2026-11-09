@@ -6,14 +6,16 @@ import type { DashboardStats } from '@/types'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import DashboardView from '../DashboardView.vue'
 
-const { getSnapshotV2, getUserUsageTrend, getUserSpendingRanking } = vi.hoisted(() => ({
+const { getSnapshotV2, getUserUsageTrend, getUserSpendingRanking, getConcurrencySummary } = vi.hoisted(() => ({
   getSnapshotV2: vi.fn(),
   getUserUsageTrend: vi.fn(),
-  getUserSpendingRanking: vi.fn()
+  getUserSpendingRanking: vi.fn(),
+  getConcurrencySummary: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
+    accounts: { getConcurrencySummary },
     dashboard: {
       getSnapshotV2,
       getUserUsageTrend,
@@ -128,6 +130,8 @@ describe('admin DashboardView', () => {
     getSnapshotV2.mockReset()
     getUserUsageTrend.mockReset()
     getUserSpendingRanking.mockReset()
+    getConcurrencySummary.mockReset()
+    getConcurrencySummary.mockResolvedValue({ current_concurrency: 42 })
 
     getSnapshotV2.mockResolvedValue({
       stats: createDashboardStats(),
@@ -152,6 +156,78 @@ describe('admin DashboardView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('shows total current account concurrency and refreshes it independently of the date range', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="account-concurrency"]').get('span').text()).toBe('42')
+    expect(getConcurrencySummary).toHaveBeenCalledWith()
+
+    getConcurrencySummary.mockResolvedValueOnce({ current_concurrency: 0 })
+    await wrapper.findAll('button').find(button => button.text() === 'common.refresh')!.trigger('click')
+    await flushPromises()
+    expect(getConcurrencySummary).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="account-concurrency"]').get('span').text()).toBe('0')
+
+    await wrapper.getComponent(DateRangePicker).vm.$emit('change', {
+      startDate: '2026-01-01', endDate: '2026-01-02', preset: 'custom'
+    })
+    await flushPromises()
+    expect(getConcurrencySummary).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the dashboard available and replaces an old concurrency count with unknown on failure', async () => {
+    const wrapper = mountDashboard()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="account-concurrency"]').get('span').text()).toBe('42')
+
+    getConcurrencySummary.mockRejectedValueOnce(new Error('Unavailable'))
+    await wrapper.findAll('button').find(button => button.text() === 'common.refresh')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="account-concurrency"]').get('span').text()).toBe('—')
+    expect(wrapper.text()).toContain('RPM')
+    expect(wrapper.text()).toContain('TPM')
+  })
+
+  it('ignores a stale concurrency response after a newer refresh', async () => {
+    let resolveOld!: (value: { current_concurrency: number }) => void
+    getConcurrencySummary.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+    const wrapper = mountDashboard()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="account-concurrency"]').get('span').text()).toBe('—')
+
+    getConcurrencySummary.mockResolvedValueOnce({ current_concurrency: 7 })
+    await wrapper.findAll('button').find(button => button.text() === 'common.refresh')!.trigger('click')
+    await flushPromises()
+    resolveOld({ current_concurrency: 999 })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="account-concurrency"]').get('span').text()).toBe('7')
+    expect(wrapper.get('[data-testid="account-concurrency"]').get('span').text()).not.toBe('999')
+  })
+
+  it('switches metrics and ignores a stale tokens response', async () => {
+    let resolveTokens!: (value: any) => void
+    getUserUsageTrend.mockImplementationOnce(() => new Promise(resolve => { resolveTokens = resolve }))
+    getUserUsageTrend.mockResolvedValueOnce({ trend: [{ date: '2026-01-01', user_id: 2, username: 'spender', email: '', requests: 1, tokens: 10, cost: 5, actual_cost: 5 }] })
+    const wrapper = mount(DashboardView, {
+      global: { stubs: {
+        AppLayout: { template: '<div><slot /></div>' }, LoadingSpinner: true,
+        Icon: true, DateRangePicker: true, Select: true, ModelDistributionChart: true,
+        TokenUsageTrend: true
+      } }
+    })
+    await flushPromises()
+    expect(getUserUsageTrend).toHaveBeenCalledWith(expect.objectContaining({ metric: 'tokens', limit: 12 }))
+    await wrapper.findAll('button').find(button => button.text() === 'admin.dashboard.actualSpending')!.trigger('click')
+    expect(getUserUsageTrend).toHaveBeenCalledWith(expect.objectContaining({ metric: 'actual_cost', limit: 12 }))
+    await flushPromises()
+    const chart = wrapper.findComponent({ name: 'Line' })
+    expect(chart.props('data').datasets[0].data).toEqual([5])
+    expect(chart.props('options').scales.y.ticks.callback(5)).toBe('$5.00')
+    resolveTokens({ trend: [{ date: '2026-01-01', user_id: 1, username: 'tokens', email: '', requests: 1, tokens: 100, cost: 1, actual_cost: 1 }] })
+    await flushPromises()
+    expect(chart.props('data').datasets[0].data).toEqual([5])
   })
 
   it('requests an exact rolling 24-hour range initially and opts the picker into rolling ranges', async () => {
