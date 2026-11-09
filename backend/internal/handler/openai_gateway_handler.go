@@ -994,6 +994,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			requestPlatform,
 		)
 		if err != nil {
+			// Mixed routing defers billing until selection; preserve the user balance error.
+			if errors.Is(err, service.ErrInsufficientBalance) {
+				status, code, message, _ := billingErrorDetails(err)
+				h.handleStreamingAwareError(c, status, code, message, streamStarted)
+				return
+			}
 			if errors.Is(err, service.ErrPriorityLatencyUnavailable) {
 				h.handleTurnAdmissionError(c, err, streamStarted)
 				return
@@ -1700,6 +1706,12 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			requestPlatform,
 		)
 		if err != nil {
+			// Mixed routing defers billing until selection; preserve the user balance error.
+			if errors.Is(err, service.ErrInsufficientBalance) {
+				status, code, message, _ := billingErrorDetails(err)
+				h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
+				return
+			}
 			if errors.Is(err, service.ErrPriorityLatencyUnavailable) {
 				h.handleTurnAdmissionError(c, err, streamStarted)
 				return
@@ -3277,6 +3289,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			requestPlatform,
 		)
 		if err != nil {
+			if errors.Is(err, service.ErrInsufficientBalance) {
+				closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.InsufficientUserBalanceMessage)
+				return
+			}
 			if errors.Is(err, service.ErrPriorityLatencyUnavailable) {
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "latency scheduling temporarily unavailable; retry after 5 seconds")
 				return

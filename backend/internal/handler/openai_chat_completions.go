@@ -198,6 +198,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			requestPlatform,
 		)
 		if err != nil {
+			if errors.Is(err, service.ErrInsufficientBalance) {
+				status, code, message, _ := billingErrorDetails(err)
+				h.handleStreamingAwareError(c, status, code, message, streamStarted)
+				return
+			}
 			if errors.Is(err, service.ErrPriorityLatencyUnavailable) {
 				h.handleTurnAdmissionError(c, err, streamStarted)
 				return
