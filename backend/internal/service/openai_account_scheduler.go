@@ -469,6 +469,15 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	if s != nil && s.service != nil && s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
 		req.RequirePrivacySet = true
 	}
+	stickyKnown := req.StickyAccountID > 0
+	if !stickyKnown && strings.TrimSpace(req.SessionHash) != "" && s.service.cache != nil {
+		accountID, readErr := s.service.getStickySessionAccountID(ctx, req.GroupID, req.SessionHash)
+		stickyKnown = readErr == nil || errors.Is(readErr, ErrStickySessionNotFound)
+		if readErr == nil {
+			req.StickyAccountID = accountID
+		}
+	}
+	ctx = withOpenAIStickyBindingSnapshot(ctx, req.GroupID, req.SessionHash, req.StickyAccountID, stickyKnown)
 
 	start := time.Now()
 	latencyOwnerID := int64(0)
@@ -661,7 +670,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	}
 
 	if !req.StickyWeighted {
-		selection, escapedSticky, err := s.selectBySessionHash(ctx, req)
+		selection, _, err := s.selectBySessionHash(ctx, req)
 		if err != nil {
 			return nil, decision, err
 		}
@@ -675,9 +684,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		if latencyOwnerID > 0 {
 			return nil, decision, priorityLatencyAdmissionError(false)
 		}
-		if escapedSticky {
-			req.PreserveStickyBinding = true
-		}
+		// A successful escape advances the normal session binding through the
+		// acquired-selection path below. PreserveStickyBinding is reserved for
+		// explicit ownership; a failed escape leaves the old binding untouched.
 	}
 
 	selection, candidateCount, topK, loadSkew, err := s.selectByLoadBalance(ctx, req)
@@ -721,6 +730,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	if accountID <= 0 {
 		var err error
 		accountID, err = s.service.getStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		observeOpenAIStickyBinding(ctx, req.GroupID, sessionHash, accountID, err)
 		if err != nil || accountID <= 0 {
 			return nil, false, nil
 		}
@@ -2849,6 +2859,12 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	}
 	priority := s.prioritySchedulingRuntimeConfig()
 	observation := priorityObservationFromContext(ctx, requestedModel)
+	var stickyAccountID int64
+	var stickyReadErr error
+	if sessionHash != "" && s.cache != nil {
+		stickyAccountID, stickyReadErr = s.getStickySessionAccountID(ctx, groupID, sessionHash)
+	}
+	ctx = withOpenAIStickyBindingSnapshot(ctx, groupID, sessionHash, stickyAccountID, stickyReadErr == nil || errors.Is(stickyReadErr, ErrStickySessionNotFound))
 	scheduler := s.getOpenAIAccountScheduler(ctx, openAIAgentRecoveryBound(ctx) || (platform == PlatformOpenAI && requiredImageCapability == "" && useUpstreamTokenCost && priorityApplies(priority, OpenAIAccountScheduleRequest{GroupID: groupID, RequestedModel: requestedModel, HistoryModel: observation.model})))
 	if scheduler == nil {
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
@@ -2945,12 +2961,6 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		return nil, decision, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
 	}
 
-	var stickyAccountID int64
-	if sessionHash != "" && s.cache != nil {
-		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil && accountID > 0 {
-			stickyAccountID = accountID
-		}
-	}
 	reservedID := s.concurrencyService.reservedSessionAccount(ctx)
 	if reservedID > 0 {
 		stickyAccountID = reservedID
