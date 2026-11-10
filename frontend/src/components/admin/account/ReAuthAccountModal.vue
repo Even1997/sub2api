@@ -150,8 +150,8 @@
               {{ openaiReauthTaskLabel(openaiReauthStatus.task) }}
             </span>
           </div>
-          <p v-if="openaiReauthStatus?.task?.status === 'failed' && openaiReauthStatus.task.error" class="break-words text-xs text-red-600 dark:text-red-400">
-            {{ openaiReauthStatus.task.error }}
+          <p v-if="openaiReauthStatus?.task?.status === 'failed' && openaiReauthErrorText(openaiReauthStatus.task)" class="break-words text-xs text-red-600 dark:text-red-400">
+            {{ openaiReauthErrorText(openaiReauthStatus.task) }}
           </p>
 
           <div class="flex flex-wrap gap-2">
@@ -692,8 +692,18 @@ const startOpenAIReauth = async () => {
   }
 }
 
+const openaiReauthRetired = (task: OpenAIOAuthReauthTask) =>
+  task.error === 'account_retired' || /(?:^|\s)reason=account_retired(?:\s|$)/.test(task.error || '')
+
 const openaiReauthTaskLabel = (task: OpenAIOAuthReauthTask) =>
-  t(`admin.accounts.openai.reauth.stages.${task.stage}`)
+  task.status === 'failed' && openaiReauthRetired(task)
+    ? t('admin.accounts.openai.reauth.retired')
+    : t(`admin.accounts.openai.reauth.stages.${task.stage}`)
+
+const openaiReauthErrorText = (task: OpenAIOAuthReauthTask) => {
+  if (!task.error) return ''
+  return openaiReauthRetired(task) ? t('admin.accounts.openai.reauth.retiredDetail') : task.error
+}
 
 // Watchers
 watch(

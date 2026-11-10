@@ -1098,7 +1098,9 @@ export default {
             applying_credentials: '正在回填凭据并恢复账号',
             succeeded: '重新登录成功，账号已启用',
             failed: '重新登录失败'
-          }
+          },
+          retired: '账号已废',
+          retiredDetail: '上游返回该账号已被删除或停用，不再当作普通重登失败。'
         },
         manualBps: {
           title: 'BPS 账户授权',

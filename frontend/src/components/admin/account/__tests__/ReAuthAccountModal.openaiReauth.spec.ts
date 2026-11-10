@@ -20,6 +20,8 @@ describe('ReAuthAccountModal OpenAI protocol re-login', () => {
     expect(source).toContain('openaiReauthTaskActive')
     expect(source).toContain('setInterval(() =>')
     expect(source).toContain('stopOpenAIReauthPolling()')
+    expect(source).toContain("t('admin.accounts.openai.reauth.retired')")
+    expect(source).toContain('account_retired')
     expect(source).toContain('onBeforeUnmount(stopOpenAIReauthPolling)')
   })
 

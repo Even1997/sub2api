@@ -1011,7 +1011,9 @@ export default {
             applying_credentials: 'Applying credentials and restoring the account',
             succeeded: 'Re-login succeeded and account is enabled',
             failed: 'Re-login failed'
-          }
+          },
+          retired: 'Account retired',
+          retiredDetail: 'The upstream account was deleted or deactivated. This is not an ordinary re-login failure.'
         },
         manualBps: {
           title: 'BPS account authorization',

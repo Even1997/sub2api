@@ -634,6 +634,32 @@ func TestOpenAIOAuthReauthReleasesMihomoProxyWhenWorkerFails(t *testing.T) {
 	require.True(t, released)
 }
 
+func TestFailTaskPreservesRetiredAccountCode(t *testing.T) {
+	svc, _, repo, _, _, _ := newReauthTestService("acct-1")
+	ctx := context.Background()
+	retiredID := int64(0)
+	svc.SetRetiredAccountMarker(func(_ context.Context, id int64, detail string) error {
+		retiredID = id
+		require.NotContains(t, detail, "synthetic")
+		return nil
+	})
+	savePasswordReauthConfig(t, svc)
+	_, err := svc.CreateTask(ctx, 42)
+	require.NoError(t, err)
+	claim, err := svc.ClaimTask(ctx, "worker-a")
+	require.NoError(t, err)
+
+	raw := "WorkerError: account_retired: You do not have an account because it has been deleted or deactivated"
+	require.NoError(t, svc.FailTask(ctx, claim.TaskID, "worker-a", raw))
+	require.Equal(t, int64(42), retiredID)
+	require.Equal(t, "account_retired", repo.task.Error)
+	shown := safeReauthTask(repo.task)
+	require.Equal(t, "account_retired", shown.Error)
+	require.NotNil(t, shown.Failure)
+	require.Equal(t, "account_retired", shown.Failure.Code)
+	require.NotContains(t, shown.Error, "deleted")
+}
+
 type excelLoginListRepo struct {
 	*reauthTestRepo
 	rows       []ExcelLoginSnapshot

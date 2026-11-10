@@ -30,3 +30,10 @@ func TestLocalProtocolDiagnosticIsBoundedAndPrivate(t *testing.T) {
 	// Existing workers and task errors do not require the optional protocol.
 	require.Equal(t, "password/TOTP protocol failed (exit 1)", sanitizeReauthError("password/TOTP protocol failed (exit 1)"))
 }
+
+func TestSanitizeReauthErrorKeepsRetiredCodeOnly(t *testing.T) {
+	raw := "WorkerError: account_retired: You do not have an account because it has been deleted or deactivated"
+	require.Equal(t, "account_retired", sanitizeReauthError(raw))
+	require.NotContains(t, sanitizeReauthError(raw), "deleted")
+	require.Equal(t, "re-login failed; provider details omitted", sanitizeReauthError("worker blew up: synthetic-private token"))
+}

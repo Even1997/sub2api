@@ -1577,5 +1577,10 @@ func sanitizeReauthError(raw string) string {
 	case "password/TOTP protocol failed (exit 1)", "proxy_unavailable", "password_rejected", "totp_rejected", "upstream_rejected", "worker_timeout":
 		return msg
 	}
+	// Older workers wrap the retired signal in prose. Keep only the stable code
+	// so the account is marked retired and the UI can tell it from an ordinary failure.
+	if isRetiredAccountReason(raw) {
+		return "account_retired"
+	}
 	return "re-login failed; provider details omitted"
 }
