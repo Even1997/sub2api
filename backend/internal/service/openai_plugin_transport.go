@@ -142,11 +142,19 @@ func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL 
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)
 		if handled {
 			observeAttempt(response, err)
+			if options, ok := pelicanTestOptionsFromContext(request.Context()); ok && options.nativeOAuthTransport != nil && !IsAstraSourceAcquisition(request.Context()) {
+				*options.nativeOAuthTransport = false
+			}
 			return response, err
 		}
 	}
 	resp, err := s.httpUpstream.Do(request, proxyURL, account.ID, account.Concurrency)
 	observeAttempt(resp, err)
+	if options, ok := pelicanTestOptionsFromContext(request.Context()); ok && options.nativeOAuthTransport != nil && !IsAstraSourceAcquisition(request.Context()) {
+		// Fail-open admission may send natively; a borrowed ticket is never own-credential evidence.
+		*options.nativeOAuthTransport = err == nil && resp != nil && !s.codexTicketRequestBound(request, account) &&
+			(resp.Request == nil || !s.codexTicketRequestBound(resp.Request, account))
+	}
 	return resp, err
 }
 
@@ -176,8 +184,16 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 	if s.pluginManager != nil {
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)
 		if handled {
+			if options, ok := pelicanTestOptionsFromContext(request.Context()); ok && options.nativeOAuthTransport != nil && !IsAstraSourceAcquisition(request.Context()) {
+				*options.nativeOAuthTransport = false
+			}
 			return response, err
 		}
+	}
+	// Ticket admission (including donor tickets) and handled plugin requests
+	// returned above. Only this native transport may certify an own OAuth 401.
+	if options, ok := pelicanTestOptionsFromContext(request.Context()); ok && options.nativeOAuthTransport != nil && !IsAstraSourceAcquisition(request.Context()) {
+		*options.nativeOAuthTransport = true
 	}
 	if useTLSFallback {
 		return timedAccountTestUpstream(s.httpUpstream).DoWithTLS(

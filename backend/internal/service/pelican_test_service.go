@@ -10,11 +10,15 @@ import (
 type pelicanTestContextKey struct{}
 
 type pelicanTestOptions struct {
-	qualityBatch    *QualityBatchEvidence
-	prompt          string
-	reasoningEffort string
-	testChannel     string
-	observeOnly     bool
+	// Runtime-only evidence from the actual own-credential upstream response.
+	directOAuth401        *bool
+	directOAuthRevoked401 *bool
+	nativeOAuthTransport  *bool
+	qualityBatch          *QualityBatchEvidence
+	prompt                string
+	reasoningEffort       string
+	testChannel           string
+	observeOnly           bool
 }
 
 func withPelicanTestOptions(ctx context.Context, options pelicanTestOptions) context.Context {
