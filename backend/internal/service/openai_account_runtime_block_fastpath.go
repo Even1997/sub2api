@@ -107,7 +107,7 @@ func isFocusedRoutingAccount(ctx context.Context, account *Account) bool {
 func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) (shouldDisable bool) {
 	if s != nil {
 		var disabledOn429 bool
-		ctx, disabledOn429 = s.rateLimitService.maybeDisableOpenAISchedulingOn429(ctx, account, statusCode)
+		ctx, disabledOn429 = s.rateLimitService.maybeDisableOpenAISchedulingOn429(ctx, account, statusCode, headers)
 		if disabledOn429 {
 			defer func() { shouldDisable = true }()
 		}

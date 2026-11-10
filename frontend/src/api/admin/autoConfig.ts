@@ -7,6 +7,7 @@ import type { ModelBillingConfig } from '@/utils/modelBilling'
 import type { ExcelBPSDefaults } from '@/utils/excelBPSDefaults'
 import type { OAuthModelMappingRule } from '@/utils/oauthModelMappings'
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
+import type { OpenAIAPIKeyFallbackConfig, OpenAIAPIKeyFallbackStatus } from '@/utils/openaiAPIKeyFallback'
 export type OAuthInitialQualityRule = Pick<ScheduledTestPlan, 'model_id' | 'cron_expression' | 'enabled' | 'max_results' | 'pelican_config'>
 export interface OAuthInitialAccountSettings {
   rate_multiplier?: number | null
@@ -49,6 +50,9 @@ export interface AutoConfig {
  openai_two_fa_admission?: OpenAITwoFAAdmissionConfig
  openai_totp_rotate_on_429?: boolean
  openai_disable_scheduling_on_429?: boolean
+ openai_disable_scheduling_on_429_7d_threshold_percent?: number
+ openai_apikey_fallback?: OpenAIAPIKeyFallbackConfig
+ openai_apikey_fallback_status?: OpenAIAPIKeyFallbackStatus
  openai_ws_mode?: OpenAIWSMode | 'shared' | 'dedicated'
  openai_ws_sse_acceleration?: boolean
  quality_rule?: OAuthInitialQualityRule | null

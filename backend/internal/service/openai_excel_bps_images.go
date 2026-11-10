@@ -297,7 +297,9 @@ func (s *OpenAIGatewayService) forwardExcelBPSImages(ctx context.Context, c *gin
 			// another account; Codex quota state is left alone.
 			event.Kind = "failover"
 			appendOpsUpstreamError(c, event)
-			s.coolDownExcelBPS(ctx, account, resp.Header, raw)
+			if !isQualityObservation(ctx) {
+				s.coolDownExcelBPS(ctx, account, resp.Header, raw)
+			}
 			// The next account may use Codex, so the endpoint is recorded only
 			// for final BPS outcomes; the image path never clears it.
 			failover := s.openAIUpstreamFailoverError(

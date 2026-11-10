@@ -9,7 +9,10 @@
       <button v-if="!draft && !loading" class="btn btn-secondary" @click="load">{{ t('autoConfig.retry') }}</button>
       <form v-if="draft" class="space-y-5" @submit.prevent="save">
         <p v-if="draft.runtime_blocked" role="alert" class="rounded-xl bg-amber-50 p-4 text-amber-800">{{ t('autoConfig.blocked') }}</p>
-        <fieldset :disabled="saving" class="min-w-0"><OAuthDegradationCard v-model="draft.degradation_action" :groups="groups" :user-id="auth.user?.id" /></fieldset>
+        <div class="grid min-w-0 gap-5 lg:grid-cols-2" data-testid="oauth-handling-panels">
+          <fieldset :disabled="saving" class="min-w-0"><OAuthDegradationCard v-model="draft.degradation_action" :groups="groups" :user-id="auth.user?.id" /></fieldset>
+          <fieldset :disabled="saving" class="min-w-0"><OpenAIAPIKeyFallbackCard ref="fallbackCard" v-model="draft.openai_apikey_fallback" :user-id="auth.user?.id" :status="fallbackStatus" :status-loading="fallbackStatusLoading" :status-failed="fallbackStatusFailed" @refresh-status="refreshFallbackStatus" /></fieldset>
+        </div>
         <fieldset :disabled="saving" class="min-w-0"><BPSDefaultsCard v-model="draft.excel_bps" :groups="groups" /></fieldset>
         <fieldset :disabled="saving" class="min-w-0">
           <section class="card space-y-5" data-testid="model-billing">
@@ -46,7 +49,7 @@
             <header class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold">{{ t('autoConfig.initial') }}</h2><label class="flex items-center gap-2 text-sm"><input v-model="draft.enabled" data-testid="initial-enabled" type="checkbox" role="switch" />{{ t('autoConfig.enable') }}</label></header>
             <div class="initial-scroll space-y-5">
             <p class="text-sm leading-6 text-gray-500">{{ t('autoConfig.initialHint') }}</p>
-            <label class="block"><span class="field-label">{{ t('autoConfig.platform') }}</span><select v-model="draft.platform" data-testid="platform" class="input w-full" @change="draft.group_ids = []; draft.model_mappings = defaultOAuthModelMappings(draft.platform); draft.selected_models = null; draft.quality_rule = null; draft.openai_totp_rotate_on_429 = false; draft.openai_disable_scheduling_on_429 = false; draft.openai_ws_mode = OPENAI_WS_MODE_CTX_POOL; draft.openai_ws_sse_acceleration = false; selectedQualityRule = ''"><option v-for="p in platforms" :key="p.value" :value="p.value">{{ p.label }}</option></select></label>
+            <label class="block"><span class="field-label">{{ t('autoConfig.platform') }}</span><select v-model="draft.platform" data-testid="platform" class="input w-full" @change="draft.group_ids = []; draft.model_mappings = defaultOAuthModelMappings(draft.platform); draft.selected_models = null; draft.quality_rule = null; draft.openai_totp_rotate_on_429 = false; draft.openai_disable_scheduling_on_429 = false; draft.openai_disable_scheduling_on_429_7d_threshold_percent = DEFAULT_DISABLE_SCHEDULING_429_7D_THRESHOLD_PERCENT; draft.openai_ws_mode = OPENAI_WS_MODE_CTX_POOL; draft.openai_ws_sse_acceleration = false; selectedQualityRule = ''"><option v-for="p in platforms" :key="p.value" :value="p.value">{{ p.label }}</option></select></label>
             <div class="grid gap-4 sm:grid-cols-3"><label v-for="field in initialFields" :key="field.key"><span class="field-label">{{ t('autoConfig.' + field.key) }}</span><input v-model.number="draft[field.key]" :data-testid="field.key" type="number" :min="field.min" max="10000" step="1" required class="input w-full" /></label></div>
             <p class="text-xs leading-5 text-gray-500">{{ t('autoConfig.loadHint') }}</p>
             <fieldset v-if="draft.platform === 'openai'" class="space-y-2">
@@ -62,6 +65,10 @@
                 <NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.oauthInitialDisableScheduling429" :user-id="auth.user?.id" />
               </div>
               <p class="text-xs leading-5 text-gray-500">{{ t('autoConfig.disableScheduling429.hint') }}</p>
+              <label class="block max-w-xs">
+                <span class="field-label">{{ t('autoConfig.disableScheduling429.threshold') }}</span>
+                <div class="flex items-center gap-2"><input v-model.number="draft.openai_disable_scheduling_on_429_7d_threshold_percent" data-testid="disable-scheduling-on-429-7d-threshold" type="number" min="0" max="100" step="any" required :disabled="!draft.openai_disable_scheduling_on_429" class="input min-w-0 w-full" /><span class="text-sm text-gray-500">%</span></div>
+              </label>
             </fieldset>
             <fieldset v-if="draft.platform === 'openai'" class="space-y-2" data-testid="initial-ws-mode">
               <div class="flex flex-wrap items-center gap-2">
@@ -137,6 +144,8 @@ import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
 import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
 import SmartOpsNav from '@/components/admin/operations/SmartOpsNav.vue'
 import OAuthDegradationCard from '@/components/admin/operations/OAuthDegradationCard.vue'
+import OpenAIAPIKeyFallbackCard from '@/components/admin/operations/OpenAIAPIKeyFallbackCard.vue'
+import { openaiAPIKeyFallbackPayload, openaiAPIKeyFallbackError, type OpenAIAPIKeyFallbackConfig, type OpenAIAPIKeyFallbackStatus } from '@/utils/openaiAPIKeyFallback'
 import { oauthDegradationPayload, oauthDegradationError, type OAuthDegradationConfig } from '@/utils/oauthDegradation'
 import BPSDefaultsCard from '@/components/admin/operations/BPSDefaultsCard.vue'
 import OpenAITwoFAAdmissionCard from '@/components/admin/operations/OpenAITwoFAAdmissionCard.vue'
@@ -156,9 +165,12 @@ import type { ScheduledTestPlan } from '@/types'
 import type { Group } from '@/types'
 import { defaultModelBillingConfig, modelBillingConfigError, modelBillingPayload, type ModelBillingConfig, type ModelBillingRule } from '@/utils/modelBilling'
 const { t } = useI18n(), auth = useAuthStore()
-const draft = ref<(AutoConfig & { degradation_action: OAuthDegradationConfig; openai_ws_mode: NonNullable<AutoConfig['openai_ws_mode']>; openai_ws_sse_acceleration: boolean; openai_two_fa_admission: OpenAITwoFAAdmissionConfig; excel_bps: ExcelBPSDefaults; model_mappings: OAuthModelMappingRule[]; model_billing: ModelBillingConfig }) | null>(null), groups = ref<Group[]>([])
+const DEFAULT_DISABLE_SCHEDULING_429_7D_THRESHOLD_PERCENT = 98
+const draft = ref<(AutoConfig & { openai_apikey_fallback: OpenAIAPIKeyFallbackConfig; openai_disable_scheduling_on_429_7d_threshold_percent: number; degradation_action: OAuthDegradationConfig; openai_ws_mode: NonNullable<AutoConfig['openai_ws_mode']>; openai_ws_sse_acceleration: boolean; openai_two_fa_admission: OpenAITwoFAAdmissionConfig; excel_bps: ExcelBPSDefaults; model_mappings: OAuthModelMappingRule[]; model_billing: ModelBillingConfig }) | null>(null), groups = ref<Group[]>([])
 const modelBillingGroups = ref<Group[]>([]), modelBillingGroupsLoading = ref(true), modelBillingGroupsFailed = ref(false)
 const loading = ref(false), saving = ref(false), error = ref(''), notice = ref('')
+const fallbackCard = ref<InstanceType<typeof OpenAIAPIKeyFallbackCard> | null>(null)
+const fallbackStatus = ref<OpenAIAPIKeyFallbackStatus | null>(null), fallbackStatusLoading = ref(false), fallbackStatusFailed = ref(false)
 const qualityPlans = ref<ScheduledTestPlan[]>([]), selectedQualityRule = ref(''), qualityLoadFailed = ref(false)
 const availableQualityPlans = computed(() => qualityPlans.value.filter(p => p.pelican_config?.quality && p.pelican_config.quality.action !== 'openai_two_fa_admission' && (draft.value?.platform === 'openai' || p.pelican_config.question_kind !== 'state_probe')))
 function qualityActionLabel(plan: ScheduledTestPlan) {
@@ -210,13 +222,21 @@ function unavailableModelBillingGroups(rule: ModelBillingRule) {
 
 async function load() {
  const v = generation; loading.value = true; error.value = ''
- try { const [config, available] = await Promise.all([getAutoConfig(), getAll()]); if (validGeneration(v)) { draft.value = { ...config, degradation_action: oauthDegradationPayload(config.degradation_action), openai_ws_mode: config.openai_ws_mode ?? OPENAI_WS_MODE_CTX_POOL, openai_ws_sse_acceleration: config.openai_ws_sse_acceleration ?? false, openai_totp_rotate_on_429: config.openai_totp_rotate_on_429 ?? false, openai_disable_scheduling_on_429: config.openai_disable_scheduling_on_429 ?? false, openai_two_fa_admission: config.openai_two_fa_admission ?? defaultOpenAITwoFAAdmissionConfig(), model_billing: modelBillingPayload(config.model_billing ?? defaultModelBillingConfig()), excel_bps: config.excel_bps ?? defaultExcelBPSDefaults(), model_mappings: config.model_mappings ?? defaultOAuthModelMappings(config.platform) }; selectedQualityRule.value = config.quality_rule ? 'saved' : ''; groups.value = available.filter(g => g.status === 'active') } }
+ try { const [config, available] = await Promise.all([getAutoConfig(), getAll()]); if (validGeneration(v)) { draft.value = { ...config, openai_apikey_fallback: openaiAPIKeyFallbackPayload(config.openai_apikey_fallback), openai_disable_scheduling_on_429_7d_threshold_percent: config.openai_disable_scheduling_on_429_7d_threshold_percent ?? DEFAULT_DISABLE_SCHEDULING_429_7D_THRESHOLD_PERCENT, degradation_action: oauthDegradationPayload(config.degradation_action), openai_ws_mode: config.openai_ws_mode ?? OPENAI_WS_MODE_CTX_POOL, openai_ws_sse_acceleration: config.openai_ws_sse_acceleration ?? false, openai_totp_rotate_on_429: config.openai_totp_rotate_on_429 ?? false, openai_disable_scheduling_on_429: config.openai_disable_scheduling_on_429 ?? false, openai_two_fa_admission: config.openai_two_fa_admission ?? defaultOpenAITwoFAAdmissionConfig(), model_billing: modelBillingPayload(config.model_billing ?? defaultModelBillingConfig()), excel_bps: config.excel_bps ?? defaultExcelBPSDefaults(), model_mappings: config.model_mappings ?? defaultOAuthModelMappings(config.platform) }; fallbackStatus.value = config.openai_apikey_fallback_status ?? null; selectedQualityRule.value = config.quality_rule ? 'saved' : ''; groups.value = available.filter(g => g.status === 'active') } }
  catch { if (validGeneration(v)) error.value = t('autoConfig.loadFailed') }
  finally { if (validGeneration(v)) loading.value = false }
+}
+async function refreshFallbackStatus() {
+ const v = generation; fallbackStatusLoading.value = true; fallbackStatusFailed.value = false
+ try { const config = await getAutoConfig(); if (validGeneration(v)) fallbackStatus.value = config.openai_apikey_fallback_status ?? null }
+ catch { if (validGeneration(v)) fallbackStatusFailed.value = true }
+ finally { if (validGeneration(v)) fallbackStatusLoading.value = false }
 }
 async function save() {
  if (!draft.value || saving.value) return
  const c = draft.value
+ const fallbackError = openaiAPIKeyFallbackError(c.openai_apikey_fallback) ?? fallbackCard.value?.validationError()
+ if (fallbackError) { error.value = t(fallbackError); return }
  if (oauthDegradationError(c.degradation_action)) { error.value = t('autoConfig.degradation.invalid'); return }
  const admissionError = openaiTwoFAAdmissionError(c.openai_two_fa_admission)
  if (admissionError || c.openai_two_fa_admission.enabled && !groups.value.some(g => g.id === c.openai_two_fa_admission.isolation_group_id && g.platform === 'openai' && g.status === 'active')) { error.value = t(admissionError ?? 'autoConfig.admission.invalid'); return }
@@ -226,9 +246,11 @@ async function save() {
  if (bpsError) { error.value = t(bpsError); return }
  const mappingError = oauthModelMappingsError(c.model_mappings)
  if (mappingError) { error.value = t(mappingError); return }
+ const shutdownThreshold = c.openai_disable_scheduling_on_429_7d_threshold_percent
+ if (!Number.isFinite(shutdownThreshold) || shutdownThreshold < 0 || shutdownThreshold > 100) { error.value = t('autoConfig.disableScheduling429.invalidThreshold'); return }
  if (c.upgrade_enabled && !c.upgrade_group_ids.length || accountSettingsInvalid(c.account_settings) || [...initialFields, ...upgradeFields].some(f => !Number.isInteger(c[f.key]) || c[f.key] < ('min' in f ? f.min : 1) || c[f.key] > ('max' in f ? f.max : 10000))) { error.value = t('autoConfig.invalid'); return }
  const v = generation; saving.value = true; error.value = ''; notice.value = ''
- try { const { runtime_blocked: _blocked, account_settings, ...payload } = c; const body = account_settings && Object.keys(account_settings).length ? { ...payload, account_settings } : payload; const result = await saveAutoConfig({ ...body, model_billing: modelBillingPayload(c.model_billing), excel_bps: excelBPSDefaultsPayload(c.excel_bps), model_mappings: oauthModelMappingsPayload(c.model_mappings) }); if (validGeneration(v)) { draft.value = { ...result, degradation_action: oauthDegradationPayload(result.degradation_action), openai_ws_mode: result.openai_ws_mode ?? OPENAI_WS_MODE_CTX_POOL, openai_ws_sse_acceleration: result.openai_ws_sse_acceleration ?? false, openai_totp_rotate_on_429: result.openai_totp_rotate_on_429 ?? false, openai_disable_scheduling_on_429: result.openai_disable_scheduling_on_429 ?? false, openai_two_fa_admission: result.openai_two_fa_admission ?? defaultOpenAITwoFAAdmissionConfig(), model_billing: modelBillingPayload(result.model_billing ?? defaultModelBillingConfig()), excel_bps: result.excel_bps ?? defaultExcelBPSDefaults(), model_mappings: result.model_mappings ?? defaultOAuthModelMappings(result.platform) }; selectedQualityRule.value = result.quality_rule ? 'saved' : ''; notice.value = t('autoConfig.saved'); historyRefreshKey.value++ } }
+ try { const { runtime_blocked: _blocked, openai_apikey_fallback_status: _fallbackStatus, account_settings, ...payload } = c; const body = account_settings && Object.keys(account_settings).length ? { ...payload, account_settings } : payload; const result = await saveAutoConfig({ ...body, openai_apikey_fallback: openaiAPIKeyFallbackPayload(c.openai_apikey_fallback), model_billing: modelBillingPayload(c.model_billing), excel_bps: excelBPSDefaultsPayload(c.excel_bps), model_mappings: oauthModelMappingsPayload(c.model_mappings) }); if (validGeneration(v)) { draft.value = { ...result, openai_apikey_fallback: openaiAPIKeyFallbackPayload(result.openai_apikey_fallback), openai_disable_scheduling_on_429_7d_threshold_percent: result.openai_disable_scheduling_on_429_7d_threshold_percent ?? DEFAULT_DISABLE_SCHEDULING_429_7D_THRESHOLD_PERCENT, degradation_action: oauthDegradationPayload(result.degradation_action), openai_ws_mode: result.openai_ws_mode ?? OPENAI_WS_MODE_CTX_POOL, openai_ws_sse_acceleration: result.openai_ws_sse_acceleration ?? false, openai_totp_rotate_on_429: result.openai_totp_rotate_on_429 ?? false, openai_disable_scheduling_on_429: result.openai_disable_scheduling_on_429 ?? false, openai_two_fa_admission: result.openai_two_fa_admission ?? defaultOpenAITwoFAAdmissionConfig(), model_billing: modelBillingPayload(result.model_billing ?? defaultModelBillingConfig()), excel_bps: result.excel_bps ?? defaultExcelBPSDefaults(), model_mappings: result.model_mappings ?? defaultOAuthModelMappings(result.platform) }; if (result.openai_apikey_fallback_status) fallbackStatus.value = result.openai_apikey_fallback_status; selectedQualityRule.value = result.quality_rule ? 'saved' : ''; notice.value = t('autoConfig.saved'); historyRefreshKey.value++ } }
  catch { if (validGeneration(v)) error.value = t('autoConfig.saveFailed') }
  finally { if (validGeneration(v)) saving.value = false }
 }
@@ -246,7 +268,7 @@ function accountSettingsInvalid(s?: OAuthInitialAccountSettings) {
  return bad(s.rate_multiplier, 0, 1000000) || bad(s.cost_multiplier, 0, 1000000) || (s.proxy_id != null && (!Number.isInteger(s.proxy_id) || s.proxy_id < 0)) || (s.slot_reservation_enabled === true && (s.slot_reservation_seconds == null || !Number.isInteger(s.slot_reservation_seconds) || s.slot_reservation_seconds < 1 || s.slot_reservation_seconds > 3600)) || (s.codex_cli_only_app_server === true && s.codex_cli_only !== true) || (s.codex_image_tool_mode != null && !imageToolModes.includes(s.codex_image_tool_mode)) || (s.plan_type != null && !/^\S{1,64}$/.test(s.plan_type)) || pause(s.auto_pause_5h_threshold) || pause(s.auto_pause_7d_threshold) || reset(s.auto_reset_credit_5h_threshold) || reset(s.auto_reset_credit_7d_threshold) || mappingBad || prismBad
 }
 async function loadProxies() { try { proxies.value = await listProxies() } catch { proxies.value = [] } }
-watch(() => auth.user ? auth.user.id + ':' + auth.user.role : '', () => { generation++; draft.value = null; groups.value = []; proxies.value = []; modelBillingGroups.value = []; modelBillingGroupsFailed.value = false; modelBillingGroupsLoading.value = true; qualityPlans.value = []; selectedQualityRule.value = ''; qualityLoadFailed.value = false; error.value = notice.value = ''; loading.value = saving.value = false }, { flush: 'sync' })
+watch(() => auth.user ? auth.user.id + ':' + auth.user.role : '', () => { generation++; draft.value = null; fallbackStatus.value = null; fallbackStatusLoading.value = fallbackStatusFailed.value = false; groups.value = []; proxies.value = []; modelBillingGroups.value = []; modelBillingGroupsFailed.value = false; modelBillingGroupsLoading.value = true; qualityPlans.value = []; selectedQualityRule.value = ''; qualityLoadFailed.value = false; error.value = notice.value = ''; loading.value = saving.value = false }, { flush: 'sync' })
 onMounted(() => { void load(); void loadQualityPlans(); void loadProxies(); void loadModelBillingGroups() })
 onBeforeUnmount(() => { alive = false; generation++ })
 </script>

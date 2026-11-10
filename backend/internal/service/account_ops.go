@@ -115,38 +115,41 @@ type AccountOpsService struct {
 	newAPIGroupReader      interface {
 		GetBinding(context.Context, int64) (*NewAPIAccountBinding, error)
 	}
-	newAPIGroupCache  sync.Map
-	accounts          AccountRepository
-	usageCache        *UsageCache
-	encryptor         SecretEncryptor
-	fixedKey          bool
-	timezone          *time.Location
-	robotClient       *http.Client
-	robotMu           sync.Mutex
-	robotLast         map[string]time.Time
-	degradationCursor int64
-	autoSeen          map[int64]bool
-	autoConfigMu      sync.Mutex
-	autoGroups        GroupRepository
-	autoAccounts      AccountConcurrencyRepository
-	autoConfig        atomic.Value
-	autoBlocked       atomic.Bool
-	autoResults       chan AccountConcurrencyResult
-	settings          SettingRepository
-	repo              AccountOpsRepository
-	email             accountOpsEmailSender
-	errorClose        func(context.Context, int64, string) error
-	errorCloseMu      sync.Mutex
-	errorCloseStreak  map[int64]int
-	errorClosePending map[int64]bool
-	config            atomic.Value
-	queue             chan AccountOpsEvent
-	cancel            context.CancelFunc
-	wg                sync.WaitGroup
-	lifecycle         sync.Mutex
-	settingsMu        sync.Mutex
-	dropped           atomic.Uint64
-	failures          atomic.Uint64
+	newAPIGroupCache   sync.Map
+	accounts           AccountRepository
+	usageCache         *UsageCache
+	encryptor          SecretEncryptor
+	fixedKey           bool
+	timezone           *time.Location
+	robotClient        *http.Client
+	robotMu            sync.Mutex
+	robotLast          map[string]time.Time
+	degradationCursor  int64
+	autoSeen           map[int64]bool
+	autoConfigMu       sync.Mutex
+	autoGroups         GroupRepository
+	autoAccounts       AccountConcurrencyRepository
+	autoConfig         atomic.Value
+	autoBlocked        atomic.Bool
+	autoResults        chan AccountConcurrencyResult
+	settings           SettingRepository
+	repo               AccountOpsRepository
+	email              accountOpsEmailSender
+	errorClose         func(context.Context, int64, string) error
+	errorCloseMu       sync.Mutex
+	errorCloseStreak   map[int64]int
+	errorClosePending  map[int64]bool
+	config             atomic.Value
+	queue              chan AccountOpsEvent
+	cancel             context.CancelFunc
+	wg                 sync.WaitGroup
+	lifecycle          sync.Mutex
+	settingsMu         sync.Mutex
+	dropped            atomic.Uint64
+	failures           atomic.Uint64
+	fallbackSharedJobs atomic.Bool
+	fallbackSLAReader  atomic.Value
+	fallbackStatus     atomic.Value
 }
 
 func NewAccountOpsService(settings SettingRepository, repo AccountOpsRepository, email accountOpsEmailSender) *AccountOpsService {
@@ -225,11 +228,15 @@ func (s *AccountOpsService) start(runSharedJobs bool) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
+	s.fallbackSharedJobs.Store(runSharedJobs)
 	s.wg.Add(2)
 	go s.runAutoConfig(ctx)
 	go func() {
 		defer s.wg.Done()
 		s.refreshConfig(ctx, runSharedJobs)
+		if runSharedJobs {
+			s.evaluateOpenAIAPIKeyFallback(ctx)
+		}
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -247,6 +254,9 @@ func (s *AccountOpsService) start(runSharedJobs bool) {
 					s.failures.Add(1)
 				}
 			case <-ticker.C:
+				if runSharedJobs {
+					s.evaluateOpenAIAPIKeyFallback(ctx)
+				}
 				if s.refreshConfig(ctx, runSharedJobs) && runSharedJobs {
 					s.scanBalances(ctx)
 					s.deliver(ctx)

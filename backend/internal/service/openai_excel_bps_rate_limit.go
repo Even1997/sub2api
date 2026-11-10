@@ -40,6 +40,9 @@ func (s *OpenAIGatewayService) coolDownExcelBPSAttempt(ctx context.Context, acco
 		return
 	}
 	if failure == nil {
+		if httpStatus == http.StatusTooManyRequests {
+			ctx, _ = s.rateLimitService.maybeDisableOpenAISchedulingOn429(ctx, account, httpStatus, headers)
+		}
 		accountQuota := gjson.GetBytes(raw, "error.type").String() == "usage_limit_reached"
 		if snapshot := ParseCodexRateLimitHeaders(headers); snapshot != nil {
 			if normalized := snapshot.Normalize(); normalized != nil {
