@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   PAYMENT_CURRENCY_OPTIONS,
   PROVIDER_CONFIG_FIELDS,
+  getAvailableTypes,
+  getDefaultSupportedTypes,
   isBuiltInAlipayMethod,
   isBuiltInWxpayMethod,
   parseEasyPayCustomMethods,
@@ -98,6 +100,17 @@ describe('built-in payment method helpers', () => {
 })
 
 describe('Cloudcat product mapping', () => {
+  it('supports one Alipay or WeChat channel and defaults to Alipay', () => {
+    expect(getDefaultSupportedTypes('cloudcat')).toEqual(['alipay'])
+    expect(getAvailableTypes('cloudcat', [
+      { value: 'alipay', label: 'Alipay' },
+      { value: 'wxpay', label: 'WeChat Pay' },
+    ], 'Redirect')).toEqual([
+      { value: 'alipay', label: 'Alipay' },
+      { value: 'wxpay', label: 'WeChat Pay' },
+    ])
+  })
+
   it('parses, validates, and serializes amount-to-product rows', () => {
     const rows = parseCloudcatProducts('[{"amount":"5","itemUrl":"https://catfk.com/item/ee9c69"}]')
 

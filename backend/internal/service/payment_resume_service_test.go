@@ -56,6 +56,17 @@ func TestEnabledVisibleMethodsForEasyPayIncludesCustomSupportedTypes(t *testing.
 	}
 }
 
+func TestEnabledVisibleMethodsForCloudcatUsesConfiguredPaymentType(t *testing.T) {
+	t.Parallel()
+
+	if got := enabledVisibleMethodsForProvider(payment.TypeCloudcat, ""); len(got) != 1 || got[0] != payment.TypeAlipay {
+		t.Fatalf("legacy Cloudcat methods = %v, want [alipay]", got)
+	}
+	if got := enabledVisibleMethodsForProvider(payment.TypeCloudcat, payment.TypeWxpay); len(got) != 1 || got[0] != payment.TypeWxpay {
+		t.Fatalf("WeChat Cloudcat methods = %v, want [wxpay]", got)
+	}
+}
+
 func TestNormalizePaymentSource(t *testing.T) {
 	t.Parallel()
 
@@ -516,6 +527,7 @@ func TestNormalizeVisibleMethodSource(t *testing.T) {
 		{name: "alipay easypay alias", method: payment.TypeAlipay, input: "easypay", want: VisibleMethodSourceEasyPayAlipay},
 		{name: "wxpay official alias", method: payment.TypeWxpay, input: "wxpay", want: VisibleMethodSourceOfficialWechat},
 		{name: "wxpay easypay alias", method: payment.TypeWxpay, input: "easypay", want: VisibleMethodSourceEasyPayWechat},
+		{name: "wxpay cloudcat alias", method: payment.TypeWxpay, input: "cloudcat", want: VisibleMethodSourceCloudcatWechat},
 		{name: "unsupported source", method: payment.TypeWxpay, input: "stripe", want: ""},
 	}
 
@@ -543,6 +555,7 @@ func TestVisibleMethodProviderKeyForSource(t *testing.T) {
 		{name: "easypay alipay", method: payment.TypeAlipay, source: VisibleMethodSourceEasyPayAlipay, want: payment.TypeEasyPay, ok: true},
 		{name: "official wechat", method: payment.TypeWxpay, source: VisibleMethodSourceOfficialWechat, want: payment.TypeWxpay, ok: true},
 		{name: "easypay wechat", method: payment.TypeWxpay, source: VisibleMethodSourceEasyPayWechat, want: payment.TypeEasyPay, ok: true},
+		{name: "cloudcat wechat", method: payment.TypeWxpay, source: VisibleMethodSourceCloudcatWechat, want: payment.TypeCloudcat, ok: true},
 		{name: "mismatched method and source", method: payment.TypeAlipay, source: VisibleMethodSourceOfficialWechat, want: "", ok: false},
 	}
 

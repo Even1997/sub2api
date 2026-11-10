@@ -22,7 +22,7 @@ func enabledVisibleMethodsForProvider(providerKey, supportedTypes string) []stri
 	}
 
 	switch strings.TrimSpace(providerKey) {
-	case payment.TypeAlipay, payment.TypeCloudcat:
+	case payment.TypeAlipay:
 		if strings.TrimSpace(supportedTypes) == "" {
 			addMethod(payment.TypeAlipay)
 			break
@@ -47,6 +47,17 @@ func enabledVisibleMethodsForProvider(providerKey, supportedTypes string) []stri
 	case payment.TypeEasyPay:
 		for _, supportedType := range splitTypes(supportedTypes) {
 			addMethod(supportedType)
+		}
+	case payment.TypeCloudcat:
+		if strings.TrimSpace(supportedTypes) == "" {
+			addMethod(payment.TypeAlipay)
+			break
+		}
+		for _, supportedType := range splitTypes(supportedTypes) {
+			method := NormalizeVisibleMethod(supportedType)
+			if method == payment.TypeAlipay || method == payment.TypeWxpay {
+				addMethod(method)
+			}
 		}
 	}
 

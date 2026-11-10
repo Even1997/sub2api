@@ -452,7 +452,7 @@ func (s *PaymentService) doCloudcatBalance(ctx context.Context, o *dbent.Payment
 		if code.UsedBy == nil || *code.UsedBy != o.UserID {
 			return errors.New("cloudcat card was used by a different user")
 		}
-	} else if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
+	} else if _, err := s.redeemService.Redeem(contextSkipLotteryRecharge(ContextSkipRedeemAffiliate(ctx)), o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem cloudcat balance: %w", err)
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
@@ -717,7 +717,11 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 	}
 	if tx != nil {
 		if o.OrderType == payment.OrderTypeBalance {
-			if err := s.lottery.RecordRechargeTx(ctx, o.UserID, "payment", strconv.FormatInt(o.ID, 10), o.Amount); err != nil {
+			redeemCodeID, err := s.paymentRedeemCodeID(ctx, o)
+			if err != nil {
+				return err
+			}
+			if err := s.lottery.RecordPaymentRechargeTx(ctx, o.UserID, o.ID, redeemCodeID, o.Amount); err != nil {
 				return err
 			}
 		}
@@ -740,6 +744,23 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		s.dispatchPaymentFulfillmentNotification(o, auditAction)
 	}
 	return nil
+}
+
+func (s *PaymentService) paymentRedeemCodeID(ctx context.Context, o *dbent.PaymentOrder) (int64, error) {
+	if s == nil || s.redeemService == nil || o == nil || strings.TrimSpace(o.RechargeCode) == "" {
+		return 0, nil
+	}
+	code, err := s.redeemService.GetByCode(ctx, o.RechargeCode)
+	if err != nil {
+		if errors.Is(err, ErrRedeemCodeNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	if code == nil {
+		return 0, nil
+	}
+	return code.ID, nil
 }
 
 func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.PaymentOrder, auditAction string) {

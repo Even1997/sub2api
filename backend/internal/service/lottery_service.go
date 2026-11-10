@@ -53,6 +53,21 @@ func lotteryAccountForUpdate(ctx context.Context, c *dbent.Client, pid, uid int6
 
 // RecordRechargeTx is committed with the successful originating balance operation.
 func (s *LotteryService) RecordRechargeTx(ctx context.Context, uid int64, source, sourceID string, amount float64) error {
+	return s.recordRechargeTx(ctx, uid, source, sourceID, "", "", amount)
+}
+
+// RecordPaymentRechargeTx grants tickets for a completed balance order.
+// priorRedeemCodeID is the redeem code that an older build may already have
+// booked; a pool that has that redeem contribution is not granted again.
+func (s *LotteryService) RecordPaymentRechargeTx(ctx context.Context, uid, orderID, priorRedeemCodeID int64, amount float64) error {
+	priorSource, priorID := "", ""
+	if priorRedeemCodeID > 0 {
+		priorSource, priorID = "redeem", strconv.FormatInt(priorRedeemCodeID, 10)
+	}
+	return s.recordRechargeTx(ctx, uid, "payment", strconv.FormatInt(orderID, 10), priorSource, priorID, amount)
+}
+
+func (s *LotteryService) recordRechargeTx(ctx context.Context, uid int64, source, sourceID, priorSource, priorID string, amount float64) error {
 	if s == nil || ctx.Value(ctxSkipLotteryRecharge{}) != nil || amount <= 0 {
 		return nil
 	}
@@ -81,13 +96,13 @@ func (s *LotteryService) RecordRechargeTx(ctx context.Context, uid int64, source
 	for _, p := range pools {
 		if lotteryInviteMode(p.Mode) {
 			if p.Mode == "invite_recharge" {
-				if err = s.recordInvitationRechargeTx(ctx, c, p, uid, source, sourceID, units); err != nil {
+				if err = s.recordInvitationRechargeTx(ctx, c, p, uid, source, sourceID, priorSource, priorID, units); err != nil {
 					return err
 				}
 			}
 			continue
 		}
-		exists, err := c.LotteryContribution.Query().Where(lotterycontribution.PoolIDEQ(p.ID), lotterycontribution.SourceTypeEQ(source), lotterycontribution.SourceIDEQ(sourceID)).Exist(ctx)
+		exists, err := lotterySourceBooked(ctx, c, p.ID, source, sourceID, priorSource, priorID)
 		if err != nil {
 			return err
 		}
@@ -117,6 +132,14 @@ func (s *LotteryService) RecordRechargeTx(ctx context.Context, uid int64, source
 	}
 	s.invitationAfterCommit(dbent.TxFromContext(ctx), uid)
 	return nil
+}
+
+func lotterySourceBooked(ctx context.Context, c *dbent.Client, poolID int64, source, sourceID, priorSource, priorID string) (bool, error) {
+	booked, err := c.LotteryContribution.Query().Where(lotterycontribution.PoolIDEQ(poolID), lotterycontribution.SourceTypeEQ(source), lotterycontribution.SourceIDEQ(sourceID)).Exist(ctx)
+	if err != nil || booked || priorSource == "" {
+		return booked, err
+	}
+	return c.LotteryContribution.Query().Where(lotterycontribution.PoolIDEQ(poolID), lotterycontribution.SourceTypeEQ(priorSource), lotterycontribution.SourceIDEQ(priorID)).Exist(ctx)
 }
 
 // RefundPaymentTx accepts the cumulative refunded USD amount, making retries

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/lotterycontribution"
 	"github.com/Wei-Shaw/sub2api/ent/lotteryinvitation"
 	"github.com/Wei-Shaw/sub2api/ent/lotteryinvitelink"
 	"github.com/Wei-Shaw/sub2api/ent/lotterypool"
@@ -246,7 +245,7 @@ func (s *LotteryService) RegisterInvitedUser(ctx context.Context, uid int64) err
 	return tx.Commit()
 }
 
-func (s *LotteryService) recordInvitationRechargeTx(ctx context.Context, c *dbent.Client, p *dbent.LotteryPool, uid int64, source, sourceID string, units int64) error {
+func (s *LotteryService) recordInvitationRechargeTx(ctx context.Context, c *dbent.Client, p *dbent.LotteryPool, uid int64, source, sourceID, priorSource, priorID string, units int64) error {
 	i, err := c.LotteryInvitation.Query().Where(lotteryinvitation.PoolIDEQ(p.ID), lotteryinvitation.InviteeIDEQ(uid)).Only(ctx)
 	if dbent.IsNotFound(err) {
 		return nil
@@ -254,7 +253,7 @@ func (s *LotteryService) recordInvitationRechargeTx(ctx context.Context, c *dben
 	if err != nil {
 		return err
 	}
-	exists, err := c.LotteryContribution.Query().Where(lotterycontribution.PoolIDEQ(p.ID), lotterycontribution.SourceTypeEQ(source), lotterycontribution.SourceIDEQ(sourceID)).Exist(ctx)
+	exists, err := lotterySourceBooked(ctx, c, p.ID, source, sourceID, priorSource, priorID)
 	if err != nil || exists {
 		return err
 	}

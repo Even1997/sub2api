@@ -629,6 +629,10 @@ function isTypeSelected(type: string): boolean {
 }
 
 function toggleType(type: string) {
+  if (form.provider_key === 'cloudcat') {
+    form.supported_types = [type]
+    return
+  }
   if (form.supported_types.includes(type)) {
     form.supported_types = form.supported_types.filter(t => t !== type)
   } else {
@@ -897,6 +901,9 @@ function loadProvider(provider: ProviderInstance) {
   form.supported_types = Array.isArray(provider.supported_types)
     ? [...provider.supported_types]
     : []
+  if (provider.provider_key === 'cloudcat') {
+    form.supported_types = form.supported_types.includes('wxpay') ? ['wxpay'] : ['alipay']
+  }
   form.enabled = provider.enabled
   // Coerce to a valid value for this provider. Guards against stale data
   // (e.g. "popup" written by an older client) showing up as an unselected

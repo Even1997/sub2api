@@ -263,6 +263,12 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 			}
 		}
 	}
+	if providerKey == payment.TypeCloudcat && strings.TrimSpace(supportedTypes) != "" {
+		types := splitTypes(supportedTypes)
+		if len(types) != 1 || (NormalizeVisibleMethod(types[0]) != payment.TypeAlipay && NormalizeVisibleMethod(types[0]) != payment.TypeWxpay) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "cloudcat must support exactly one of alipay or wxpay")
+		}
+	}
 	// supported_types can be empty (provider accepts no payment types until configured)
 	return nil
 }
@@ -361,7 +367,7 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 	if req.SupportedTypes != nil {
 		nextSupportedTypes = joinTypes(req.SupportedTypes)
 	}
-	if current.ProviderKey == payment.TypeBEpusdt {
+	if current.ProviderKey == payment.TypeBEpusdt || current.ProviderKey == payment.TypeCloudcat {
 		if err := validateProviderRequest(current.ProviderKey, current.Name, nextSupportedTypes); err != nil {
 			return nil, err
 		}

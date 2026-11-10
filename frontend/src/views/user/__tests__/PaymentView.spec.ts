@@ -746,6 +746,70 @@ describe('PaymentView payment recovery', () => {
     wrapper.unmount()
   })
 
+  it('preopens and reuses a payment window for desktop Cloudcat WeChat Pay', async () => {
+    isMobileDevice.mockReturnValue(false)
+    const cloudcatMethod: MethodLimit = {
+      daily_limit: 0,
+      daily_used: 0,
+      daily_remaining: 0,
+      single_min: 5,
+      single_max: 5,
+      amount_options: [5],
+      amount_selection_only: true,
+      fee_rate: 0,
+      available: true,
+    }
+    getCheckoutInfo.mockResolvedValue(checkoutInfoFixture({
+      methods: { wxpay: cloudcatMethod },
+      global_min: 5,
+      global_max: 5,
+    }))
+    createOrder.mockResolvedValue({
+      order_id: 903,
+      amount: 5,
+      pay_amount: 5,
+      fee_rate: 0,
+      expires_at: '2099-01-01T00:10:00.000Z',
+      payment_type: 'wxpay',
+      out_trade_no: 'sub2_cloudcat_wxpay_903',
+      pay_url: 'https://catfk.com/shopApi/Pay/payment?trade_no=CAT-WX-903',
+      payment_mode: 'popup',
+      resumable: true,
+    })
+    const popup = {
+      closed: false,
+      close: vi.fn(),
+      location: { href: '' },
+    }
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    wrapper.findComponent({ name: 'AmountInput' }).vm.$emit('update:modelValue', 5)
+    await flushPromises()
+    const submit = wrapper.findAll('button').find(button => button.text().includes('payment.createOrder'))
+    expect(submit).toBeDefined()
+    await submit!.trigger('click')
+    await flushPromises()
+
+    expect(openSpy).toHaveBeenCalledWith('', 'paymentPopup', expect.any(String))
+    expect(openSpy.mock.invocationCallOrder[0]).toBeLessThan(createOrder.mock.invocationCallOrder[0])
+    expect((popup as { opener?: unknown }).opener).toBeNull()
+    expect(popup.location.href).toBe('https://catfk.com/shopApi/Pay/payment?trade_no=CAT-WX-903')
+    expect(popup.close).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('restores a custom EasyPay method as the selected payment method', async () => {
     getCheckoutInfo.mockResolvedValue(checkoutInfoFixture({
       methods: {

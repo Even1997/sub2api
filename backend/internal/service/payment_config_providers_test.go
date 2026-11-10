@@ -66,6 +66,21 @@ func TestValidateProviderRequest(t *testing.T) {
 			wantErr:        false,
 		},
 		{
+			name:           "valid cloudcat wechat provider",
+			providerKey:    payment.TypeCloudcat,
+			providerName:   "Cloudcat WeChat",
+			supportedTypes: payment.TypeWxpay,
+			wantErr:        false,
+		},
+		{
+			name:           "invalid cloudcat multiple payment types",
+			providerKey:    payment.TypeCloudcat,
+			providerName:   "Cloudcat Mixed",
+			supportedTypes: "alipay,wxpay",
+			wantErr:        true,
+			errContains:    "exactly one",
+		},
+		{
 			name:           "invalid provider key",
 			providerKey:    "invalid",
 			providerName:   "Name",

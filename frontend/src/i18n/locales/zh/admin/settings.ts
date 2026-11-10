@@ -1043,7 +1043,7 @@ export default {
         field_cid: '支付渠道 ID',
         field_cidAlipay: '支付宝渠道 ID',
         field_cidWxpay: '微信渠道 ID',
-        field_channelId: '支付宝渠道 ID',
+        field_channelId: '支付渠道 ID',
         cloudcatProducts: '充值商品映射',
         cloudcatProductsHint: '每个可充值金额对应一个云猫卡密商品；下单时会自动填写当前用户邮箱。',
         addCloudcatProduct: '添加商品',

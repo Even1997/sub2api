@@ -547,7 +547,7 @@ func pcParseInt(s string, defaultVal int) int {
 }
 
 func buildVisibleMethodSourceAvailability(instances []*dbent.PaymentProviderInstance) map[string]bool {
-	available := make(map[string]bool, 4)
+	available := make(map[string]bool, 6)
 	for _, inst := range instances {
 		switch inst.ProviderKey {
 		case payment.TypeAlipay:
@@ -570,6 +570,9 @@ func buildVisibleMethodSourceAvailability(instances []*dbent.PaymentProviderInst
 		case payment.TypeCloudcat:
 			if inst.SupportedTypes == "" || payment.InstanceSupportsType(inst.SupportedTypes, payment.TypeAlipay) {
 				available[VisibleMethodSourceCloudcatAlipay] = true
+			}
+			if inst.SupportedTypes != "" && payment.InstanceSupportsType(inst.SupportedTypes, payment.TypeWxpay) {
+				available[VisibleMethodSourceCloudcatWechat] = true
 			}
 		}
 	}

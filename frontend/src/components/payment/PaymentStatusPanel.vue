@@ -378,7 +378,7 @@ const CLOUDCAT_QR_RETRY_INTERVAL_MS = 5000
 const isAlipay = computed(() => isBuiltInAlipayMethod(props.paymentType))
 const isWxpay = computed(() => isBuiltInWxpayMethod(props.paymentType))
 const isMobileAlipayDeepLink = computed(() => props.mobileAlipayDeepLink === true && isAlipay.value && !!qrUrl.value)
-const isQRCodeLoading = computed(() => props.resumable === true && !qrUrl.value)
+const isQRCodeLoading = computed(() => props.resumable === true && isAlipay.value && !qrUrl.value)
 const showQRCode = computed(() => !!qrUrl.value && (!isMobileAlipayDeepLink.value || deepLinkFallbackVisible.value))
 
 const qrBorderClass = computed(() => {
@@ -475,7 +475,7 @@ async function resumePayment() {
 }
 
 async function refreshCloudcatQRCode() {
-  if (!props.resumable || !props.orderId || outcome.value || qrRefreshInFlight) return
+  if (!props.resumable || !isAlipay.value || !props.orderId || outcome.value || qrRefreshInFlight) return
   qrRefreshInFlight = true
   try {
     const result = await paymentAPI.resumeOrder(props.orderId)
@@ -491,7 +491,7 @@ async function refreshCloudcatQRCode() {
 
 function scheduleCloudcatQRCodeRefresh() {
   if (qrRefreshTimer) clearTimeout(qrRefreshTimer)
-  if (qrRefreshStopped || !props.resumable || !props.orderId || outcome.value) return
+  if (qrRefreshStopped || !props.resumable || !isAlipay.value || !props.orderId || outcome.value) return
   qrRefreshTimer = setTimeout(
     refreshCloudcatQRCode,
     qrUrl.value ? CLOUDCAT_QR_REFRESH_INTERVAL_MS : CLOUDCAT_QR_RETRY_INTERVAL_MS,
@@ -500,7 +500,7 @@ function scheduleCloudcatQRCodeRefresh() {
 
 function startCloudcatQRCodeRefresh(refreshNow = true) {
   if (qrRefreshTimer) clearTimeout(qrRefreshTimer)
-  if (!props.resumable || !props.orderId || outcome.value) return
+  if (!props.resumable || !isAlipay.value || !props.orderId || outcome.value) return
   if (refreshNow) {
     void refreshCloudcatQRCode()
     return

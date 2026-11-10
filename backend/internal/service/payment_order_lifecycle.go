@@ -152,6 +152,9 @@ func (s *PaymentService) ResumeCloudcatOrder(ctx context.Context, orderID, userI
 		return nil, infraerrors.Conflict("PAYMENT_URL_INVALID", "payment URL is invalid")
 	}
 	o.QrCode = nil
+	if NormalizeVisibleMethod(o.PaymentType) == payment.TypeWxpay {
+		return o, nil
+	}
 	prov, err := s.getOrderProvider(ctx, o)
 	if err != nil {
 		return o, nil

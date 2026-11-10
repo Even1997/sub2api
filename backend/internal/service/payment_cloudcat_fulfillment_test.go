@@ -364,6 +364,31 @@ func TestCloudcatResumeReturnsFreshQRCode(t *testing.T) {
 	require.Equal(t, payURL, provider.payURL)
 }
 
+func TestCloudcatWechatResumeKeepsHostedCheckoutWithoutResolvingQRCode(t *testing.T) {
+	fixture := newCloudcatFulfillmentFixture(t, nil)
+	ctx := context.Background()
+	payURL := "https://catfk.com/pay/CAT-WX-TEST"
+	order, err := fixture.client.PaymentOrder.UpdateOneID(fixture.order.ID).
+		SetStatus(OrderStatusPending).
+		SetPaymentType(payment.TypeWxpay).
+		SetPayURL(payURL).
+		Save(ctx)
+	require.NoError(t, err)
+
+	provider := &cloudcatResumeQRProvider{
+		paymentOrderLifecycleQueryProvider: &paymentOrderLifecycleQueryProvider{key: payment.TypeCloudcat},
+		qrCode:                             "https://qr.alipay.com/should-not-be-used",
+	}
+	t.Cleanup(replacePaymentProviderFactoryForTest(t, provider))
+
+	resumed, err := fixture.service.ResumeCloudcatOrder(ctx, order.ID, order.UserID)
+	require.NoError(t, err)
+	require.Nil(t, resumed.QrCode)
+	require.NotNil(t, resumed.PayURL)
+	require.Equal(t, payURL, *resumed.PayURL)
+	require.Empty(t, provider.payURL)
+}
+
 type cloudcatResumeQRProvider struct {
 	*paymentOrderLifecycleQueryProvider
 	qrCode string

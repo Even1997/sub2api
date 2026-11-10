@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -21,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/imroc/req/v3"
 	"golang.org/x/net/html"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -32,6 +34,8 @@ const (
 	cloudcatMaxResponseSize = 1 << 20
 	cloudcatCheckoutUA      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
+
+var cloudcatCheckoutTransports sync.Map
 
 type cloudcatProductConfig struct {
 	Amount  string `json:"amount"`
@@ -53,13 +57,16 @@ type cloudcatPaymentForm struct {
 // It deliberately has no webhook or refund support; Sub2API reconciles the
 // upstream order until CatFK exposes the purchased redeem code.
 type Cloudcat struct {
-	instanceID     string
-	channelID      int64
-	products       map[int64]cloudcatProduct
-	apiBase        string
-	httpClient     *http.Client
-	checkoutClient *http.Client
-	visitorID      string
+	instanceID       string
+	channelID        int64
+	products         map[int64]cloudcatProduct
+	apiBase          string
+	httpClient       *http.Client
+	checkoutClient   *http.Client
+	visitorID        string
+	warmPoolKey      cloudcatWarmPoolKey
+	usingWarmSlot    bool
+	isolatedCheckout bool
 }
 
 func NewCloudcat(instanceID string, config map[string]string) (*Cloudcat, error) {
@@ -92,22 +99,11 @@ func NewCloudcat(instanceID string, config map[string]string) (*Cloudcat, error)
 	if err != nil {
 		return nil, fmt.Errorf("cloudcat cookie jar: %w", err)
 	}
-	proxyURL, _, err := proxyurl.Parse(os.Getenv("CLOUDCAT_PROXY_URL"))
+	proxyURL, apiProxyURL, err := cloudcatProxyURLs()
 	if err != nil {
-		return nil, fmt.Errorf("cloudcat CLOUDCAT_PROXY_URL is invalid")
-	}
-	apiProxyURL := proxyURL
-	if raw := strings.TrimSpace(os.Getenv("CLOUDCAT_API_PROXY_URL")); raw != "" {
-		apiProxyURL, _, err = proxyurl.Parse(raw)
-		if err != nil {
-			return nil, fmt.Errorf("cloudcat CLOUDCAT_API_PROXY_URL is invalid")
-		}
+		return nil, err
 	}
 	apiClient := &http.Client{Timeout: cloudcatHTTPTimeout, Jar: jar}
-	checkout := req.C().
-		SetTimeout(cloudcatCheckoutTimeout).
-		ImpersonateChrome().
-		SetRedirectPolicy(cloudcatCheckoutRedirectPolicy)
 	if apiProxyURL != "" {
 		shared, err := httpclient.GetClient(httpclient.Options{ProxyURL: apiProxyURL, Timeout: cloudcatHTTPTimeout})
 		if err != nil {
@@ -118,11 +114,12 @@ func NewCloudcat(instanceID string, config map[string]string) (*Cloudcat, error)
 		client.Jar = jar
 		apiClient = &client
 	}
-	if proxyURL != "" {
-		checkout.SetProxyURL(proxyURL)
+	checkoutClient := &http.Client{
+		Transport:     cloudcatCheckoutTransport(proxyURL),
+		Timeout:       cloudcatCheckoutTimeout,
+		Jar:           jar,
+		CheckRedirect: cloudcatCheckoutRedirectPolicy,
 	}
-	checkoutClient := checkout.GetClient()
-	checkoutClient.Jar = jar
 	return &Cloudcat{
 		instanceID:     instanceID,
 		channelID:      channelID,
@@ -131,13 +128,59 @@ func NewCloudcat(instanceID string, config map[string]string) (*Cloudcat, error)
 		httpClient:     apiClient,
 		checkoutClient: checkoutClient,
 		visitorID:      newCloudcatVisitorID(instanceID),
+		warmPoolKey:    cloudcatWarmPoolKey{apiProxyURL, proxyURL},
 	}, nil
+}
+
+func cloudcatProxyURLs() (string, string, error) {
+	proxyURL, _, err := proxyurl.Parse(os.Getenv("CLOUDCAT_PROXY_URL"))
+	if err != nil {
+		return "", "", fmt.Errorf("cloudcat CLOUDCAT_PROXY_URL is invalid")
+	}
+	apiProxyURL := proxyURL
+	if raw := strings.TrimSpace(os.Getenv("CLOUDCAT_API_PROXY_URL")); raw != "" {
+		apiProxyURL, _, err = proxyurl.Parse(raw)
+		if err != nil {
+			return "", "", fmt.Errorf("cloudcat CLOUDCAT_API_PROXY_URL is invalid")
+		}
+	}
+	return proxyURL, apiProxyURL, nil
+}
+
+func newCloudcatCheckoutTransport(proxyURL string) *req.Transport {
+	checkout := req.C().ImpersonateChrome()
+	if proxyURL != "" {
+		checkout.SetProxyURL(proxyURL)
+	}
+	return checkout.Transport
+}
+
+func cloudcatCheckoutTransport(proxyURL string) *req.Transport {
+	if cached, ok := cloudcatCheckoutTransports.Load(proxyURL); ok {
+		return cached.(*req.Transport)
+	}
+	// Configure once; only connections are shared, never provider cookies.
+	// Payment fallbacks must not use this value: req writes HTTP/2 settings into it.
+	actual, _ := cloudcatCheckoutTransports.LoadOrStore(proxyURL, newCloudcatCheckoutTransport(proxyURL))
+	return actual.(*req.Transport)
+}
+
+func cloudcatCheckoutTransportIsShared(transport http.RoundTripper) bool {
+	shared := false
+	cloudcatCheckoutTransports.Range(func(_, value any) bool {
+		if value == transport {
+			shared = true
+			return false
+		}
+		return true
+	})
+	return shared
 }
 
 func (c *Cloudcat) Name() string        { return "Cloudcat" }
 func (c *Cloudcat) ProviderKey() string { return payment.TypeCloudcat }
 func (c *Cloudcat) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeAlipay}
+	return []payment.PaymentType{payment.TypeAlipay, payment.TypeWxpay}
 }
 
 func (c *Cloudcat) MerchantIdentityMetadata() map[string]string {
@@ -150,6 +193,13 @@ func (c *Cloudcat) MerchantIdentityMetadata() map[string]string {
 func (c *Cloudcat) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, cloudcatCreateTimeout)
 	defer cancel()
+	paymentType := payment.GetBasePaymentType(strings.TrimSpace(req.PaymentType))
+	if paymentType == "" {
+		paymentType = payment.TypeAlipay
+	}
+	if paymentType != payment.TypeAlipay && paymentType != payment.TypeWxpay {
+		return nil, fmt.Errorf("cloudcat unsupported payment type %q", req.PaymentType)
+	}
 	if strings.TrimSpace(req.PayerEmail) == "" {
 		return nil, fmt.Errorf("cloudcat payer email is required")
 	}
@@ -164,6 +214,8 @@ func (c *Cloudcat) CreatePayment(ctx context.Context, req payment.CreatePaymentR
 	if !ok {
 		return nil, fmt.Errorf("cloudcat has no product mapped for amount %s", req.Amount)
 	}
+	c, release := c.withWarmConnections()
+	defer release()
 
 	goods, err := c.loadGoods(ctx, product.goodsKey)
 	if err != nil {
@@ -188,16 +240,24 @@ func (c *Cloudcat) CreatePayment(ctx context.Context, req payment.CreatePaymentR
 	if strings.TrimSpace(goods.Token) == "" {
 		return nil, fmt.Errorf("cloudcat product %s merchant token is missing", product.goodsKey)
 	}
-	if err := c.validateAlipayChannel(ctx, goods.Token); err != nil {
+	// Both read-only checks must pass before the non-idempotent order request.
+	preflight, preflightCtx := errgroup.WithContext(ctx)
+	preflight.Go(func() error {
+		return c.validatePaymentChannel(preflightCtx, goods.Token, paymentType)
+	})
+	preflight.Go(func() error {
+		quotedAmount, err := c.loadGoodsPrice(preflightCtx, product.goodsKey)
+		if err != nil {
+			return err
+		}
+		quotedMinor, err := payment.AmountToMinorUnit(quotedAmount, payment.DefaultPaymentCurrency)
+		if err != nil || quotedMinor != minor {
+			return fmt.Errorf("cloudcat checkout amount does not match configured amount")
+		}
+		return nil
+	})
+	if err := preflight.Wait(); err != nil {
 		return nil, err
-	}
-	quotedAmount, err := c.loadGoodsPrice(ctx, product.goodsKey)
-	if err != nil {
-		return nil, err
-	}
-	quotedMinor, err := payment.AmountToMinorUnit(quotedAmount, payment.DefaultPaymentCurrency)
-	if err != nil || quotedMinor != minor {
-		return nil, fmt.Errorf("cloudcat checkout amount does not match configured amount")
 	}
 	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < cloudcatHTTPTimeout {
 		return nil, fmt.Errorf("cloudcat preflight timed out before order creation")
@@ -230,11 +290,15 @@ func (c *Cloudcat) CreatePayment(ctx context.Context, req payment.CreatePaymentR
 	if err != nil || createdMinor != minor {
 		return nil, fmt.Errorf("cloudcat created order amount does not match configured amount")
 	}
-	qrCtx, qrCancel := context.WithTimeout(ctx, cloudcatQRCodeTimeout)
-	defer qrCancel()
-	qrCode, qrErr := c.ResolvePaymentQRCode(qrCtx, created.PayURL)
-	if qrErr != nil {
-		slog.Warn("resolve cloudcat QR code after order creation failed", "tradeNo", created.TradeNo, "error", qrErr)
+	qrCode := ""
+	if paymentType == payment.TypeAlipay {
+		qrCtx, qrCancel := context.WithTimeout(ctx, cloudcatQRCodeTimeout)
+		defer qrCancel()
+		var qrErr error
+		qrCode, qrErr = c.ResolvePaymentQRCode(qrCtx, created.PayURL)
+		if qrErr != nil {
+			slog.Warn("resolve cloudcat QR code after order creation failed", "tradeNo", created.TradeNo, "error", qrErr)
+		}
 	}
 	return &payment.CreatePaymentResponse{TradeNo: created.TradeNo, PayURL: created.PayURL, QRCode: qrCode}, nil
 }
@@ -248,6 +312,8 @@ func (c *Cloudcat) ResolvePaymentQRCode(ctx context.Context, payURL string) (str
 	if err := ValidateCloudcatPaymentURL(payURL); err != nil {
 		return "", err
 	}
+	c, release := c.withWarmConnections()
+	defer release()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(payURL), nil)
 	if err != nil {
 		return "", fmt.Errorf("cloudcat checkout request: %w", err)
@@ -447,7 +513,7 @@ type cloudcatChannelsResponse struct {
 	Response []cloudcatChannel `json:"response"`
 }
 
-func (c *Cloudcat) validateAlipayChannel(ctx context.Context, token string) error {
+func (c *Cloudcat) validatePaymentChannel(ctx context.Context, token, paymentType string) error {
 	var response cloudcatChannelsResponse
 	if err := c.post(ctx, "/shopApi/Shop/getUserChannel", map[string]any{"token": token}, &response); err != nil {
 		return fmt.Errorf("cloudcat load payment channels: %w", err)
@@ -478,8 +544,12 @@ func (c *Cloudcat) validateAlipayChannel(ctx context.Context, token string) erro
 			return fmt.Errorf("cloudcat channel %d is not active", c.channelID)
 		}
 		label := strings.ToLower(channel.Code + " " + channel.Name)
-		if !strings.Contains(label, "alipay") && !strings.Contains(label, "支付宝") {
-			return fmt.Errorf("cloudcat channel %d is not Alipay", c.channelID)
+		matches := strings.Contains(label, "alipay") || strings.Contains(label, "支付宝")
+		if paymentType == payment.TypeWxpay {
+			matches = strings.Contains(label, "wxpay") || strings.Contains(label, "wechat") || strings.Contains(label, "weixin") || strings.Contains(label, "微信")
+		}
+		if !matches {
+			return fmt.Errorf("cloudcat channel %d does not support %s", c.channelID, paymentType)
 		}
 		return nil
 	}

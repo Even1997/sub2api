@@ -327,7 +327,7 @@ describe('PaymentProviderDialog payment guide', () => {
     expect(wrapper.emitted('save')).toBeUndefined()
   })
 
-  it('loads and serializes Cloudcat product mappings with refunds disabled', async () => {
+  it('loads and serializes Cloudcat product mappings with one selected payment type', async () => {
     const provider = providerFactory({
       provider_key: 'cloudcat',
       name: 'Cloudcat Alipay',
@@ -346,6 +346,9 @@ describe('PaymentProviderDialog payment guide', () => {
 
     expect(wrapper.findAll('[data-test="cloudcat-product-row"]')).toHaveLength(1)
     expect(wrapper.text()).not.toContain('admin.settings.payment.refundEnabled')
+    const wechatButton = wrapper.findAll('button').find(button => button.text() === 'WeChat Pay')
+    expect(wechatButton).toBeDefined()
+    await wechatButton!.trigger('click')
     await wrapper.find('[data-test="cloudcat-product-row"] input[type="number"]').setValue('1')
     await wrapper.find('form').trigger('submit.prevent')
 
@@ -359,7 +362,7 @@ describe('PaymentProviderDialog payment guide', () => {
       channelId: '1',
       products: '[{"amount":"1.00","itemUrl":"https://catfk.com/item/ee9c69"}]',
     })
-    expect(payload.supported_types).toEqual(['alipay'])
+    expect(payload.supported_types).toEqual(['wxpay'])
     expect(payload.refund_enabled).toBe(false)
     expect(payload.allow_user_refund).toBe(false)
   })

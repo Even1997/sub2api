@@ -214,6 +214,29 @@ describe('PaymentStatusPanel', () => {
     wrapper.unmount()
   })
 
+  it('does not poll the Cloudcat QR endpoint for WeChat hosted checkout', async () => {
+    pollOrderStatus.mockResolvedValue(orderFactory('PENDING'))
+    verifyOrder.mockResolvedValue({ data: orderFactory('PENDING') })
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        qrCode: '',
+        payUrl: 'https://catfk.com/pay/CAT-WX-42',
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'wxpay',
+        orderType: 'balance',
+        resumable: true,
+      },
+      global: { stubs: { Icon: true } },
+    })
+
+    await flushPromises()
+    expect(resumeOrder).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="qr-loading"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="resume-payment"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('refreshes a resumable Cloudcat QR code without reopening the hosted page', async () => {
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
     pollOrderStatus.mockResolvedValue(orderFactory('PENDING'))

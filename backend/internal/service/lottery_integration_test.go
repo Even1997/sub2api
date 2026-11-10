@@ -481,6 +481,58 @@ func TestLotteryPostgres(t *testing.T) {
 		require.Empty(t, f.view(t, p.ID).Prizes[0].Text)
 	})
 
+	t.Run("cloudcat credit grants once", func(t *testing.T) {
+		for _, mode := range []string{"single", "cumulative"} {
+			t.Run(mode, func(t *testing.T) {
+				f := newLotteryFixture(t, c, db)
+				p := f.pool(t, mode, 100, "text", -1)
+				codes := repository.NewRedeemCodeRepository(c)
+				redeem := service.ProvideRedeemService(codes, f.users, f.subs, nil, nil, c, nil, nil, f.s)
+				payments := service.ProvidePaymentService(c, payment.NewRegistry(), nil, redeem, f.subs, nil, f.users, nil, nil, nil, nil, f.s)
+				code := &service.RedeemCode{Code: fmt.Sprintf("lottery-cloudcat-%d", f.uid), Type: service.RedeemTypeBalance, Value: 100, Status: service.StatusUnused}
+				require.NoError(t, codes.Create(ctx, code))
+				order, e := c.PaymentOrder.Create().SetUserID(f.uid).SetUserEmail("lottery@test.invalid").SetUserName("Test").SetAmount(100).SetPayAmount(100).SetRechargeCode(code.Code).SetOutTradeNo(fmt.Sprintf("lottery-cloudcat-order-%d", f.uid)).SetPaymentType(payment.TypeAlipay).SetPaymentTradeNo("").SetProviderKey(payment.TypeCloudcat).SetStatus(service.OrderStatusPaid).SetOrderType(payment.OrderTypeBalance).SetClientIP("127.0.0.1").SetSrcHost("localhost").SetExpiresAt(time.Now().Add(time.Hour)).Save(ctx)
+				require.NoError(t, e)
+				require.NoError(t, payments.ExecuteBalanceFulfillment(ctx, order.ID))
+				require.NoError(t, payments.ExecuteBalanceFulfillment(ctx, order.ID))
+				require.EqualValues(t, 1, f.view(t, p.ID).Available)
+				require.Zero(t, f.view(t, p.ID).Progress)
+				contributions, e := c.LotteryContribution.Query().Where(lotterycontribution.PoolIDEQ(p.ID), lotterycontribution.UserIDEQ(f.uid)).All(ctx)
+				require.NoError(t, e)
+				require.Len(t, contributions, 1)
+				require.Equal(t, "payment", contributions[0].SourceType)
+				require.Equal(t, fmt.Sprint(order.ID), contributions[0].SourceID)
+				u, e := c.User.Get(ctx, f.uid)
+				require.NoError(t, e)
+				require.Equal(t, float64(100), u.Balance)
+
+				manual := &service.RedeemCode{Code: fmt.Sprintf("lottery-cloudcat-manual-%d", f.uid), Type: service.RedeemTypeBalance, Value: 100, Status: service.StatusUnused}
+				require.NoError(t, codes.Create(ctx, manual))
+				invalid, e := c.PaymentOrder.Create().SetUserID(f.uid).SetUserEmail("lottery@test.invalid").SetUserName("Test").SetAmount(101).SetPayAmount(101).SetRechargeCode(manual.Code).SetOutTradeNo(fmt.Sprintf("lottery-cloudcat-invalid-%d", f.uid)).SetPaymentType(payment.TypeAlipay).SetPaymentTradeNo("").SetProviderKey(payment.TypeCloudcat).SetStatus(service.OrderStatusPaid).SetOrderType(payment.OrderTypeBalance).SetClientIP("127.0.0.1").SetSrcHost("localhost").SetExpiresAt(time.Now().Add(time.Hour)).Save(ctx)
+				require.NoError(t, e)
+				require.ErrorContains(t, payments.ExecuteBalanceFulfillment(ctx, invalid.ID), "does not match")
+				require.EqualValues(t, 1, f.view(t, p.ID).Available)
+				u, e = c.User.Get(ctx, f.uid)
+				require.NoError(t, e)
+				require.Equal(t, float64(100), u.Balance)
+				count, e := c.LotteryContribution.Query().Where(lotterycontribution.PoolIDEQ(p.ID), lotterycontribution.UserIDEQ(f.uid)).Count(ctx)
+				require.NoError(t, e)
+				require.Equal(t, 1, count)
+
+				_, e = redeem.Redeem(ctx, f.uid, manual.Code)
+				require.NoError(t, e)
+				require.EqualValues(t, 2, f.view(t, p.ID).Available)
+				require.Zero(t, f.view(t, p.ID).Progress)
+				contribution, e := c.LotteryContribution.Query().Where(lotterycontribution.PoolIDEQ(p.ID), lotterycontribution.UserIDEQ(f.uid), lotterycontribution.SourceTypeEQ("redeem")).Only(ctx)
+				require.NoError(t, e)
+				require.Equal(t, fmt.Sprint(manual.ID), contribution.SourceID)
+				u, e = c.User.Get(ctx, f.uid)
+				require.NoError(t, e)
+				require.Equal(t, float64(200), u.Balance)
+			})
+		}
+	})
+
 	t.Run("all real credit paths grant once", func(t *testing.T) {
 		f := newLotteryFixture(t, c, db)
 		p := f.pool(t, "cumulative", 100, "text", -1)
@@ -496,7 +548,7 @@ func TestLotteryPostgres(t *testing.T) {
 		require.NoError(t, e)
 		_, e = admin.UpdateUserBalance(opctx, f.uid, 100, "set", "")
 		require.NoError(t, e)
-		payments := service.ProvidePaymentService(c, payment.NewRegistry(), nil, redeem, f.subs, nil, f.users, nil, nil, nil, f.s)
+		payments := service.ProvidePaymentService(c, payment.NewRegistry(), nil, redeem, f.subs, nil, f.users, nil, nil, nil, nil, f.s)
 		order, e := c.PaymentOrder.Create().SetUserID(f.uid).SetUserEmail("lottery@test.invalid").SetUserName("Test").SetAmount(150).SetPayAmount(100).SetRechargeCode(fmt.Sprintf("lottery-pay-%d", f.uid)).SetOutTradeNo(fmt.Sprintf("lottery-order-%d", f.uid)).SetPaymentType("alipay").SetPaymentTradeNo("").SetStatus(service.OrderStatusPaid).SetOrderType(payment.OrderTypeBalance).SetClientIP("127.0.0.1").SetSrcHost("localhost").SetExpiresAt(time.Now().Add(time.Hour)).Save(ctx)
 		require.NoError(t, e)
 		require.NoError(t, payments.ExecuteBalanceFulfillment(ctx, order.ID))

@@ -6,15 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/imroc/req/v3"
 )
 
 func TestCloudcatCreatePaymentUsesMappedProductAndEmail(t *testing.T) {
@@ -55,6 +58,138 @@ func TestCloudcatCreatePaymentUsesMappedProductAndEmail(t *testing.T) {
 	}
 	if orderRequest["quantity"] != json.Number("1") || orderRequest["channel_id"] != json.Number("1") {
 		t.Fatalf("unexpected quantity/channel payload: %#v", orderRequest)
+	}
+}
+
+func TestCloudcatCreatePaymentUsesWechatChannelWithoutResolvingAlipayQRCode(t *testing.T) {
+	provider, requests, closeServer := newCloudcatTestProvider(t, map[string]string{
+		"/shopApi/Shop/goodsInfo":      `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8,"user":{"token":"merchant-1"}}}`,
+		"/shopApi/Shop/getUserChannel": `{"code":1,"data":[{"id":1,"code":"WechatPay","status":1}]}`,
+		"/shopApi/Shop/getGoodsPrice":  `{"code":1,"data":{"total_amount":5}}`,
+		"/shopApi/Pay/order":           `{"code":1,"data":{"trade_no":"CAT-WX-1","payurl":"https://catfk.com/pay/CAT-WX-1","total_amount":5}}`,
+	})
+	defer closeServer()
+	transport := provider.httpClient.Transport
+	var checkoutRequests atomic.Int32
+	provider.httpClient.Transport = cloudcatTestRoundTripper(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodGet {
+			checkoutRequests.Add(1)
+		}
+		return transport.RoundTrip(r)
+	})
+
+	result, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		Amount: "5.00", PaymentType: payment.TypeWxpay, PayerEmail: "buyer@example.com",
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment returned error: %v", err)
+	}
+	if result.TradeNo != "CAT-WX-1" || result.PayURL != "https://catfk.com/pay/CAT-WX-1" || result.QRCode != "" {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if checkoutRequests.Load() != 0 {
+		t.Fatalf("WeChat payment made %d checkout requests, want 0", checkoutRequests.Load())
+	}
+	if requests["/shopApi/Pay/order"]["channel_id"] != json.Number("1") {
+		t.Fatalf("unexpected channel payload: %#v", requests["/shopApi/Pay/order"])
+	}
+	if got := provider.SupportedTypes(); len(got) != 2 || got[0] != payment.TypeAlipay || got[1] != payment.TypeWxpay {
+		t.Fatalf("SupportedTypes() = %v", got)
+	}
+}
+
+func TestCloudcatCreatePaymentRejectsMismatchedChannelType(t *testing.T) {
+	provider, requests, closeServer := newCloudcatTestProvider(t, map[string]string{
+		"/shopApi/Shop/goodsInfo":      `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8,"user":{"token":"merchant-1"}}}`,
+		"/shopApi/Shop/getUserChannel": `{"code":1,"data":[{"id":1,"code":"AlipayPc","status":1}]}`,
+		"/shopApi/Shop/getGoodsPrice":  `{"code":1,"data":{"total_amount":5}}`,
+	})
+	defer closeServer()
+
+	_, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		Amount: "5.00", PaymentType: payment.TypeWxpay, PayerEmail: "buyer@example.com",
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not support wxpay") {
+		t.Fatalf("error = %v", err)
+	}
+	if _, created := requests["/shopApi/Pay/order"]; created {
+		t.Fatal("order was created with a mismatched channel")
+	}
+}
+
+func TestCloudcatCreatePaymentParallelPreflight(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		failurePath string
+		failureBody string
+		wantError   string
+	}{
+		{name: "success"},
+		{"inactive channel", "/shopApi/Shop/getUserChannel", `{"code":1,"data":[{"id":1,"code":"AlipayPc","status":0}]}`, "not active"},
+		{"price mismatch", "/shopApi/Shop/getGoodsPrice", `{"code":1,"data":{"total_amount":6}}`, "amount does not match"},
+		{"quote rejected", "/shopApi/Shop/getGoodsPrice", `{"code":0,"msg":"quote rejected"}`, "quote rejected"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			responses := map[string]string{
+				"/shopApi/Shop/goodsInfo":      `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8,"user":{"token":"merchant-1"}}}`,
+				"/shopApi/Shop/getUserChannel": `{"code":1,"data":[{"id":1,"code":"AlipayPc","status":1}]}`,
+				"/shopApi/Shop/getGoodsPrice":  `{"code":1,"data":{"total_amount":5}}`,
+				"/shopApi/Pay/order":           `{"code":1,"data":{"trade_no":"CAT-1","payurl":"https://catfk.com/pay/CAT-1","total_amount":5}}`,
+				"/pay/CAT-1":                   `<input id="J_qrCode" value="https://qr.alipay.com/cloudcat-test-1">`,
+			}
+			if tt.failurePath != "" {
+				responses[tt.failurePath] = tt.failureBody
+			}
+			p, _, closeServer := newCloudcatTestProvider(t, responses)
+			defer closeServer()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			// Release a serial implementation instead of hanging the regression test.
+			timer := time.AfterFunc(5*time.Second, cancel)
+			defer timer.Stop()
+			bothStarted := make(chan struct{})
+			var started, finished, orders atomic.Int32
+			var siblingCancelled atomic.Bool
+			transport := p.httpClient.Transport
+			p.httpClient.Transport = cloudcatTestRoundTripper(func(r *http.Request) (*http.Response, error) {
+				switch r.URL.Path {
+				case "/shopApi/Shop/getUserChannel", "/shopApi/Shop/getGoodsPrice":
+					if started.Add(1) == 2 {
+						close(bothStarted)
+					}
+					select {
+					case <-bothStarted:
+					case <-r.Context().Done():
+						return nil, r.Context().Err()
+					}
+					if tt.failurePath != "" && r.URL.Path != tt.failurePath {
+						<-r.Context().Done()
+						siblingCancelled.Store(true)
+						return nil, r.Context().Err()
+					}
+					resp, err := transport.RoundTrip(r)
+					finished.Add(1)
+					return resp, err
+				case "/shopApi/Pay/order":
+					orders.Add(1)
+					if finished.Load() != 2 {
+						t.Error("order started before both preflight requests completed")
+					}
+				}
+				return transport.RoundTrip(r)
+			})
+
+			result, err := p.CreatePayment(ctx, payment.CreatePaymentRequest{Amount: "5.00", PayerEmail: "buyer@example.com"})
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) || orders.Load() != 0 || !siblingCancelled.Load() || ctx.Err() != nil {
+					t.Fatalf("error=%v orders=%d siblingCancelled=%t context=%v", err, orders.Load(), siblingCancelled.Load(), ctx.Err())
+				}
+				return
+			}
+			if err != nil || orders.Load() != 1 || result == nil || result.QRCode != "https://qr.alipay.com/cloudcat-test-1" {
+				t.Fatalf("result=%+v error=%v orders=%d", result, err, orders.Load())
+			}
+		})
 	}
 }
 
@@ -147,6 +282,7 @@ func TestExtractCloudcatPaymentQRCodeValidatesAlipayPayload(t *testing.T) {
 func newCloudcatTestProvider(t *testing.T, responses map[string]string) (*Cloudcat, map[string]map[string]any, func()) {
 	t.Helper()
 	requests := make(map[string]map[string]any)
+	var requestsMu sync.Mutex
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && strings.Contains(r.Header.Get("Content-Type"), "application/json") {
 			var payload map[string]any
@@ -155,7 +291,9 @@ func newCloudcatTestProvider(t *testing.T, responses map[string]string) (*Cloudc
 			if err := decoder.Decode(&payload); err != nil {
 				t.Errorf("decode %s request: %v", r.URL.Path, err)
 			}
+			requestsMu.Lock()
 			requests[r.URL.Path] = payload
+			requestsMu.Unlock()
 			if len(r.Header.Get("Visitorid")) != 9 {
 				t.Errorf("Visitorid length = %d, want 9", len(r.Header.Get("Visitorid")))
 			}
@@ -205,6 +343,157 @@ func newCloudcatTestProvider(t *testing.T, responses map[string]string) (*Cloudc
 type cloudcatTestRoundTripper func(*http.Request) (*http.Response, error)
 
 func (f cloudcatTestRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestCloudcatCheckoutReusesConnectionsWithIsolatedCookies(t *testing.T) {
+	t.Setenv("CLOUDCAT_PROXY_URL", "")
+	t.Setenv("CLOUDCAT_API_PROXY_URL", "")
+	var connections atomic.Int32
+	cookies := make(chan string, 3)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookies <- r.Header.Get("Cookie")
+		if r.URL.Path == "/first" {
+			http.SetCookie(w, &http.Cookie{Name: "session", Value: "first", Path: "/"})
+		}
+		_, _ = io.WriteString(w, "ok")
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			connections.Add(1)
+		}
+	}
+	server.Start()
+	defer server.Close()
+	config := map[string]string{"channelId": "1", "products": `[{"amount":"5.00","itemUrl":"https://catfk.com/item/ee9c69"}]`}
+	first, err := NewCloudcat("first", config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewCloudcat("second", config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.checkoutClient == second.checkoutClient || first.checkoutClient.Jar == second.checkoutClient.Jar {
+		t.Fatal("checkout clients and cookie jars must remain independent")
+	}
+	if first.checkoutClient.Transport != second.checkoutClient.Transport {
+		t.Fatal("same proxy configuration must reuse the browser transport")
+	}
+	transport, ok := first.checkoutClient.Transport.(*req.Transport)
+	if !ok || transport.TLSHandshakeContext == nil {
+		t.Fatal("checkout must retain the browser TLS transport")
+	}
+	for _, client := range []*http.Client{first.checkoutClient, second.checkoutClient} {
+		if client.Timeout != cloudcatCheckoutTimeout {
+			t.Fatalf("checkout timeout = %v", client.Timeout)
+		}
+		redirect, _ := http.NewRequest(http.MethodGet, "https://evil.example/", nil)
+		if client.CheckRedirect == nil || client.CheckRedirect(redirect, nil) == nil {
+			t.Fatal("checkout must reject untrusted redirects")
+		}
+	}
+	for i, client := range []*http.Client{first.checkoutClient, second.checkoutClient, first.checkoutClient} {
+		path := "/later"
+		if i == 0 {
+			path = "/first"
+		}
+		resp, err := client.Get(server.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := connections.Load(); got != 1 {
+		t.Fatalf("three requests across two providers opened %d connections, want 1", got)
+	}
+	for i, want := range []string{"", "", "session=first"} {
+		if got := <-cookies; got != want {
+			t.Fatalf("request %d cookie = %q, want %q", i, got, want)
+		}
+	}
+}
+
+func TestCloudcatCheckoutTransportProxyIsolation(t *testing.T) {
+	t.Setenv("CLOUDCAT_API_PROXY_URL", "")
+	config := map[string]string{"channelId": "1", "products": `[{"amount":"5.00","itemUrl":"https://catfk.com/item/ee9c69"}]`}
+	requests := make(chan string, 3)
+	proxies := make([]*httptest.Server, 2)
+	for i := range proxies {
+		proxies[i] = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests <- fmt.Sprintf("%d %s", i, r.Header.Get("Proxy-Authorization"))
+			_, _ = io.WriteString(w, "proxied")
+		}))
+		defer proxies[i].Close()
+	}
+	var providers []*Cloudcat
+	for _, proxyURL := range []string{proxies[0].URL, strings.Replace(proxies[0].URL, "://", "://buyer:secret@", 1), proxies[1].URL} {
+		t.Setenv("CLOUDCAT_PROXY_URL", proxyURL)
+		p, err := NewCloudcat("proxy-isolation", config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, previous := range providers {
+			if previous.checkoutClient.Transport == p.checkoutClient.Transport {
+				t.Fatal("different proxy endpoints or credentials must not share transports")
+			}
+		}
+		providers = append(providers, p)
+	}
+	for i, want := range []string{"0 ", "0 Basic YnV5ZXI6c2VjcmV0", "1 "} {
+		resp, err := providers[i].checkoutClient.Get("http://cloudcat-checkout-test.invalid/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := <-requests; got != want {
+			t.Fatalf("proxy route/auth = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestCloudcatCheckoutTransportConcurrentConstruction(t *testing.T) {
+	proxy := httptest.NewServer(http.NotFoundHandler())
+	defer proxy.Close()
+	t.Setenv("CLOUDCAT_PROXY_URL", proxy.URL)
+	t.Setenv("CLOUDCAT_API_PROXY_URL", "")
+	config := map[string]string{"channelId": "1", "products": `[{"amount":"5.00","itemUrl":"https://catfk.com/item/ee9c69"}]`}
+	const count = 16
+	providers := make([]*Cloudcat, count)
+	var wg sync.WaitGroup
+	for i := range providers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			p, err := NewCloudcat("concurrent", config)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			providers[i] = p
+		}()
+	}
+	wg.Wait()
+	for _, p := range providers {
+		if p == nil {
+			t.Fatal("provider construction failed")
+		}
+	}
+	for _, p := range providers[1:] {
+		if p.checkoutClient.Transport != providers[0].checkoutClient.Transport {
+			t.Fatal("concurrent construction must converge on the same transport")
+		}
+		if p.checkoutClient == providers[0].checkoutClient || p.checkoutClient.Jar == providers[0].checkoutClient.Jar {
+			t.Fatal("concurrent construction must keep clients and cookies isolated")
+		}
+	}
+}
 
 func TestCloudcatProxyAppliesToBothClientsWithoutDirectFallback(t *testing.T) {
 	requests := make(chan string, 8)

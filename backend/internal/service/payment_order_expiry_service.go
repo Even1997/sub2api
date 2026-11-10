@@ -7,6 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	"github.com/google/uuid"
 )
 
@@ -28,6 +31,8 @@ type PaymentOrderExpiryService struct {
 	stopCh     chan struct{}
 	stopOnce   sync.Once
 	wg         sync.WaitGroup
+	warmupCtx  context.Context
+	warmupStop context.CancelFunc
 
 	lockCache  LeaderLockCache
 	db         *sql.DB
@@ -35,11 +40,14 @@ type PaymentOrderExpiryService struct {
 }
 
 func NewPaymentOrderExpiryService(paymentSvc *PaymentService, interval time.Duration) *PaymentOrderExpiryService {
+	warmupCtx, warmupStop := context.WithCancel(context.Background())
 	return &PaymentOrderExpiryService{
 		paymentSvc: paymentSvc,
 		interval:   interval,
 		stopCh:     make(chan struct{}),
 		instanceID: uuid.NewString(),
+		warmupCtx:  warmupCtx,
+		warmupStop: warmupStop,
 	}
 }
 
@@ -61,13 +69,21 @@ func (s *PaymentOrderExpiryService) Start() {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		var stopWarmup func()
+		defer func() {
+			if stopWarmup != nil {
+				stopWarmup()
+			}
+		}()
 		ticker := time.NewTicker(s.interval)
 		defer ticker.Stop()
 
+		s.syncCloudcatWarmup(&stopWarmup)
 		s.runOnce()
 		for {
 			select {
 			case <-ticker.C:
+				s.syncCloudcatWarmup(&stopWarmup)
 				s.runOnce()
 			case <-s.stopCh:
 				return
@@ -81,9 +97,44 @@ func (s *PaymentOrderExpiryService) Stop() {
 		return
 	}
 	s.stopOnce.Do(func() {
+		if s.warmupStop != nil {
+			s.warmupStop()
+		}
 		close(s.stopCh)
 	})
 	s.wg.Wait()
+}
+
+func (s *PaymentOrderExpiryService) syncCloudcatWarmup(stop *func()) {
+	if s.paymentSvc.configService == nil || s.paymentSvc.entClient == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.warmupCtx, 3*time.Second)
+	defer cancel()
+	enabled := s.paymentSvc.configService.IsPaymentEnabled(ctx)
+	if enabled {
+		var err error
+		enabled, err = s.paymentSvc.entClient.PaymentProviderInstance.Query().Where(
+			paymentproviderinstance.EnabledEQ(true), paymentproviderinstance.ProviderKeyEQ(payment.TypeCloudcat),
+		).Exist(ctx)
+		if err != nil {
+			return
+		}
+	}
+	if !enabled {
+		if *stop != nil {
+			(*stop)()
+			*stop = nil
+		}
+		return
+	}
+	if *stop == nil {
+		var err error
+		*stop, err = provider.StartCloudcatWarmPool(s.warmupCtx)
+		if err != nil {
+			slog.Warn("[PaymentOrderExpiry] could not start cloudcat connection warmup", "error", err)
+		}
+	}
 }
 
 func (s *PaymentOrderExpiryService) runOnce() {

@@ -1048,7 +1048,7 @@ export default {
         field_cid: 'Channel ID',
         field_cidAlipay: 'Alipay Channel ID',
         field_cidWxpay: 'WeChat Channel ID',
-        field_channelId: 'Alipay Channel ID',
+        field_channelId: 'Payment Channel ID',
         cloudcatProducts: 'Recharge product mapping',
         cloudcatProductsHint: 'Map each supported recharge amount to one card product. Checkout fills the current user email automatically.',
         addCloudcatProduct: 'Add product',

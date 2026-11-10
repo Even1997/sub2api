@@ -15,6 +15,7 @@ describe('admin settings payment visible method helpers', () => {
     expect(normalizePaymentVisibleMethodSource('wxpay', 'official')).toBe('official_wxpay')
     expect(normalizePaymentVisibleMethodSource('wxpay', 'wechat')).toBe('official_wxpay')
     expect(normalizePaymentVisibleMethodSource('wxpay', 'easypay')).toBe('easypay_wxpay')
+    expect(normalizePaymentVisibleMethodSource('wxpay', 'cloudcat')).toBe('cloudcat_wxpay')
   })
 
   it('rejects unknown or cross-method source values', () => {
@@ -63,6 +64,11 @@ describe('admin settings payment visible method helpers', () => {
         value: 'easypay_wxpay',
         labelZh: '易支付微信',
         labelEn: 'EasyPay WeChat Pay',
+      },
+      {
+        value: 'cloudcat_wxpay',
+        labelZh: '云猫微信',
+        labelEn: 'Cloudcat WeChat Pay',
       },
     ])
   })
