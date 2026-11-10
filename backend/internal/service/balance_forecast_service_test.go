@@ -51,7 +51,7 @@ func forecastServiceFixture(t *testing.T) (*BalanceForecastService, *notificatio
 	require.NoError(t, err)
 	_, err = private.Exec(string(projection))
 	require.NoError(t, err)
-	migration, err := os.ReadFile("../../migrations/332_balance_forecast_delivery.sql")
+	migration, err := os.ReadFile("../../migrations/335_balance_forecast_delivery.sql")
 	require.NoError(t, err)
 	_, err = private.Exec(string(migration))
 	require.NoError(t, err)

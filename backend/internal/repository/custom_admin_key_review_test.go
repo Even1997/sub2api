@@ -94,7 +94,7 @@ func TestScopedAdminReviewGroupPriorityAndStatus(t *testing.T) {
 		require.NoError(t, err)
 		_, err = db.Exec(string(migration))
 		require.NoError(t, err)
-		dailyMigration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "335_account_daily_schedulable_timers.sql"))
+		dailyMigration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "339_account_daily_schedulable_timers.sql"))
 		require.NoError(t, err)
 		_, err = db.Exec(string(dailyMigration))
 		require.NoError(t, err)

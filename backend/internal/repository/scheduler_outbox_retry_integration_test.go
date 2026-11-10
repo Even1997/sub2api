@@ -35,7 +35,7 @@ func newOutboxRetryPostgres(t *testing.T) (*sql.DB, *schedulerOutboxRepository) 
 	db, err := sql.Open("postgres", dsn.String())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	for _, filename := range []string{"036_scheduler_outbox.sql", "152_scheduler_outbox_dedup_key.sql", "334_scheduler_outbox_retries.sql"} {
+	for _, filename := range []string{"036_scheduler_outbox.sql", "152_scheduler_outbox_dedup_key.sql", "338_scheduler_outbox_retries.sql"} {
 		ddl, err := migrations.FS.ReadFile(filename)
 		require.NoError(t, err)
 		_, err = db.ExecContext(ctx, string(ddl))

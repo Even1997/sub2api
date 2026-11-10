@@ -83,7 +83,7 @@ func integrationStore(t *testing.T) (*Store, *time.Time, *atomic.Int64) {
 	if _, err = db.Exec(timerFixture); err != nil {
 		t.Fatal(err)
 	}
-	dailyMigration, err := os.ReadFile("../../migrations/335_account_daily_schedulable_timers.sql")
+	dailyMigration, err := os.ReadFile("../../migrations/339_account_daily_schedulable_timers.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -559,7 +559,7 @@ func TestIntegrationDailyConflictChecksCoverFutureOneShotsAndZones(t *testing.T)
 func TestIntegrationDailyMigrationPreservesOldOneShotsAndCanRepeat(t *testing.T) {
 	s, _, _ := integrationStore(t)
 	saveRelative(t, s, "open", 1)
-	data, err := os.ReadFile("../../migrations/335_account_daily_schedulable_timers.sql")
+	data, err := os.ReadFile("../../migrations/339_account_daily_schedulable_timers.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

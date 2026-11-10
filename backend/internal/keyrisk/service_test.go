@@ -69,17 +69,17 @@ func fixture(t *testing.T) (*Service, *fakeMail) {
 	m := &fakeMail{}
 	s := &Service{DB: db, Mail: m}
 	exec(t, s, `CREATE TABLE users(id bigint PRIMARY KEY,email text,username text DEFAULT '',status text DEFAULT 'active',deleted_at timestamptz);CREATE TABLE api_keys(id bigint PRIMARY KEY,user_id bigint,name text,status text DEFAULT 'active',created_at timestamptz DEFAULT now(),deleted_at timestamptz,expires_at timestamptz);CREATE TABLE usage_logs(id bigserial PRIMARY KEY,ip_address text,user_id bigint,api_key_id bigint,created_at timestamptz DEFAULT now());`)
-	raw, e := os.ReadFile("../../migrations/333_key_risk.sql")
+	raw, e := os.ReadFile("../../migrations/340_key_risk.sql")
 	if e != nil {
 		t.Fatal(e)
 	}
 	exec(t, s, string(raw))
-	upgrade, e := os.ReadFile("../../migrations/334_key_risk_delivery_evidence.sql")
+	upgrade, e := os.ReadFile("../../migrations/341_key_risk_delivery_evidence.sql")
 	if e != nil {
 		t.Fatal(e)
 	}
 	exec(t, s, string(upgrade))
-	ack, e := os.ReadFile("../../migrations/336_key_risk_acknowledgements.sql")
+	ack, e := os.ReadFile("../../migrations/342_key_risk_acknowledgements.sql")
 	if e != nil {
 		t.Fatal(e)
 	}

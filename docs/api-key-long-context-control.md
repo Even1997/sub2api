@@ -29,7 +29,7 @@ Anthropic 的 `redacted_thinking` 属于不可见的加密历史，也会被拒�
 }
 ```
 
-省略字段保留原值，传 `true` 恢复允许。配置持久化在 PostgreSQL `api_keys.allow_long_context`，迁移文件为 `333_api_key_allow_long_context.sql`，默认 `true`。配置成功提交后失效对应鉴权缓存；鉴权及区域快照版本升级为 v33。
+省略字段保留原值，传 `true` 恢复允许。配置持久化在 PostgreSQL `api_keys.allow_long_context`，迁移文件为 `336_api_key_allow_long_context.sql`，默认 `true`。配置成功提交后失效对应鉴权缓存；鉴权及区域快照版本升级为 v33。
 
 部署包含该迁移的新版二进制或 Docker 镜像后，应用启动时自动执行迁移，沿用 `schema_migrations` 的执行记录。区域鉴权部署需重新发布 v33 快照。回退二进制会保留新增列和设置，但旧版本不执行该开关策略。
 

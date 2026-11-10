@@ -13,7 +13,7 @@ import (
 
 func TestForecastClaimsSurviveConcurrencyRestartCapAndRecovery(t *testing.T) {
 	s, now := fixture(t)
-	migration, err := os.ReadFile("../../migrations/332_balance_forecast_delivery.sql")
+	migration, err := os.ReadFile("../../migrations/335_balance_forecast_delivery.sql")
 	require.NoError(t, err)
 	_, err = s.DB.Exec(string(migration))
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestForecastClaimsSurviveConcurrencyRestartCapAndRecovery(t *testing.T) {
 
 func TestForecastOnlyPreSMTPSuppressionReleasesAllowance(t *testing.T) {
 	s, now := fixture(t)
-	migration, err := os.ReadFile("../../migrations/332_balance_forecast_delivery.sql")
+	migration, err := os.ReadFile("../../migrations/335_balance_forecast_delivery.sql")
 	require.NoError(t, err)
 	_, err = s.DB.Exec(string(migration))
 	require.NoError(t, err)
@@ -117,7 +117,7 @@ func TestForecastRecoveryGapMatchesBoundedSweepCycles(t *testing.T) {
 		t.Run(fmt.Sprint(tc.users), func(t *testing.T) {
 			s, now := fixture(t)
 			ctx := context.Background()
-			migration, err := os.ReadFile("../../migrations/332_balance_forecast_delivery.sql")
+			migration, err := os.ReadFile("../../migrations/335_balance_forecast_delivery.sql")
 			require.NoError(t, err)
 			_, err = s.DB.ExecContext(ctx, string(migration))
 			require.NoError(t, err)

@@ -51,9 +51,9 @@ func TestVipCreditUpgradeFromBaselineAndFirstDraftPreservesLedger(t *testing.T) 
 	}
 	require.NoError(t, applyMigrationsFS(ctx, db, base))
 	uid := creditUser(t, db, "0")
-	raw, err := migrations.FS.ReadFile("328_vip_auto_credit.sql")
+	raw, err := migrations.FS.ReadFile("331_vip_auto_credit.sql")
 	require.NoError(t, err)
-	base["328_vip_auto_credit.sql"] = &fstest.MapFile{Data: raw}
+	base["331_vip_auto_credit.sql"] = &fstest.MapFile{Data: raw}
 	require.NoError(t, applyMigrationsFS(ctx, db, base))
 	_, err = db.ExecContext(ctx, `INSERT INTO auto_credit_config(user_id,enabled,threshold,amount,cap,version) VALUES($1,true,0,2,4,1);`, uid)
 	require.NoError(t, err)

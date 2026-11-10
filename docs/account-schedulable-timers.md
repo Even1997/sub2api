@@ -53,7 +53,7 @@
 
 新增 `302_account_schedulable_timers.sql`，遵守不可变、forward-only 迁移规范，只增加两张表及索引，不修改现有账号 schema。没有 Ent schema 变更或 Wire 依赖生成要求。
 
-每天循环新增 `335_account_daily_schedulable_timers.sql`，为任务及审计表增加循环元数据，不重写旧迁移。旧任务按一次性执行。回退到只有一次性 worker 的旧版前，必须先取消全部循环 pending 任务并停止新 worker；旧 worker 不会续排循环，不能把保留新字段等同于回滚后仍支持每天执行。
+每天循环新增 `339_account_daily_schedulable_timers.sql`，为任务及审计表增加循环元数据，不重写旧迁移。旧任务按一次性执行。回退到只有一次性 worker 的旧版前，必须先取消全部循环 pending 任务并停止新 worker；旧 worker 不会续排循环，不能把保留新字段等同于回滚后仍支持每天执行。
 
 回退到不支持定时任务的旧二进制时，旧代码会忽略附加表。因此不能直接回退后又无审查地重新升级：先由新版本管理员取消 pending 计划并停止新版本 worker，留存审计，再回退；旧二进制期间创建的手动意图无法自动记录到新计划表。若将来删除表，应单独编写后续迁移，保留所需审计，不向旧文件追加 Down SQL。
 

@@ -127,7 +127,7 @@ func TestUpgradeBackfillsPendingEvidence(t *testing.T) {
 	s, m := fixture(t)
 	run(t, s)
 	exec(t, s, `DROP TABLE key_risk_outbox_items;ALTER TABLE key_risk_events DROP COLUMN generation;INSERT INTO key_risk_outbox(user_id,kind,bucket,manual) VALUES(1,'risk',1,true)`)
-	raw, e := os.ReadFile("../../migrations/334_key_risk_delivery_evidence.sql")
+	raw, e := os.ReadFile("../../migrations/341_key_risk_delivery_evidence.sql")
 	if e != nil {
 		t.Fatal(e)
 	}

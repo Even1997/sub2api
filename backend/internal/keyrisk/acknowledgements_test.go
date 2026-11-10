@@ -180,7 +180,7 @@ func TestUpgradePreservesPriorDeliveryAttempts(t *testing.T) {
 		t.Fatal(err)
 	}
 	exec(t, s, "DROP TABLE key_risk_deliveries;DROP TABLE key_risk_recipients")
-	migration, err := os.ReadFile("../../migrations/336_key_risk_acknowledgements.sql")
+	migration, err := os.ReadFile("../../migrations/342_key_risk_acknowledgements.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
