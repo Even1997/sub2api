@@ -150,7 +150,6 @@ import PricingEntryCard from './PricingEntryCard.vue'
 import {
   createDefaultTimePricingForm,
   formIntervalsToAPI,
-  formReasoningEffortMultipliersToAPI,
   formTimePricingToAPI,
   mTokToPerToken,
 } from './types'
@@ -252,7 +251,7 @@ function addPricingEntry(section: PricingPlatform) {
     cache_read_price: null,
     fast_multiplier: null,
     flex_multiplier: null,
-    reasoning_effort_multipliers: null,
+    max_reasoning_effort_multiplier: null,
     image_input_price: null,
     image_output_price: null,
     per_request_price: null,
@@ -337,7 +336,7 @@ function pricingToAPI(platforms: PricingPlatform[]): ChannelModelPricing[] {
     per_request_price: entry.per_request_price == null || entry.per_request_price === '' ? null : Number(entry.per_request_price),
     fast_multiplier: entry.fast_multiplier == null || entry.fast_multiplier === '' ? null : Number(entry.fast_multiplier),
     flex_multiplier: entry.flex_multiplier == null || entry.flex_multiplier === '' ? null : Number(entry.flex_multiplier),
-    reasoning_effort_multipliers: formReasoningEffortMultipliersToAPI(entry.reasoning_effort_multipliers),
+    max_reasoning_effort_multiplier: entry.max_reasoning_effort_multiplier == null || entry.max_reasoning_effort_multiplier === '' ? null : Number(entry.max_reasoning_effort_multiplier),
     intervals: formIntervalsToAPI(entry.intervals),
     time_pricing: formTimePricingToAPI(entry.time_pricing),
   })))

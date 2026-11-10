@@ -1,5 +1,5 @@
 import type { PricingFormEntry, IntervalFormEntry } from '@/components/admin/channel/types'
-import { findModelConflict, validateIntervals, validateReasoningEffortMultipliers, validateTimePricing } from '@/components/admin/channel/types'
+import { findModelConflict, validateIntervals, validateTimePricing } from '@/components/admin/channel/types'
 
 export const MAX_PRICING_FILE_BYTES = 2 * 1024 * 1024
 const FORMAT = 'sub2api-channel-pricing'
@@ -31,7 +31,7 @@ function integer(value: unknown): number {
 }
 
 function entry(value: unknown, t: Translate): PricingFormEntry {
-  const row = object(value, [...priceFields, 'models', 'billing_mode', 'fast_multiplier', 'flex_multiplier', 'reasoning_effort_multipliers', 'image_input_price', 'image_output_price', 'intervals', 'time_pricing'])
+  const row = object(value, [...priceFields, 'models', 'billing_mode', 'fast_multiplier', 'flex_multiplier', 'max_reasoning_effort_multiplier', 'image_input_price', 'image_output_price', 'intervals', 'time_pricing'])
   if (!Array.isArray(row.models) || !row.models.length || row.models.some(m => typeof m !== 'string' || !m.trim())) return invalid()
   if (!['token', 'per_request', 'image', 'video'].includes(String(row.billing_mode))) return invalid()
   if (!Array.isArray(row.intervals)) return invalid()
@@ -47,26 +47,22 @@ function entry(value: unknown, t: Translate): PricingFormEntry {
       sort_order: integer(iv.sort_order),
     } as IntervalFormEntry
   })
-  let reasoning: Record<string, number> | null = null
-  if (row.reasoning_effort_multipliers != null) {
-    const values = object(row.reasoning_effort_multipliers, ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
-    reasoning = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== '').map(([k, v]) => {
-      const multiplier = number(v, true)
-      if (multiplier === null) return invalid()
-      return [k, multiplier]
-    }))
-  }
   const time = object(row.time_pricing, ['timezone', 'weekdays_only', 'periods'])
   if (typeof time.timezone !== 'string' || typeof time.weekdays_only !== 'boolean' || !Array.isArray(time.periods)) return invalid()
   const result: PricingFormEntry = {
-    ...Object.fromEntries(priceFields.map(key => [key, number(row[key])])),
     models: row.models.map(m => (m as string).trim()),
     billing_mode: row.billing_mode as PricingFormEntry['billing_mode'],
+    input_price: number(row.input_price),
+    output_price: number(row.output_price),
+    cache_write_price: number(row.cache_write_price),
+    cache_write_1h_price: number(row.cache_write_1h_price),
+    cache_read_price: number(row.cache_read_price),
+    per_request_price: number(row.per_request_price),
     image_input_price: number(row.image_input_price),
     image_output_price: number(row.image_output_price),
     fast_multiplier: number(row.fast_multiplier, true),
     flex_multiplier: number(row.flex_multiplier, true),
-    reasoning_effort_multipliers: reasoning,
+    max_reasoning_effort_multiplier: number(row.max_reasoning_effort_multiplier, true),
     intervals,
     time_pricing: {
       timezone: time.timezone,
@@ -79,9 +75,8 @@ function entry(value: unknown, t: Translate): PricingFormEntry {
         return { start_time: period.start_time, end_time: period.end_time, multiplier }
       }),
     },
-  } as PricingFormEntry
+  }
   const error = validateIntervals(result.intervals, result.billing_mode, t)
-    || validateReasoningEffortMultipliers(result.reasoning_effort_multipliers, t)
     || validateTimePricing(result.time_pricing, t)
   if (error) throw new Error(error)
   return result

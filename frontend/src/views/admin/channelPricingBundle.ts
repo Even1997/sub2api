@@ -153,7 +153,7 @@ export function channelPricingToPlatforms(pricing: ChannelModelPricing[]): Prici
       cache_read_price: perTokenToMTok(row.cache_read_price),
       fast_multiplier: row.fast_multiplier ?? null,
       flex_multiplier: row.flex_multiplier ?? null,
-      reasoning_effort_multipliers: row.reasoning_effort_multipliers ? { ...row.reasoning_effort_multipliers } : null,
+      max_reasoning_effort_multiplier: row.max_reasoning_effort_multiplier ?? null,
       image_input_price: perTokenToMTok(row.image_input_price),
       image_output_price: perTokenToMTok(row.image_output_price),
       per_request_price: row.per_request_price,

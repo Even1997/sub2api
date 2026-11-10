@@ -8,7 +8,7 @@ const pricing = (): PricingFormEntry => ({
   models: ['example-model'], billing_mode: 'token',
   input_price: 2, output_price: 8, cache_write_price: 2.5, cache_write_1h_price: 4,
   cache_read_price: 0.2, image_input_price: 5, image_output_price: 10, per_request_price: 0.04,
-  fast_multiplier: 2, flex_multiplier: 0.5, reasoning_effort_multipliers: { high: 1.5 },
+  fast_multiplier: 2, flex_multiplier: 0.5, max_reasoning_effort_multiplier: 1.5,
   intervals: [{ min_tokens: 1000, max_tokens: null, tier_label: 'long', input_price: 4,
     output_price: 16, cache_write_price: 5, cache_write_1h_price: 8, cache_read_price: 0.4,
     input_multiplier: 2, output_multiplier: 1.5, cache_write_multiplier: null,
@@ -49,7 +49,7 @@ describe('channel pricing transfer', () => {
     (f: ReturnType<typeof file>) => { f.model_pricing[0].billing_mode = 'unknown' },
     (f: ReturnType<typeof file>) => { f.model_pricing[0].intervals[0].max_tokens = 10 },
     (f: ReturnType<typeof file>) => { f.model_pricing[0].time_pricing.periods[0].multiplier = 0 },
-    (f: ReturnType<typeof file>) => { f.model_pricing[0].reasoning_effort_multipliers = { invalid: 1 } },
+    (f: ReturnType<typeof file>) => { f.model_pricing[0].max_reasoning_effort_multiplier = 0 },
   ])('rejects invalid files before form mutation (%#)', mutate => {
     const value = file()
     mutate(value)

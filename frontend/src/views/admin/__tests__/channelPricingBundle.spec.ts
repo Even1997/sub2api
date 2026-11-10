@@ -11,7 +11,7 @@ const pricing = (): PricingFormEntry => ({
   models: ['shared-model'], billing_mode: 'token',
   input_price: 2, output_price: 8, cache_write_price: 0, cache_write_1h_price: null,
   cache_read_price: 0.2, image_input_price: 5, image_output_price: 10, per_request_price: 0.04,
-  fast_multiplier: 2, flex_multiplier: 0.5, reasoning_effort_multipliers: { high: 1.5 },
+  fast_multiplier: 2, flex_multiplier: 0.5, max_reasoning_effort_multiplier: 1.5,
   intervals: [{ min_tokens: 1000, max_tokens: null, tier_label: 'long', input_price: 4,
     output_price: 16, cache_write_price: 0, cache_write_1h_price: null, cache_read_price: 0.4,
     input_multiplier: 2, output_multiplier: 1.5, cache_write_multiplier: null,
@@ -34,7 +34,7 @@ const apiPricing = (platform: string): ChannelModelPricing => ({
   input_price: 0.000002, output_price: 0.000008, cache_write_price: 0,
   cache_write_1h_price: null, cache_read_price: 0.0000002,
   image_input_price: 0.000005, image_output_price: 0.00001, per_request_price: 0.04,
-  fast_multiplier: 2, flex_multiplier: 0.5, reasoning_effort_multipliers: { high: 1.5 },
+  fast_multiplier: 2, flex_multiplier: 0.5, max_reasoning_effort_multiplier: 1.5,
   intervals: [{ ...formIntervalsToAPI(pricing().intervals)[0], id: 43 }],
   time_pricing: { timezone: 'Asia/Shanghai', weekdays_only: true,
     periods: [{ start_time: '09:00', end_time: '18:00', multiplier: 1.25 }] },
@@ -144,7 +144,7 @@ describe('channel pricing bundle', () => {
     expect(imported.cache_write_1h_price).toBeNull()
     entries[0].models.push('other-model')
     entries[0].intervals[0].input_price = 99
-    entries[0].reasoning_effort_multipliers!.high = 99
+    entries[0].max_reasoning_effort_multiplier = 99
     entries[0].time_pricing.periods[0].multiplier = 99
     expect(original).toEqual(snapshot)
   })

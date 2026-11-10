@@ -238,7 +238,7 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { getConfiguredTablePageSizeOptions } from '@/utils/tablePreferences'
 import SmartOpsNav from '@/components/admin/operations/SmartOpsNav.vue'
 import {
-  defaultPriorityTeamsConfig, getPriorityConfig, savePriorityConfig, getPrioritySnapshot, getPriorityLatency, getPriorityAnalysis, getPriorityModels,
+  defaultPriorityTeamsConfig, getPriorityConfig, savePriorityConfig, getPrioritySnapshot, getPriorityAnalysis, getPriorityModels,
   recomputePriorityScheduling, getPriorityStickyBindings, clearPriorityStickyBindings,
   type PrioritySchedulingConfig, type PrioritySnapshot, type PriorityCandidate,
   type PriorityLatencySeries, type PriorityLatencyAccount,
