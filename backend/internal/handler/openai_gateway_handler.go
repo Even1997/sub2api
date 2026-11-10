@@ -772,6 +772,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	} else if changed {
 		body = cappedBody
 	}
+	if normalizedBody, changed := normalizeCodexAppsContext(body); changed {
+		body = normalizedBody
+		reqLog.Info("openai.codex_apps_context_normalized",
+			zap.String("normalization", "call_output_to_user_message"),
+		)
+	}
 	if normalizedBody, changed := normalizeCodexAutomationBootstrap(body); changed {
 		body = normalizedBody
 		reqLog.Info("openai.codex_automation_bootstrap_normalized",
@@ -2125,6 +2131,70 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 	)
 	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
 	return false
+}
+
+func normalizeCodexAppsContext(body []byte) ([]byte, bool) {
+	// Codex Desktop 把当前页面快照写成没有 call_id 的 function_call_output。
+	// 这是客户端上下文，不是工具续链；HTTP Responses 不能带这种项，先改成用户消息。
+	if !hasUniqueJSONMembers(body) {
+		return body, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var request map[string]any
+	if err := decoder.Decode(&request); err != nil {
+		return body, false
+	}
+	if previousResponseID, exists := request["previous_response_id"]; exists {
+		if _, ok := previousResponseID.(string); !ok {
+			return body, false
+		}
+	}
+	input, ok := request["input"].([]any)
+	if !ok {
+		return body, false
+	}
+	changed := false
+	for i, raw := range input {
+		item, ok := raw.(map[string]any)
+		if !ok || !isCodexAppsContextCandidate(item) {
+			continue
+		}
+		callIDValue, exists := item["call_id"]
+		callID, isString := callIDValue.(string)
+		if exists && (!isString || strings.TrimSpace(callID) != "") {
+			continue
+		}
+		output, ok := item["output"].(string)
+		if !ok {
+			continue
+		}
+		input[i] = map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []any{map[string]any{
+				"type": "input_text",
+				"text": output,
+			}},
+		}
+		changed = true
+	}
+	if !changed {
+		return body, false
+	}
+	normalized, err := json.Marshal(request)
+	if err != nil {
+		return body, false
+	}
+	return normalized, true
+}
+
+func isCodexAppsContextCandidate(item map[string]any) bool {
+	if stringField(item, "type") != "function_call_output" || stringField(item, "namespace") != "agent" {
+		return false
+	}
+	name := stringField(item, "name")
+	return name == "codex_apps_open_page" || strings.HasPrefix(name, "codex_apps_selected_page_part_")
 }
 
 func normalizeCodexDelegationBootstrap(body []byte) ([]byte, bool) {
