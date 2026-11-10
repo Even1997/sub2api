@@ -100,6 +100,11 @@ func buildClient(opts Options) (*http.Client, error) {
 	}, nil
 }
 
+// NewTransport builds an independently owned transport for callers that close it.
+func NewTransport(opts Options) (*http.Transport, error) {
+	return buildTransport(opts)
+}
+
 func buildTransport(opts Options) (*http.Transport, error) {
 	// 使用自定义值或默认值
 	maxIdleConns := opts.MaxIdleConns
