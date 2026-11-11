@@ -31,6 +31,13 @@ func TestLocalProtocolDiagnosticIsBoundedAndPrivate(t *testing.T) {
 	require.Equal(t, "password/TOTP protocol failed (exit 1)", sanitizeReauthError("password/TOTP protocol failed (exit 1)"))
 }
 
+func TestSanitizeReauthErrorOnlyPreservesExactAdminStopReason(t *testing.T) {
+	require.Equal(t, openAIOAuthReauthStoppedByAdmin, sanitizeReauthError(openAIOAuthReauthStoppedByAdmin))
+	for _, raw := range []string{openAIOAuthReauthStoppedByAdmin + " synthetic-private", openAIOAuthReauthStoppedByAdmin + " token=synthetic-token"} {
+		require.Equal(t, "re-login failed; provider details omitted", sanitizeReauthError(raw))
+	}
+}
+
 func TestSanitizeReauthErrorKeepsRetiredCodeOnly(t *testing.T) {
 	raw := "WorkerError: account_retired: You do not have an account because it has been deleted or deactivated"
 	require.Equal(t, "account_retired", sanitizeReauthError(raw))

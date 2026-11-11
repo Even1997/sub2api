@@ -73,15 +73,6 @@
     </div>
    </div>
 
-   <SettingRow :title="t('admin.accounts.openai.wsMode')" :description="t('admin.accounts.openai.wsModeDesc')">
-    <select data-testid="account-ws" class="input w-52 shrink-0" :value="textValue('openai_ws_mode')" @change="write('openai_ws_mode', eventText($event))">
-     <option value="">{{ t('autoConfig.account.unset') }}</option>
-     <option v-for="mode in wsModes" :key="mode.value" :value="mode.value">{{ mode.label }}</option>
-    </select>
-   </SettingRow>
-   <SettingRow :title="t('admin.accounts.openai.wsSseAcceleration')" :description="t('admin.accounts.openai.wsSseAccelerationDesc')">
-    <TriSwitch test-id="account-ws-sse" :value="boolValue('openai_ws_sse_acceleration')" @change="write('openai_ws_sse_acceleration', $event)" />
-   </SettingRow>
    <SettingRow :title="t('admin.accounts.openai.longContextBilling')" :description="t('admin.accounts.openai.longContextBillingDesc')">
     <TriSwitch test-id="account-openai_long_context_billing" :value="boolValue('openai_long_context_billing')" @change="write('openai_long_context_billing', $event)" />
    </SettingRow>
@@ -216,14 +207,6 @@ const fingerprintModes = [
  { value: 'device', label: t('admin.accounts.openai.codexFingerprintDevice') },
  { value: 'session', label: t('admin.accounts.openai.codexFingerprintSession') },
  { value: 'full', label: t('admin.accounts.openai.codexFingerprintFull') },
-]
-const wsModes = [
- { value: 'off', label: t('admin.accounts.openai.wsModeOff') },
- { value: 'ctx_pool', label: t('admin.accounts.openai.wsModeCtxPool') },
- { value: 'passthrough', label: t('admin.accounts.openai.wsModePassthrough') },
- { value: 'http_bridge', label: t('admin.accounts.openai.wsModeHttpBridge') },
- { value: 'shared', label: t('admin.accounts.openai.wsModeShared') },
- { value: 'dedicated', label: t('admin.accounts.openai.wsModeDedicated') },
 ]
 const imageOptions = computed(() => [
  { value: 'inherit', label: t('admin.accounts.openai.codexImageToolInherit'), description: t('admin.accounts.openai.codexImageToolInheritDesc'), selected: 'border-sky-300 bg-sky-50 text-sky-900' },

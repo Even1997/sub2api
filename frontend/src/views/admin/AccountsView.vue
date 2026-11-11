@@ -1414,7 +1414,6 @@ const {
   initialParams: {
     ...loadInitialAccountFilterValues(),
     type: '',
-    status: '',
     quota_window: '',
     privacy_mode: '',
     group: '',

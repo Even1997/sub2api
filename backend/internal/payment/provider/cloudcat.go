@@ -22,7 +22,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/imroc/req/v3"
 	"golang.org/x/net/html"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -95,6 +94,16 @@ func NewCloudcat(instanceID string, config map[string]string) (*Cloudcat, error)
 		products[amountMinor] = cloudcatProduct{amountMinor: amountMinor, goodsKey: goodsKey, itemURL: normalizedURL}
 	}
 
+	c, err := newCloudcatBuyer(instanceID)
+	if err != nil {
+		return nil, err
+	}
+	c.channelID = channelID
+	c.products = products
+	return c, nil
+}
+
+func newCloudcatBuyer(instanceID string) (*Cloudcat, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, fmt.Errorf("cloudcat cookie jar: %w", err)
@@ -122,8 +131,6 @@ func NewCloudcat(instanceID string, config map[string]string) (*Cloudcat, error)
 	}
 	return &Cloudcat{
 		instanceID:     instanceID,
-		channelID:      channelID,
-		products:       products,
 		apiBase:        cloudcatAPIBase,
 		httpClient:     apiClient,
 		checkoutClient: checkoutClient,
@@ -237,27 +244,13 @@ func (c *Cloudcat) CreatePayment(ctx context.Context, req payment.CreatePaymentR
 	if err != nil || goodsMinor != product.amountMinor {
 		return nil, fmt.Errorf("cloudcat product %s price does not match configured amount", product.goodsKey)
 	}
-	if strings.TrimSpace(goods.Token) == "" {
-		return nil, fmt.Errorf("cloudcat product %s merchant token is missing", product.goodsKey)
-	}
-	// Both read-only checks must pass before the non-idempotent order request.
-	preflight, preflightCtx := errgroup.WithContext(ctx)
-	preflight.Go(func() error {
-		return c.validatePaymentChannel(preflightCtx, goods.Token, paymentType)
-	})
-	preflight.Go(func() error {
-		quotedAmount, err := c.loadGoodsPrice(preflightCtx, product.goodsKey)
-		if err != nil {
-			return err
-		}
-		quotedMinor, err := payment.AmountToMinorUnit(quotedAmount, payment.DefaultPaymentCurrency)
-		if err != nil || quotedMinor != minor {
-			return fmt.Errorf("cloudcat checkout amount does not match configured amount")
-		}
-		return nil
-	})
-	if err := preflight.Wait(); err != nil {
+	quotedAmount, err := c.loadGoodsPrice(ctx, product.goodsKey)
+	if err != nil {
 		return nil, err
+	}
+	quotedMinor, err := payment.AmountToMinorUnit(quotedAmount, payment.DefaultPaymentCurrency)
+	if err != nil || quotedMinor != minor {
+		return nil, fmt.Errorf("cloudcat checkout amount does not match configured amount")
 	}
 	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < cloudcatHTTPTimeout {
 		return nil, fmt.Errorf("cloudcat preflight timed out before order creation")
@@ -290,21 +283,17 @@ func (c *Cloudcat) CreatePayment(ctx context.Context, req payment.CreatePaymentR
 	if err != nil || createdMinor != minor {
 		return nil, fmt.Errorf("cloudcat created order amount does not match configured amount")
 	}
-	qrCode := ""
-	if paymentType == payment.TypeAlipay {
-		qrCtx, qrCancel := context.WithTimeout(ctx, cloudcatQRCodeTimeout)
-		defer qrCancel()
-		var qrErr error
-		qrCode, qrErr = c.ResolvePaymentQRCode(qrCtx, created.PayURL)
-		if qrErr != nil {
-			slog.Warn("resolve cloudcat QR code after order creation failed", "tradeNo", created.TradeNo, "error", qrErr)
-		}
+	qrCtx, qrCancel := context.WithTimeout(ctx, cloudcatQRCodeTimeout)
+	defer qrCancel()
+	qrCode, qrErr := c.ResolvePaymentQRCode(qrCtx, created.PayURL)
+	if qrErr != nil {
+		slog.Warn("resolve cloudcat QR code after order creation failed", "tradeNo", created.TradeNo, "error", qrErr)
 	}
 	return &payment.CreatePaymentResponse{TradeNo: created.TradeNo, PayURL: created.PayURL, QRCode: qrCode}, nil
 }
 
-// ResolvePaymentQRCode follows CatFK's hosted checkout to Alipay and extracts
-// the original QR payload. Callers keep PayURL as a fallback when this fails.
+// ResolvePaymentQRCode follows CatFK's hosted checkout and extracts the
+// configured channel's QR payload. Callers keep PayURL as a fallback.
 func (c *Cloudcat) ResolvePaymentQRCode(ctx context.Context, payURL string) (string, error) {
 	if c == nil || c.httpClient == nil || c.checkoutClient == nil {
 		return "", fmt.Errorf("cloudcat checkout client is unavailable")
@@ -340,21 +329,21 @@ func (c *Cloudcat) ResolvePaymentQRCode(ctx context.Context, payURL string) (str
 
 	formReq, err := http.NewRequestWithContext(ctx, http.MethodPost, form.action, strings.NewReader(form.values.Encode()))
 	if err != nil {
-		return "", fmt.Errorf("cloudcat Alipay form request: %w", err)
+		return "", fmt.Errorf("cloudcat payment form request: %w", err)
 	}
 	formReq.Header.Set("Accept", "text/html,application/xhtml+xml")
 	formReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	formReq.Header.Set("User-Agent", cloudcatCheckoutUA)
 	resp, err = c.checkoutClient.Do(formReq)
 	if err != nil {
-		return "", fmt.Errorf("cloudcat Alipay checkout: %w", err)
+		return "", fmt.Errorf("cloudcat payment checkout: %w", err)
 	}
 	qrCode, _, err = parseCloudcatCheckoutResponse(resp)
 	if err != nil {
 		return "", err
 	}
 	if qrCode == "" {
-		return "", fmt.Errorf("cloudcat Alipay checkout did not contain a QR code")
+		return "", fmt.Errorf("cloudcat payment checkout did not contain a QR code")
 	}
 	return qrCode, nil
 }
@@ -392,7 +381,9 @@ func (c *Cloudcat) QueryOrder(ctx context.Context, tradeNo string) (*payment.Que
 		return nil, fmt.Errorf("cloudcat query order: %w", err)
 	}
 	query = query.normalized()
-	if query.Code != 1 {
+	// A timed-out Pay/query must not prevent recovery from confirmed order details.
+	queryTimedOut := query.Code == 0 && strings.TrimSpace(query.Msg) == "超时无法查询"
+	if query.Code != 1 && !queryTimedOut {
 		status := payment.ProviderStatusPending
 		msg := strings.ToLower(query.Msg)
 		if strings.Contains(msg, "fail") || strings.Contains(msg, "关闭") || strings.Contains(msg, "过期") {
@@ -411,12 +402,19 @@ func (c *Cloudcat) QueryOrder(ctx context.Context, tradeNo string) (*payment.Que
 	if info.Code != 1 {
 		return nil, fmt.Errorf("cloudcat paid order details are not available yet")
 	}
+	if queryTimedOut && info.Status.String() != "1" {
+		return &payment.QueryOrderResponse{TradeNo: tradeNo, Status: payment.ProviderStatusPending}, nil
+	}
 	for _, returnedTradeNo := range []string{query.TradeNo, info.TradeNo} {
 		if returnedTradeNo != "" && returnedTradeNo != tradeNo {
 			return nil, fmt.Errorf("cloudcat returned a different order")
 		}
 	}
-	amountText := firstNonEmptyString(info.TotalAmount.String(), query.TotalAmount.String())
+	amountText, paidAt := info.TotalAmount.String(), info.PaidAt
+	if !queryTimedOut {
+		amountText = firstNonEmptyString(amountText, query.TotalAmount.String())
+		paidAt = firstNonEmptyString(paidAt, query.PaidAt)
+	}
 	minor, err := payment.AmountToMinorUnit(amountText, payment.DefaultPaymentCurrency)
 	if err != nil || minor <= 0 {
 		return nil, fmt.Errorf("cloudcat paid order amount is invalid")
@@ -431,7 +429,7 @@ func (c *Cloudcat) QueryOrder(ctx context.Context, tradeNo string) (*payment.Que
 		TradeNo:  firstNonEmptyString(info.TradeNo, query.TradeNo, tradeNo),
 		Status:   payment.ProviderStatusPaid,
 		Amount:   payment.MinorUnitToAmount(minor, payment.DefaultPaymentCurrency),
-		PaidAt:   firstNonEmptyString(info.PaidAt, query.PaidAt),
+		PaidAt:   paidAt,
 		Metadata: metadata,
 	}, nil
 }
@@ -445,17 +443,86 @@ func (c *Cloudcat) Refund(context.Context, payment.RefundRequest) (*payment.Refu
 }
 
 type cloudcatGoodsData struct {
-	GoodsType string          `json:"goods_type"`
-	Price     cloudcatScalar  `json:"price"`
-	Status    json.RawMessage `json:"status"`
-	Stock     json.RawMessage `json:"stock"`
-	Inventory json.RawMessage `json:"inventory"`
-	Token     string          `json:"token"`
+	GoodsType string             `json:"goods_type"`
+	Price     cloudcatScalar     `json:"price"`
+	Status    json.RawMessage    `json:"status"`
+	Stock     json.RawMessage    `json:"stock"`
+	Inventory json.RawMessage    `json:"inventory"`
+	Goods     *cloudcatGoodsData `json:"goods"`
+	Response  *cloudcatGoodsData `json:"response"`
 	User      *struct {
 		Token string `json:"token"`
 	} `json:"user"`
-	Goods    *cloudcatGoodsData `json:"goods"`
-	Response *cloudcatGoodsData `json:"response"`
+}
+
+type CloudcatChannel struct {
+	ID          string `json:"id"`
+	PaymentType string `json:"payment_type"`
+	Name        string `json:"name"`
+}
+
+// DiscoverCloudcatChannels reads buyer-visible channels for the product's merchant.
+func DiscoverCloudcatChannels(ctx context.Context, itemURL string) ([]CloudcatChannel, error) {
+	goodsKey, _, err := parseCloudcatItemURL(itemURL)
+	if err != nil {
+		return nil, err
+	}
+	c, err := newCloudcatBuyer("channel-discovery")
+	if err != nil {
+		return nil, err
+	}
+	return c.discoverChannels(ctx, goodsKey)
+}
+
+func (c *Cloudcat) discoverChannels(ctx context.Context, goodsKey string) ([]CloudcatChannel, error) {
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	var goods cloudcatGoodsResponse
+	if err := c.post(ctx, "/shopApi/Shop/goodsInfo", map[string]any{"goods_key": goodsKey}, &goods); err != nil {
+		return nil, err
+	}
+	var token string
+	for _, data := range []*cloudcatGoodsData{&goods.cloudcatGoodsData, &goods.Data, goods.Data.Goods, goods.Data.Response} {
+		if data != nil && data.User != nil {
+			token = firstNonEmptyString(token, data.User.Token)
+		}
+	}
+	if goods.Code != 1 || token == "" {
+		return nil, fmt.Errorf("cloudcat product merchant is unavailable")
+	}
+	var result struct {
+		Code int `json:"code"`
+		Data []struct {
+			ID           int64          `json:"id"`
+			Code         string         `json:"code"`
+			Name         string         `json:"show_name"`
+			Status       cloudcatScalar `json:"status"`
+			CustomStatus cloudcatScalar `json:"custom_status"`
+		} `json:"data"`
+	}
+	if err := c.post(ctx, "/shopApi/Shop/getUserChannel", map[string]any{"token": token}, &result); err != nil {
+		return nil, err
+	}
+	if result.Code != 1 {
+		return nil, fmt.Errorf("cloudcat merchant channels are unavailable")
+	}
+	channels := make([]CloudcatChannel, 0, len(result.Data))
+	for _, channel := range result.Data {
+		if channel.ID <= 0 || channel.Status.String() != "1" || channel.CustomStatus.String() != "1" {
+			continue
+		}
+		var paymentType string
+		switch code := strings.ToLower(channel.Code); {
+		case strings.HasPrefix(code, "alipay"):
+			paymentType = payment.TypeAlipay
+		case strings.HasPrefix(code, "weixin"), strings.HasPrefix(code, "wxpay"):
+			paymentType = payment.TypeWxpay
+		default:
+			continue
+		}
+		channels = append(channels, CloudcatChannel{ID: strconv.FormatInt(channel.ID, 10), PaymentType: paymentType, Name: channel.Name})
+	}
+	return channels, nil
 }
 
 type cloudcatGoodsResponse struct {
@@ -470,7 +537,6 @@ type cloudcatGoods struct {
 	Price     string
 	Status    string
 	Stock     string
-	Token     string
 }
 
 func (c *Cloudcat) loadGoods(ctx context.Context, goodsKey string) (cloudcatGoods, error) {
@@ -491,69 +557,8 @@ func (c *Cloudcat) loadGoods(ctx context.Context, goodsKey string) (cloudcatGood
 		out.Price = firstNonEmptyString(out.Price, candidate.Price.String())
 		out.Status = firstNonEmptyString(out.Status, rawJSONScalar(candidate.Status))
 		out.Stock = firstNonEmptyString(out.Stock, rawJSONScalar(candidate.Stock), rawJSONScalar(candidate.Inventory))
-		out.Token = firstNonEmptyString(out.Token, candidate.Token)
-		if candidate.User != nil {
-			out.Token = firstNonEmptyString(out.Token, candidate.User.Token)
-		}
 	}
 	return out, nil
-}
-
-type cloudcatChannel struct {
-	ID     cloudcatScalar  `json:"id"`
-	Code   string          `json:"code"`
-	Name   string          `json:"name"`
-	Status json.RawMessage `json:"status"`
-}
-
-type cloudcatChannelsResponse struct {
-	Code     int               `json:"code"`
-	Msg      string            `json:"msg"`
-	Data     json.RawMessage   `json:"data"`
-	Response []cloudcatChannel `json:"response"`
-}
-
-func (c *Cloudcat) validatePaymentChannel(ctx context.Context, token, paymentType string) error {
-	var response cloudcatChannelsResponse
-	if err := c.post(ctx, "/shopApi/Shop/getUserChannel", map[string]any{"token": token}, &response); err != nil {
-		return fmt.Errorf("cloudcat load payment channels: %w", err)
-	}
-	if response.Code != 1 {
-		return fmt.Errorf("cloudcat load payment channels failed: %s", firstNonEmptyString(response.Msg, "unexpected response"))
-	}
-	channels := append([]cloudcatChannel(nil), response.Response...)
-	if len(response.Data) > 0 {
-		var direct []cloudcatChannel
-		if err := json.Unmarshal(response.Data, &direct); err == nil {
-			channels = append(channels, direct...)
-		} else {
-			var nested struct {
-				Response []cloudcatChannel `json:"response"`
-			}
-			if err := json.Unmarshal(response.Data, &nested); err == nil {
-				channels = append(channels, nested.Response...)
-			}
-		}
-	}
-	for _, channel := range channels {
-		id, _ := strconv.ParseInt(channel.ID.String(), 10, 64)
-		if id != c.channelID {
-			continue
-		}
-		if status := rawJSONScalar(channel.Status); status != "" && status != "1" {
-			return fmt.Errorf("cloudcat channel %d is not active", c.channelID)
-		}
-		label := strings.ToLower(channel.Code + " " + channel.Name)
-		matches := strings.Contains(label, "alipay") || strings.Contains(label, "支付宝")
-		if paymentType == payment.TypeWxpay {
-			matches = strings.Contains(label, "wxpay") || strings.Contains(label, "wechat") || strings.Contains(label, "weixin") || strings.Contains(label, "微信")
-		}
-		if !matches {
-			return fmt.Errorf("cloudcat channel %d does not support %s", c.channelID, paymentType)
-		}
-		return nil
-	}
-	return fmt.Errorf("cloudcat channel %d was not found", c.channelID)
 }
 
 type cloudcatPriceData struct {
@@ -588,6 +593,7 @@ func (c *Cloudcat) loadGoodsPrice(ctx context.Context, goodsKey string) (string,
 type cloudcatOrderData struct {
 	Code        int                `json:"code"`
 	Msg         string             `json:"msg"`
+	Status      cloudcatScalar     `json:"status"`
 	TradeNo     string             `json:"trade_no"`
 	PayURL      string             `json:"payurl"`
 	PayURLAlt   string             `json:"pay_url"`
@@ -605,6 +611,7 @@ func (d cloudcatOrderData) normalized() cloudcatOrderData {
 			continue
 		}
 		n := nested.normalized()
+		out.Status = cloudcatScalar(firstNonEmptyString(out.Status.String(), n.Status.String()))
 		out.TradeNo = firstNonEmptyString(out.TradeNo, n.TradeNo)
 		out.PayURL = firstNonEmptyString(out.PayURL, out.PayURLAlt, n.PayURL, n.PayURLAlt)
 		out.TotalAmount = cloudcatScalar(firstNonEmptyString(out.TotalAmount.String(), n.TotalAmount.String()))
@@ -626,7 +633,7 @@ func (c *Cloudcat) post(ctx context.Context, path string, payload any, dest any)
 	// These POST endpoints only read state. Never replay Pay/order: an EOF may
 	// arrive after CatFK created the order, and it has no idempotency contract.
 	switch path {
-	case "/shopApi/Shop/goodsInfo", "/shopApi/Shop/getUserChannel", "/shopApi/Shop/getGoodsPrice", "/shopApi/Pay/query", "/shopApi/Order/info":
+	case "/shopApi/Shop/goodsInfo", "/shopApi/Shop/getGoodsPrice", "/shopApi/Pay/query", "/shopApi/Order/info":
 		attempts = 3
 	}
 	timeout := cloudcatHTTPTimeout
@@ -737,7 +744,7 @@ func extractCloudcatPaymentQRCode(body io.Reader) (string, error) {
 		return "", err
 	}
 	if qrCode == "" {
-		return "", fmt.Errorf("cloudcat checkout did not contain an Alipay QR code")
+		return "", fmt.Errorf("cloudcat checkout did not contain a payment QR code")
 	}
 	return qrCode, nil
 }
@@ -758,11 +765,38 @@ func parseCloudcatCheckout(body io.Reader) (string, *cloudcatPaymentForm, error)
 				if form != nil && len(form.values) > 0 {
 					return "", form, nil
 				}
-				return "", nil, fmt.Errorf("cloudcat checkout did not contain an Alipay QR code")
+				return "", nil, fmt.Errorf("cloudcat checkout did not contain a payment QR code")
 			}
 			return "", nil, fmt.Errorf("parse cloudcat checkout: %w", tokenizer.Err())
 		case html.StartTagToken, html.SelfClosingTagToken:
 			token := tokenizer.Token()
+			if strings.EqualFold(token.Data, "img") {
+				for _, attr := range token.Attr {
+					if !strings.EqualFold(attr.Key, "src") {
+						continue
+					}
+					source, err := url.Parse(attr.Val)
+					if err != nil || source.Path != "/payApi/common/generateQrcode.html" {
+						continue
+					}
+					source = (&url.URL{Scheme: "https", Host: "catfk.com"}).ResolveReference(source)
+					if source.Scheme != "https" || source.Host != "catfk.com" || source.User != nil {
+						return "", nil, fmt.Errorf("cloudcat checkout returned an untrusted QR image")
+					}
+					value := source.Query().Get("str")
+					// CatFK encodes its QR image payload twice.
+					if ValidateCloudcatQRCode(value) != nil {
+						value, err = url.QueryUnescape(value)
+						if err != nil {
+							return "", nil, fmt.Errorf("cloudcat checkout returned an invalid QR image payload")
+						}
+					}
+					if err := ValidateCloudcatQRCode(value); err != nil {
+						return "", nil, err
+					}
+					return strings.TrimSpace(value), nil, nil
+				}
+			}
 			if strings.EqualFold(token.Data, "form") && form == nil {
 				var action, method string
 				for _, attr := range token.Attr {
@@ -816,8 +850,23 @@ func parseCloudcatCheckout(body io.Reader) (string, *cloudcatPaymentForm, error)
 
 func ValidateCloudcatQRCode(raw string) error {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Host != "qr.alipay.com" || parsed.Path == "" || parsed.Path == "/" || parsed.Fragment != "" {
-		return fmt.Errorf("cloudcat checkout returned an invalid Alipay QR code")
+	if err != nil || parsed.User != nil || parsed.Fragment != "" {
+		return fmt.Errorf("cloudcat checkout returned an invalid payment QR code")
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "https":
+		if parsed.Host == "catfk.com" && parsed.Path == "/payApi/WeixinJspay/pay.html" && parsed.Query().Get("trade_no") != "" {
+			return nil
+		}
+		if !strings.EqualFold(parsed.Hostname(), "qr.alipay.com") || parsed.Port() != "" || parsed.Path == "" || parsed.Path == "/" {
+			return fmt.Errorf("cloudcat checkout returned an invalid payment QR code")
+		}
+	case "weixin":
+		if !strings.EqualFold(parsed.Hostname(), "wxpay") || parsed.Path != "/bizpayurl" || parsed.RawQuery == "" {
+			return fmt.Errorf("cloudcat checkout returned an invalid payment QR code")
+		}
+	default:
+		return fmt.Errorf("cloudcat checkout returned an invalid payment QR code")
 	}
 	return nil
 }

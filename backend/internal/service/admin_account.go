@@ -473,6 +473,48 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
+// proxy_id of 0 or less means "no proxy", the same sentinel account updates already use.
+// A configured id whose row was deleted must not reach the insert: that foreign key
+// fails after an OAuth code has already been spent.
+func normalizeCreateProxyID(id *int64) *int64 {
+	if id == nil || *id <= 0 {
+		return nil
+	}
+	v := *id
+	return &v
+}
+
+func proxyIDAfterLookup(id *int64, lookupErr error) (*int64, error) {
+	if id == nil || *id <= 0 {
+		return nil, nil
+	}
+	if lookupErr == nil {
+		return normalizeCreateProxyID(id), nil
+	}
+	if errors.Is(lookupErr, ErrProxyNotFound) {
+		slog.Warn("create_account_proxy_missing", "proxy_id", *id)
+		return nil, nil
+	}
+	return nil, lookupErr
+}
+
+func (s *adminServiceImpl) resolveCreateProxyID(ctx context.Context, input *CreateAccountInput) error {
+	if input == nil {
+		return nil
+	}
+	if input.ProxyID == nil || *input.ProxyID <= 0 || s == nil || s.proxyRepo == nil {
+		input.ProxyID = normalizeCreateProxyID(input.ProxyID)
+		return nil
+	}
+	_, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
+	next, err := proxyIDAfterLookup(input.ProxyID, err)
+	if err != nil {
+		return err
+	}
+	input.ProxyID = next
+	return nil
+}
+
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
 	if err := ValidateOpenAIRequestTimezoneExtra(input.Platform, accountExtra); err != nil {
 		return nil, err
@@ -501,7 +543,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Type:                 input.Type,
 		Credentials:          input.Credentials,
 		Extra:                accountExtra,
-		ProxyID:              input.ProxyID,
+		ProxyID:              normalizeCreateProxyID(input.ProxyID),
 		Concurrency:          normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
 		Priority:             input.Priority,
 		Status:               StatusActive,
@@ -557,6 +599,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		return nil, err
 	}
 	if err := s.ApplyOAuthAutoConfig(ctx, input); err != nil {
+		return nil, err
+	}
+	if err := s.resolveCreateProxyID(ctx, input); err != nil {
 		return nil, err
 	}
 	if err := s.applyOpenAITwoFAAdmission(ctx, input); err != nil {

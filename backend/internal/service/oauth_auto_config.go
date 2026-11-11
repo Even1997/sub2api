@@ -126,6 +126,7 @@ func GetOAuthAutoConfig(ctx context.Context, repo SettingRepository) (OAuthAutoC
 			return c, err
 		}
 	}
+	c = normalizeOAuthInitialWS(c)
 	return c, ValidateOAuthAutoConfig(c)
 }
 func (s *SettingService) GetOAuthAutoConfig(ctx context.Context) (OAuthAutoConfig, error) {
@@ -209,6 +210,7 @@ func (s *AccountOpsService) GetOAuthAutoConfig(ctx context.Context) (OAuthAutoCo
 func (s *AccountOpsService) SaveOAuthAutoConfig(ctx context.Context, c OAuthAutoConfig) (OAuthAutoConfig, error) {
 	s.autoConfigMu.Lock()
 	defer s.autoConfigMu.Unlock()
+	c = normalizeOAuthInitialWS(c)
 	c.ModelBilling = normalizeModelBillingConfig(c.ModelBilling)
 	if c.ModelMappings == nil {
 		c.ModelMappings = []OAuthModelMappingRule{}

@@ -222,12 +222,9 @@ export function decidePaymentLaunch(
     return { kind: 'alipay_deep_link', paymentState: baseState, recovery: baseRecovery }
   }
 
-  // Cloudcat Alipay stays on the local QR shell. WeChat uses CatFK's hosted
-  // checkout because its channel does not expose an Alipay QR payload.
+  // Cloudcat always stays on the local QR shell while the backend resolves or
+  // refreshes the configured channel's QR payload.
   if (baseState.resumable) {
-    if (visibleMethod === 'wxpay' && baseState.payUrl && !baseState.qrCode) {
-      return { kind: 'redirect_waiting', paymentState: baseState, recovery: baseRecovery }
-    }
     return { kind: 'qr_waiting', paymentState: baseState, recovery: baseRecovery }
   }
 

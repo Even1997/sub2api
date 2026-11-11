@@ -81,7 +81,9 @@ describe('AutoConfigView', () => {
   const mode = '[data-testid="initial-ws-mode-select"]', acceleration = '[data-testid="initial-ws-sse-acceleration-enabled"]'
   expect(w.get<HTMLSelectElement>(mode).element.value).toBe('ctx_pool')
   expect(w.get<HTMLInputElement>(acceleration).element.checked).toBe(false)
-  expect(w.get(mode).findAll('option').map(option => option.element.value)).toEqual(['off', 'ctx_pool', 'passthrough', 'http_bridge'])
+  expect(w.get(mode).findAll('option').map(option => option.element.value)).toEqual(['off', 'ctx_pool', 'passthrough', 'http_bridge', 'shared', 'dedicated'])
+  expect(w.find('[data-testid="account-ws"]').exists()).toBe(false)
+  expect(w.find('[data-testid="account-ws-sse"]').exists()).toBe(false)
   expect(w.get(mode).element.closest('section')).toBe(w.get('[data-testid="initial-enabled"]').element.closest('section'))
   expect(w.get(acceleration).element.closest('section')).toBe(w.get('[data-testid="initial-enabled"]').element.closest('section'))
   expect(saveAutoConfig).not.toHaveBeenCalled()
@@ -99,7 +101,9 @@ describe('AutoConfigView', () => {
   { mode: 'passthrough', acceleration: false },
   { mode: 'passthrough', acceleration: true },
   { mode: 'http_bridge', acceleration: false },
-  { mode: 'http_bridge', acceleration: true }
+  { mode: 'http_bridge', acceleration: true },
+  { mode: 'shared', acceleration: false },
+  { mode: 'dedicated', acceleration: true }
  ] as const)('saves and reloads initial WS mode $mode with acceleration=$acceleration independently of 429 settings', async ({ mode, acceleration }) => {
   const w = mount(AutoConfigView); await flushPromises()
   await w.get('[data-testid="initial-enabled"]').setValue(true)
@@ -120,7 +124,7 @@ describe('AutoConfigView', () => {
   expect(reloaded.get<HTMLInputElement>('[data-testid="initial-ws-sse-acceleration-enabled"]').element.checked).toBe(acceleration)
   expect(reloaded.get<HTMLInputElement>('[data-testid="totp-rotate-on-429"]').element.checked).toBe(true)
   expect(reloaded.get<HTMLInputElement>('[data-testid="disable-scheduling-on-429"]').element.checked).toBe(true)
-  const hint = { off: null, ctx_pool: 'wsModeCtxPoolHint', passthrough: 'wsModePassthroughHint', http_bridge: 'wsModeHttpBridgeHint' }[mode]
+  const hint = { off: null, ctx_pool: 'wsModeCtxPoolHint', passthrough: 'wsModePassthroughHint', http_bridge: 'wsModeHttpBridgeHint', shared: null, dedicated: null }[mode]
   if (hint) expect(reloaded.get('[data-testid="initial-ws-mode"]').text()).toContain('admin.accounts.openai.' + hint)
   reloaded.unmount()
  })

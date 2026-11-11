@@ -42,6 +42,14 @@ type refundHoldWallet struct {
 func (w *refundHoldWallet) repo(userID int64) *mockUserRepo {
 	return &mockUserRepo{
 		getByIDUser: &User{ID: userID, Balance: w.balance},
+		adjustBalanceFn: func(_ context.Context, _ int64, delta float64) (BalanceChange, error) {
+			w.deductCalls++
+			if w.balance+delta < 0 {
+				return BalanceChange{}, ErrBalanceNegative
+			}
+			w.balance += delta
+			return BalanceChange{}, nil
+		},
 		deductAvailableBalanceFn: func(_ context.Context, _ int64, amount float64) (float64, error) {
 			w.deductCalls++
 			deducted := math.Min(amount, math.Max(w.balance, 0))

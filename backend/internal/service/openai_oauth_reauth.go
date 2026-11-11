@@ -1574,7 +1574,7 @@ func sanitizeReauthError(raw string) string {
 		return code
 	}
 	switch msg {
-	case "password/TOTP protocol failed (exit 1)", "proxy_unavailable", "password_rejected", "totp_rejected", "upstream_rejected", "worker_timeout":
+	case openAIOAuthReauthStoppedByAdmin, "password/TOTP protocol failed (exit 1)", "proxy_unavailable", "password_rejected", "totp_rejected", "upstream_rejected", "worker_timeout":
 		return msg
 	}
 	// Older workers wrap the retired signal in prose. Keep only the stable code

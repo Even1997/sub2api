@@ -263,8 +263,12 @@
               type="text"
               v-model="config[field.key]"
               class="input"
+              :readonly="form.provider_key === 'cloudcat' && field.key === 'channelId'"
               :placeholder="field.defaultValue || ''"
             />
+            <p v-if="form.provider_key === 'cloudcat' && field.key === 'channelId'" class="mt-1 text-xs text-gray-500" role="status" data-test="cloudcat-channel-status">
+              {{ cloudcatChannelsLoading ? t('common.loading') : cloudcatChannelError }}
+            </p>
             <p v-if="field.hintKey" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
               {{ t(field.hintKey) }}
             </p>
@@ -356,7 +360,7 @@
     <template #footer>
       <div class="flex justify-end gap-3">
         <button type="button" @click="emit('close')" class="btn btn-secondary">{{ t('common.cancel') }}</button>
-        <button type="submit" form="provider-form" :disabled="saving" class="btn btn-primary">
+        <button type="submit" form="provider-form" :disabled="saving || (form.provider_key === 'cloudcat' && (cloudcatChannelsLoading || cloudcatChannelsFailed || !config.channelId))" class="btn btn-primary">
           {{ saving ? t('common.saving') : t('common.save') }}
         </button>
       </div>
@@ -365,7 +369,8 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed, ref } from 'vue'
+import { reactive, computed, ref, watch } from 'vue'
+import { adminPaymentAPI } from '@/api/admin/payment'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
@@ -481,6 +486,47 @@ const limitsExpanded = ref(false)
 const visibleFields = reactive<Record<string, boolean>>({})
 const easyPayCustomMethods = reactive<EasyPayCustomMethod[]>([])
 const cloudcatProducts = reactive<CloudcatProductMapping[]>([])
+const cloudcatChannels = ref<{ id: string; payment_type: string; name: string }[]>([])
+const cloudcatChannelsLoading = ref(false)
+const cloudcatChannelsFailed = ref(false)
+const cloudcatChannelError = computed(() => {
+  if (cloudcatChannelsFailed.value) return t('admin.settings.payment.cloudcatChannelsFailed')
+  if (!config.channelId && cloudcatProducts[0]?.itemUrl) return t('admin.settings.payment.cloudcatChannelUnavailable')
+  return ''
+})
+
+watch(
+  () => [props.show, form.provider_key, cloudcatProducts[0]?.itemUrl?.trim()] as const,
+  async ([show, key, itemUrl], _, onCleanup) => {
+    let active = true
+    onCleanup(() => { active = false })
+    cloudcatChannels.value = []
+    cloudcatChannelsFailed.value = false
+    cloudcatChannelsLoading.value = false
+    if (!show || key !== 'cloudcat') return
+    if (!itemUrl || !/^https:\/\/catfk\.com\/item\/[^/?#]+$/.test(itemUrl)) return
+    cloudcatChannelsLoading.value = true
+    try {
+      const result = await adminPaymentAPI.getCloudcatChannels(itemUrl)
+      if (active) {
+        cloudcatChannels.value = result.data
+        syncCloudcatChannel()
+      }
+    } catch {
+      if (active) cloudcatChannelsFailed.value = true
+    } finally {
+      if (active) cloudcatChannelsLoading.value = false
+    }
+  },
+)
+
+function syncCloudcatChannel() {
+  const matches = cloudcatChannels.value.filter(channel => channel.payment_type === form.supported_types[0])
+  config.channelId = matches.find(channel => channel.id === config.channelId)?.id || matches[0]?.id || ''
+}
+watch(() => form.supported_types[0], () => {
+  if (form.provider_key === 'cloudcat' && cloudcatChannels.value.length) syncCloudcatChannel()
+})
 
 // --- Computed ---
 const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
@@ -763,6 +809,10 @@ function handleSave() {
       emitValidationError(t(`admin.settings.payment.validationCloudcatProducts_${validationError}`))
       return
     }
+    if (cloudcatChannelsLoading.value || cloudcatChannelsFailed.value || !config.channelId) {
+      emitValidationError(cloudcatChannelError.value || t('admin.settings.payment.cloudcatChannelUnavailable'))
+      return
+    }
   }
   // Validate required config fields — all non-optional fields must be filled.
   // In edit mode, sensitive fields may be left blank to preserve the stored
@@ -805,8 +855,8 @@ function handleSave() {
   // If base URL is empty, auto-fill with current domain
   const paths = PROVIDER_CALLBACK_PATHS[form.provider_key]
   if (paths) {
-    const notifyBase = notifyBaseUrl.value.trim() || defaultBaseUrl
-    const returnBase = returnBaseUrl.value.trim() || defaultBaseUrl
+    const notifyBase = (notifyBaseUrl.value.trim() || defaultBaseUrl).replace(/\/+$/, '')
+    const returnBase = (returnBaseUrl.value.trim() || defaultBaseUrl).replace(/\/+$/, '')
     notifyBaseUrl.value = notifyBase
     returnBaseUrl.value = returnBase
     if (paths.notifyUrl) filteredConfig['notifyUrl'] = notifyBase + paths.notifyUrl

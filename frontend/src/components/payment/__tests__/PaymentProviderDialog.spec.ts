@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
 import { STRIPE_SDK_API_VERSION } from '@/components/payment/providerConfig'
 import type { ProviderInstance } from '@/types/payment'
+
+const getCloudcatChannels = vi.hoisted(() => vi.fn())
+vi.mock('@/api/admin/payment', () => ({ adminPaymentAPI: { getCloudcatChannels } }))
 
 const messages: Record<string, string> = {
   'admin.settings.payment.providerConfig': 'Credentials',
@@ -328,6 +331,10 @@ describe('PaymentProviderDialog payment guide', () => {
   })
 
   it('loads and serializes Cloudcat product mappings with one selected payment type', async () => {
+    getCloudcatChannels.mockResolvedValue({ data: [
+      { id: '1', payment_type: 'alipay', name: 'Alipay' },
+      { id: '5', payment_type: 'wxpay', name: 'WeChat' },
+    ] })
     const provider = providerFactory({
       provider_key: 'cloudcat',
       name: 'Cloudcat Alipay',
@@ -345,6 +352,8 @@ describe('PaymentProviderDialog payment guide', () => {
     await nextTick()
 
     expect(wrapper.findAll('[data-test="cloudcat-product-row"]')).toHaveLength(1)
+    await flushPromises()
+    expect(getCloudcatChannels).toHaveBeenCalledWith('https://catfk.com/item/ee9c69')
     expect(wrapper.text()).not.toContain('admin.settings.payment.refundEnabled')
     const wechatButton = wrapper.findAll('button').find(button => button.text() === 'WeChat Pay')
     expect(wechatButton).toBeDefined()
@@ -359,11 +368,85 @@ describe('PaymentProviderDialog payment guide', () => {
       allow_user_refund: boolean
     }
     expect(payload.config).toEqual({
-      channelId: '1',
+      channelId: '5',
       products: '[{"amount":"1.00","itemUrl":"https://catfk.com/item/ee9c69"}]',
     })
     expect(payload.supported_types).toEqual(['wxpay'])
     expect(payload.refund_enabled).toBe(false)
     expect(payload.allow_user_refund).toBe(false)
+  })
+
+  it('preserves a valid saved Cloudcat channel instead of choosing the first one', async () => {
+    getCloudcatChannels.mockResolvedValue({ data: [
+      { id: '5', payment_type: 'wxpay', name: 'WeChat A' },
+      { id: '9', payment_type: 'wxpay', name: 'WeChat B' },
+    ] })
+    const provider = providerFactory({ provider_key: 'cloudcat', supported_types: ['wxpay'],
+      config: { channelId: '9', products: '[{"amount":"5","itemUrl":"https://catfk.com/item/ee9c69"}]' } })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await flushPromises()
+    await wrapper.findAll('input')[0].setValue('Renamed provider')
+    await wrapper.find('form').trigger('submit.prevent')
+    expect((wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }).config.channelId).toBe('9')
+    wrapper.unmount()
+  })
+
+  it('ignores stale Cloudcat channels when the product changes during lookup', async () => {
+    let resolveOld!: (result: unknown) => void
+    getCloudcatChannels.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+      .mockResolvedValueOnce({ data: [{ id: '3', payment_type: 'wxpay', name: 'Current merchant' }] })
+    const provider = providerFactory({ provider_key: 'cloudcat', supported_types: ['wxpay'],
+      config: { channelId: '9', products: '[{"amount":"5","itemUrl":"https://catfk.com/item/ee9c69"}]' } })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    expect(getCloudcatChannels).toHaveBeenCalledWith('https://catfk.com/item/ee9c69')
+    await wrapper.get('[data-test="cloudcat-product-row"] input[type="url"]').setValue('https://catfk.com/item/newmerchant')
+    await flushPromises()
+    resolveOld({ data: [{ id: '9', payment_type: 'wxpay', name: 'Old merchant' }] })
+    await flushPromises()
+    await wrapper.find('form').trigger('submit.prevent')
+    const config = (wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }).config
+    expect(config.channelId).toBe('3')
+    expect(config.products).toContain('https://catfk.com/item/newmerchant')
+    wrapper.unmount()
+  })
+
+  it('blocks Cloudcat submission while loading channels or after lookup failure', async () => {
+    let reject!: (error: Error) => void
+    getCloudcatChannels.mockImplementation(() => new Promise((_, rejectPromise) => { reject = rejectPromise }))
+    const provider = providerFactory({ provider_key: 'cloudcat', supported_types: ['wxpay'],
+      config: { channelId: '9', products: '[{"amount":"5","itemUrl":"https://catfk.com/item/ee9c69"}]' } })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    await wrapper.find('form').trigger('submit.prevent')
+    expect(wrapper.emitted('save')).toBeUndefined()
+    reject(new Error('upstream unavailable'))
+    await flushPromises()
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    await wrapper.find('form').trigger('submit.prevent')
+    expect(wrapper.emitted('save')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('blocks Cloudcat saving when the merchant has not enabled the selected payment type', async () => {
+    getCloudcatChannels.mockResolvedValue({ data: [{ id: '5', payment_type: 'wxpay', name: 'WeChat' }] })
+    const provider = providerFactory({
+      provider_key: 'cloudcat', supported_types: ['alipay'],
+      config: { channelId: '1', products: '[{"amount":"5","itemUrl":"https://catfk.com/item/ee9c69"}]' },
+    })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await flushPromises()
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-test="cloudcat-channel-status"]').text()).toContain('cloudcatChannelUnavailable')
+    const wechatButton = wrapper.findAll('button').find(button => button.text() === 'WeChat Pay')
+    await wechatButton!.trigger('click')
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+    await wrapper.find('form').trigger('submit.prevent')
+    expect((wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }).config.channelId).toBe('5')
+    wrapper.unmount()
   })
 })

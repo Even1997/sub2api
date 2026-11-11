@@ -41,8 +41,61 @@ func TestOAuthAutoConfigWSDefaultsLegacyAndRoundTrip(t *testing.T) {
 	}
 }
 
+func TestOAuthAutoConfigWSMigratesLegacyAccountSettings(t *testing.T) {
+	for _, tc := range []struct {
+		mode       string
+		accelerate bool
+	}{
+		{OpenAIWSIngressModePassthrough, true},
+		{OpenAIWSIngressModeOff, false},
+		{OpenAIWSIngressModeShared, false},
+		{OpenAIWSIngressModeDedicated, true},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			cfg := DefaultOAuthAutoConfig()
+			cfg.AccountSettings.OpenAIWSMode = &tc.mode
+			cfg.AccountSettings.OpenAIWSSSEAcceleration = &tc.accelerate
+			raw, err := json.Marshal(cfg)
+			require.NoError(t, err)
+			repo := &accountOpsSettingsStub{raw: string(raw)}
+			loaded, err := GetOAuthAutoConfig(t.Context(), repo)
+			require.NoError(t, err)
+			require.Equal(t, tc.mode, *loaded.OpenAIWSMode)
+			require.Equal(t, tc.accelerate, *loaded.OpenAIWSSSEAcceleration)
+			require.Nil(t, loaded.AccountSettings.OpenAIWSMode)
+			require.Nil(t, loaded.AccountSettings.OpenAIWSSSEAcceleration)
+			svc := NewAccountOpsService(repo, nil, nil)
+			svc.autoGroups = autoConfigGroups{}
+			// Old clients still sending nested fields use the same canonical source.
+			saved, err := svc.SaveOAuthAutoConfig(t.Context(), cfg)
+			require.NoError(t, err)
+			require.Nil(t, saved.AccountSettings.OpenAIWSMode)
+			require.Nil(t, saved.AccountSettings.OpenAIWSSSEAcceleration)
+			loaded, err = GetOAuthAutoConfig(t.Context(), repo)
+			require.NoError(t, err)
+			require.Equal(t, tc.mode, *loaded.OpenAIWSMode)
+			require.Equal(t, tc.accelerate, *loaded.OpenAIWSSSEAcceleration)
+		})
+	}
+}
+
+func TestOAuthAutoConfigWSRejectsInvalidLegacyMode(t *testing.T) {
+	cfg := DefaultOAuthAutoConfig()
+	mode := "sideways"
+	cfg.AccountSettings.OpenAIWSMode = &mode
+	raw, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	repo := &accountOpsSettingsStub{raw: string(raw)}
+	_, err = GetOAuthAutoConfig(t.Context(), repo)
+	require.Error(t, err)
+	svc := NewAccountOpsService(repo, nil, nil)
+	svc.autoGroups = autoConfigGroups{}
+	_, err = svc.SaveOAuthAutoConfig(t.Context(), cfg)
+	require.Error(t, err)
+}
+
 func TestOAuthAutoConfigWSValidation(t *testing.T) {
-	for _, mode := range []string{"", "enabled", "CTX_POOL", " ctx_pool ", OpenAIWSIngressModeShared, OpenAIWSIngressModeDedicated} {
+	for _, mode := range []string{"", "enabled", "CTX_POOL", " ctx_pool "} {
 		t.Run(mode, func(t *testing.T) {
 			cfg := DefaultOAuthAutoConfig()
 			cfg.OpenAIWSMode = &mode

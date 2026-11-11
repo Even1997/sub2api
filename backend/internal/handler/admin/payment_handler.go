@@ -5,6 +5,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -52,6 +53,16 @@ func (h *PaymentHandler) GetDashboard(c *gin.Context) {
 		return
 	}
 	response.Success(c, stats)
+}
+
+// GetCloudcatChannels lists the product merchant's enabled buyer payment channels.
+func (h *PaymentHandler) GetCloudcatChannels(c *gin.Context) {
+	channels, err := provider.DiscoverCloudcatChannels(c.Request.Context(), c.Query("item_url"))
+	if err != nil {
+		response.BadRequest(c, "无法获取云猫商品的支付渠道，请检查商品链接后重试")
+		return
+	}
+	response.Success(c, channels)
 }
 
 // GetCloudcatOverview returns the current server-side cloudcat merchant snapshot.

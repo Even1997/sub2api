@@ -316,9 +316,19 @@ func (s *PaymentService) ExecuteRefund(ctx context.Context, p *RefundPlan) (*Ref
 		// Skip balance deduction on retry if previous attempt already deducted
 		// but failed to roll back (REFUND_ROLLBACK_FAILED in audit log).
 		if !s.hasAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED") {
-			deducted, err := s.deductAvailableBalance(ctx, p.Order.UserID, p.BalanceToDeduct)
+			deducted := p.BalanceToDeduct
+			var err error
+			if p.Force {
+				deducted, err = s.deductAvailableBalance(ctx, p.Order.UserID, deducted)
+			} else {
+				// Preparation is only a snapshot; reserve the full amount atomically.
+				_, err = s.userRepo.AdjustBalance(ctx, p.Order.UserID, -deducted)
+			}
 			if err != nil {
 				s.restoreStatus(ctx, p)
+				if errors.Is(err, ErrBalanceNegative) {
+					return &RefundResult{Warning: "user balance is insufficient for deduction, use force", RequireForce: true}, nil
+				}
 				return nil, fmt.Errorf("deduction: %w", err)
 			}
 			p.BalanceToDeduct = deducted

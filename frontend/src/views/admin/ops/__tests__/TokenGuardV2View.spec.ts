@@ -593,7 +593,7 @@ describe('manual operation conflicts', () => {
       await view.findAll('button').find(button => button.text() === 'tokenGuardV2.reloginNow')!.trigger('click')
       await flushPromises()
 
-      expect(api.reloginGuard).toHaveBeenCalledWith(42)
+      expect(api.reloginGuard).toHaveBeenCalledWith(42, false)
       expect(view.text()).toContain(`tokenGuardV2.operationFailure.manual.taskBusy (${reason})`)
       expect(view.text()).not.toContain('tokenGuardV2.reloginQueued')
       expect(view.text()).not.toContain('synthetic-private')
@@ -768,6 +768,17 @@ describe('inspection recovery progress', () => {
     expect(api.listGuard).toHaveBeenCalledTimes(callsBeforeAction + 1)
     expect(view.get('[data-testid="automation-state-42"]').text()).toBe('tokenGuardV2.automationStates.healthy')
     expect(view.get('tbody').text()).toContain('tokenGuardV2.probeStates.ok')
+  })
+
+  it.each([false, true])('preserves relogin force=%s and the refreshed token notice', async (force) => {
+    const view = await mountControls()
+    api.reloginGuard.mockResolvedValueOnce({ refreshed: true })
+    const callsBeforeAction = api.listGuard.mock.calls.length
+    await view.findAll('button').find(button => button.text() === (force ? 'tokenGuardV2.forceRelogin' : 'tokenGuardV2.reloginNow'))!.trigger('click')
+    await flushPromises()
+    expect(api.reloginGuard).toHaveBeenCalledWith(42, force)
+    expect(api.listGuard).toHaveBeenCalledTimes(callsBeforeAction + 1)
+    expect(view.text()).toContain('tokenGuardV2.tokenRefreshed')
   })
 
   it('keeps duplicate actions blocked until the post-action read finishes', async () => {

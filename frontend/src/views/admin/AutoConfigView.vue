@@ -141,7 +141,7 @@ import { oauthDegradationPayload, oauthDegradationError, type OAuthDegradationCo
 import BPSDefaultsCard from '@/components/admin/operations/BPSDefaultsCard.vue'
 import OpenAITwoFAAdmissionCard from '@/components/admin/operations/OpenAITwoFAAdmissionCard.vue'
 import { defaultOpenAITwoFAAdmissionConfig, openaiTwoFAAdmissionError, type OpenAITwoFAAdmissionConfig } from '@/utils/openaiTwoFAAdmission'
-import { OPENAI_WS_MODE_OFF, OPENAI_WS_MODE_CTX_POOL, OPENAI_WS_MODE_PASSTHROUGH, OPENAI_WS_MODE_HTTP_BRIDGE, resolveOpenAIWSModeHintKey, type OpenAIWSMode } from '@/utils/openaiWsMode'
+import { OPENAI_WS_MODE_OFF, OPENAI_WS_MODE_CTX_POOL, OPENAI_WS_MODE_PASSTHROUGH, OPENAI_WS_MODE_HTTP_BRIDGE, resolveOpenAIWSModeHintKey } from '@/utils/openaiWsMode'
 import { defaultOAuthModelMappings, oauthModelMappingsError, oauthModelMappingsPayload, type OAuthModelMappingRule } from '@/utils/oauthModelMappings'
 import { defaultExcelBPSDefaults, excelBPSDefaultsError, excelBPSDefaultsPayload, type ExcelBPSDefaults } from '@/utils/excelBPSDefaults'
 import OAuthInitialModelSelection from '@/components/admin/operations/OAuthInitialModelSelection.vue'
@@ -156,7 +156,7 @@ import type { ScheduledTestPlan } from '@/types'
 import type { Group } from '@/types'
 import { defaultModelBillingConfig, modelBillingConfigError, modelBillingPayload, type ModelBillingConfig, type ModelBillingRule } from '@/utils/modelBilling'
 const { t } = useI18n(), auth = useAuthStore()
-const draft = ref<(AutoConfig & { degradation_action: OAuthDegradationConfig; openai_ws_mode: OpenAIWSMode; openai_ws_sse_acceleration: boolean; openai_two_fa_admission: OpenAITwoFAAdmissionConfig; excel_bps: ExcelBPSDefaults; model_mappings: OAuthModelMappingRule[]; model_billing: ModelBillingConfig }) | null>(null), groups = ref<Group[]>([])
+const draft = ref<(AutoConfig & { degradation_action: OAuthDegradationConfig; openai_ws_mode: NonNullable<AutoConfig['openai_ws_mode']>; openai_ws_sse_acceleration: boolean; openai_two_fa_admission: OpenAITwoFAAdmissionConfig; excel_bps: ExcelBPSDefaults; model_mappings: OAuthModelMappingRule[]; model_billing: ModelBillingConfig }) | null>(null), groups = ref<Group[]>([])
 const modelBillingGroups = ref<Group[]>([]), modelBillingGroupsLoading = ref(true), modelBillingGroupsFailed = ref(false)
 const loading = ref(false), saving = ref(false), error = ref(''), notice = ref('')
 const qualityPlans = ref<ScheduledTestPlan[]>([]), selectedQualityRule = ref(''), qualityLoadFailed = ref(false)
@@ -188,9 +188,14 @@ const openAIWSModeOptions = computed(() => [
  { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
  { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
  { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') },
- { value: OPENAI_WS_MODE_HTTP_BRIDGE, label: t('admin.accounts.openai.wsModeHttpBridge') }
+ { value: OPENAI_WS_MODE_HTTP_BRIDGE, label: t('admin.accounts.openai.wsModeHttpBridge') },
+ { value: 'shared', label: t('admin.accounts.openai.wsModeShared') },
+ { value: 'dedicated', label: t('admin.accounts.openai.wsModeDedicated') }
 ])
-const openAIWSModeHintKey = computed(() => resolveOpenAIWSModeHintKey(draft.value?.openai_ws_mode ?? OPENAI_WS_MODE_CTX_POOL))
+const openAIWSModeHintKey = computed(() => {
+ const mode = draft.value?.openai_ws_mode ?? OPENAI_WS_MODE_CTX_POOL
+ return mode === 'shared' || mode === 'dedicated' ? null : resolveOpenAIWSModeHintKey(mode)
+})
 async function loadModelBillingGroups() {
  const v = generation
  modelBillingGroupsLoading.value = true; modelBillingGroupsFailed.value = false

@@ -152,9 +152,6 @@ func (s *PaymentService) ResumeCloudcatOrder(ctx context.Context, orderID, userI
 		return nil, infraerrors.Conflict("PAYMENT_URL_INVALID", "payment URL is invalid")
 	}
 	o.QrCode = nil
-	if NormalizeVisibleMethod(o.PaymentType) == payment.TypeWxpay {
-		return o, nil
-	}
 	prov, err := s.getOrderProvider(ctx, o)
 	if err != nil {
 		return o, nil
@@ -617,7 +614,7 @@ func (s *PaymentService) ReconcilePendingPaymentOrders(ctx context.Context) (int
 				paymentorder.ProviderKeyHasPrefix(payment.TypeAlipay+"_"),
 			),
 		).
-		Order(dbent.Asc(paymentorder.FieldCreatedAt)).
+		Order(dbent.Asc(paymentorder.FieldUpdatedAt), dbent.Asc(paymentorder.FieldID)).
 		Limit(pendingPaymentReconcileLimit).
 		All(ctx)
 	if err != nil {
@@ -628,6 +625,12 @@ func (s *PaymentService) ReconcilePendingPaymentOrders(ctx context.Context) (int
 	for _, order := range orders {
 		if ctx.Err() != nil {
 			break
+		}
+		// Rotate attempts even when an upstream is pending or unavailable.
+		if _, err := s.entClient.PaymentOrder.Update().Where(
+			paymentorder.IDEQ(order.ID), paymentorder.StatusEQ(OrderStatusPending),
+		).SetUpdatedAt(time.Now()).Save(ctx); err != nil {
+			return recovered, fmt.Errorf("rotate pending payment order: %w", err)
 		}
 		if s.reconcilePaid(ctx, order) == checkPaidResultAlreadyPaid {
 			recovered++

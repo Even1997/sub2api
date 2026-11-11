@@ -136,7 +136,7 @@ func ContentModerationDefaultThresholds(engine ...string) map[string]float64 {
 		"violence":               0.95,
 		"violence/graphic":       0.95,
 	}
-	if len(engine) > 0 && engine[0] == ContentModerationEngineTypeSafe {
+	if len(engine) > 0 && moderationEngineHasOptionalCategories(engine[0]) {
 		// Uncalibrated starting values; both categories require explicit opt-in.
 		out["jailbreak"], out["control_bypass"] = 0.95, 0.95
 	}
@@ -146,20 +146,21 @@ func ContentModerationDefaultThresholds(engine ...string) map[string]float64 {
 func ContentModerationCategories(engine ...string) []string {
 	out := make([]string, len(contentModerationCategoryOrder))
 	copy(out, contentModerationCategoryOrder)
-	if len(engine) > 0 && engine[0] == ContentModerationEngineTypeSafe {
+	if len(engine) > 0 && moderationEngineHasOptionalCategories(engine[0]) {
 		out = append(out, "jailbreak", "control_bypass")
 	}
 	return out
 }
 
 type ContentModerationConfig struct {
-	Engine   string                         `json:"engine,omitempty"`
-	TypeSafe *ContentModerationEngineConfig `json:"typesafe,omitempty"`
-	Enabled  bool                           `json:"enabled"`
-	Mode     string                         `json:"mode"`
-	BaseURL  string                         `json:"base_url"`
-	BaseURLs []string                       `json:"base_urls,omitempty"`
-	Model    string                         `json:"model"`
+	Engine    string                         `json:"engine,omitempty"`
+	TypeSafe  *ContentModerationEngineConfig `json:"typesafe,omitempty"`
+	Decisions *ContentModerationEngineConfig `json:"decisions,omitempty"`
+	Enabled   bool                           `json:"enabled"`
+	Mode      string                         `json:"mode"`
+	BaseURL   string                         `json:"base_url"`
+	BaseURLs  []string                       `json:"base_urls,omitempty"`
+	Model     string                         `json:"model"`
 	// ProxyID 指定审计请求使用的代理服务器（IP管理-代理服务器），nil 表示直连。
 	ProxyID *int64 `json:"proxy_id,omitempty"`
 	APIKey  string `json:"api_key,omitempty"`
@@ -1154,17 +1155,28 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 	result, err := s.callModeration(ctx, cfg, content.ModerationInput(), trackPreBlock)
 	latency := int(time.Since(start).Milliseconds())
 	if err != nil {
-		if errors.Is(err, errTypeSafeImageOnlyUnaudited) && allowBlock && cfg.Mode == ContentModerationModePreBlock {
+		if isTextOnlyImageUnaudited(err) && allowBlock && cfg.Mode == ContentModerationModePreBlock {
 			if trackPreBlock {
 				s.recordPreBlockSyncMetric(latency, ContentModerationActionBlock)
 			}
-			slog.Info("content_moderation.typesafe_image_only_blocked",
-				"user_id", input.UserID,
-				"api_key_id", input.APIKeyID,
-				"group_id", contentModerationLogGroupID(input.GroupID),
-				"endpoint", input.Endpoint,
-				"protocol", input.Protocol,
-				"mode", cfg.Mode)
+			if cfg.Engine == ContentModerationEngineTypeSafe {
+				slog.Info("content_moderation.typesafe_image_only_blocked",
+					"user_id", input.UserID,
+					"api_key_id", input.APIKeyID,
+					"group_id", contentModerationLogGroupID(input.GroupID),
+					"endpoint", input.Endpoint,
+					"protocol", input.Protocol,
+					"mode", cfg.Mode)
+			} else {
+				slog.Info("content_moderation.text_only_image_blocked",
+					"user_id", input.UserID,
+					"api_key_id", input.APIKeyID,
+					"group_id", contentModerationLogGroupID(input.GroupID),
+					"endpoint", input.Endpoint,
+					"protocol", input.Protocol,
+					"mode", cfg.Mode,
+					"audit_engine", cfg.Engine)
+			}
 			log := s.buildLog(input, cfg, ContentModerationActionBlock, true, "", 0, nil, content.ExcerptText(), &latency, queueDelay, err.Error())
 			log.EngineMeta = moderationAttemptMeta(cfg, content)
 			if queueDelay == nil && s.asyncQueue != nil {
@@ -1842,6 +1854,14 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
 			return err
 		}
 	}
+	if cfg.Decisions != nil {
+		if err := validateModerationBaseURLs(cfg.Decisions.baseURLs()); err != nil {
+			return err
+		}
+		if err := validateModerationEndpointPairs(cfg.Decisions.baseURLs(), cfg.Decisions.APIKeys); err != nil {
+			return err
+		}
+	}
 	if cfg.ProxyID != nil && s.proxyRepo != nil {
 		if _, err := s.proxyRepo.GetByID(ctx, *cfg.ProxyID); err != nil {
 			return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_PROXY", fmt.Sprintf("代理服务器不存在: %d", *cfg.ProxyID))
@@ -2005,8 +2025,11 @@ func (s *ContentModerationService) callKeyAcrossBaseURLs(ctx context.Context, cf
 }
 
 func (s *ContentModerationService) callModerationOnceWithInput(ctx context.Context, cfg *ContentModerationConfig, apiKey string, input any, httpStatus *int) (*moderationAPIResult, error) {
-	if cfg.Engine == ContentModerationEngineTypeSafe {
+	switch cfg.Engine {
+	case ContentModerationEngineTypeSafe:
 		return s.callTypeSafeModeration(ctx, cfg, apiKey, input, httpStatus)
+	case ContentModerationEngineDecisions:
+		return s.callDecisionsModeration(ctx, cfg, apiKey, input, httpStatus)
 	}
 	base := strings.TrimRight(cfg.BaseURL, "/")
 	endpoint, err := url.JoinPath(base, "/v1/moderations")
@@ -2423,6 +2446,9 @@ func cloneContentModerationConfig(cfg *ContentModerationConfig) *ContentModerati
 	if cfg.TypeSafe != nil {
 		clone.TypeSafe = cfg.engineProfile(ContentModerationEngineTypeSafe)
 	}
+	if cfg.Decisions != nil {
+		clone.Decisions = cfg.engineProfile(ContentModerationEngineDecisions)
+	}
 	clone.ProxyID = cloneInt64Ptr(cfg.ProxyID)
 	clone.APIKeys = append([]string(nil), cfg.APIKeys...)
 	clone.PausedKeyHashes = append([]string(nil), cfg.PausedKeyHashes...)
@@ -2460,6 +2486,9 @@ func (cfg *ContentModerationConfig) normalize(engine ...string) {
 	cfg.BaseURL = cfg.BaseURLs[0]
 	if cfg.TypeSafe != nil {
 		cfg.TypeSafe.normalize(ContentModerationEngineTypeSafe)
+	}
+	if cfg.Decisions != nil {
+		cfg.Decisions.normalize(ContentModerationEngineDecisions)
 	}
 	if cfg.Model == "" {
 		cfg.Model = defaultContentModerationModel
@@ -2534,6 +2563,9 @@ func (cfg *ContentModerationConfig) normalize(engine ...string) {
 	cfg.CategorySettings = mergeModerationCategorySettings(profileEngine, nil, cfg.CategorySettings)
 	if cfg.TypeSafe != nil {
 		cfg.TypeSafe = cfg.engineProfile(ContentModerationEngineTypeSafe)
+	}
+	if cfg.Decisions != nil {
+		cfg.Decisions = cfg.engineProfile(ContentModerationEngineDecisions)
 	}
 	cfg.BlockedKeywords = normalizeBlockedKeywords(cfg.BlockedKeywords)
 	cfg.KeywordBlockingMode = normalizeKeywordBlockingMode(cfg.KeywordBlockingMode)

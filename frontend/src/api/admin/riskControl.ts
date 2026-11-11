@@ -1,7 +1,7 @@
 import { apiClient } from '../client'
 
 export type ModerationMode = 'off' | 'observe' | 'pre_block'
-export type ModerationEngine = 'openai' | 'typesafe'
+export type ModerationEngine = 'openai' | 'decisions' | 'typesafe'
 export type ModerationCategorySettings = Record<string, { enabled: boolean }>
 export interface ModerationEngineMeta {
   engine: ModerationEngine
@@ -21,7 +21,7 @@ export interface ContentModerationModelFilter {
 
 export interface ContentModerationConfig {
   engine?: ModerationEngine
-  engine_configs?: Record<ModerationEngine, ContentModerationConfig>
+  engine_configs?: Partial<Record<ModerationEngine, ContentModerationConfig>>
   enabled: boolean
   mode: ModerationMode
   base_url: string

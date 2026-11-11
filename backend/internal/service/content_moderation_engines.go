@@ -8,13 +8,24 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openaidecisions"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 )
 
 const (
-	ContentModerationEngineOpenAI   = "openai"
-	ContentModerationEngineTypeSafe = "typesafe"
+	ContentModerationEngineOpenAI    = "openai"
+	ContentModerationEngineTypeSafe  = "typesafe"
+	ContentModerationEngineDecisions = "decisions"
 )
+
+func moderationEngineHasOptionalCategories(engine string) bool {
+	switch engine {
+	case ContentModerationEngineTypeSafe, ContentModerationEngineDecisions:
+		return true
+	default:
+		return false
+	}
+}
 
 // CategorySettings applies only to the two optional TypeSafe categories.
 // The original thirteen categories retain their existing always-enabled behavior.
@@ -24,7 +35,7 @@ type ContentModerationCategorySetting struct {
 
 func mergeModerationCategorySettings(engine string, base, override map[string]ContentModerationCategorySetting) map[string]ContentModerationCategorySetting {
 	out := map[string]ContentModerationCategorySetting{}
-	if engine == ContentModerationEngineTypeSafe {
+	if moderationEngineHasOptionalCategories(engine) {
 		for _, category := range []string{"jailbreak", "control_bypass"} {
 			out[category] = base[category]
 			if setting, ok := override[category]; ok {
@@ -37,7 +48,7 @@ func mergeModerationCategorySettings(engine string, base, override map[string]Co
 
 func moderationCategoryEnabled(engine string, settings map[string]ContentModerationCategorySetting, category string) bool {
 	if category == "jailbreak" || category == "control_bypass" {
-		return engine == ContentModerationEngineTypeSafe && settings[category].Enabled
+		return moderationEngineHasOptionalCategories(engine) && settings[category].Enabled
 	}
 	return true
 }
@@ -169,24 +180,38 @@ func moderationEngine(engine string) string {
 }
 
 func validModerationEngine(engine string) bool {
-	return engine == ContentModerationEngineOpenAI || engine == ContentModerationEngineTypeSafe
+	return engine == ContentModerationEngineOpenAI || engine == ContentModerationEngineTypeSafe || engine == ContentModerationEngineDecisions
 }
 
 func moderationEngineDefaults(engine string) *ContentModerationEngineConfig {
 	p := &ContentModerationEngineConfig{BaseURL: defaultContentModerationBaseURL, Model: defaultContentModerationModel, TimeoutMS: 3000, RetryCount: 2, Thresholds: ContentModerationDefaultThresholds(engine), CategorySettings: mergeModerationCategorySettings(engine, nil, nil)}
-	if engine == ContentModerationEngineTypeSafe {
+	switch engine {
+	case ContentModerationEngineTypeSafe:
 		p.BaseURL, p.Model = typesafe.DefaultBaseURL, typesafe.JevLatestModel
+	case ContentModerationEngineDecisions:
+		p.BaseURL, p.Model = openaidecisions.DefaultBaseURL, openaidecisions.DefaultModel
 	}
 	return p
 }
 
+func (cfg *ContentModerationConfig) nestedEngineConfig(engine string) (profile **ContentModerationEngineConfig, ok bool) {
+	switch engine {
+	case ContentModerationEngineTypeSafe:
+		return &cfg.TypeSafe, true
+	case ContentModerationEngineDecisions:
+		return &cfg.Decisions, true
+	default:
+		return nil, false
+	}
+}
+
 func (cfg *ContentModerationConfig) engineProfile(engine string) *ContentModerationEngineConfig {
 	var p ContentModerationEngineConfig
-	if engine == ContentModerationEngineTypeSafe {
-		if cfg.TypeSafe == nil {
+	if slot, nested := cfg.nestedEngineConfig(engine); nested {
+		if *slot == nil {
 			return moderationEngineDefaults(engine)
 		}
-		p = *cfg.TypeSafe
+		p = **slot
 		defaults := moderationEngineDefaults(engine)
 		if strings.TrimSpace(p.BaseURL) == "" {
 			p.BaseURL = defaults.BaseURL
@@ -381,16 +406,8 @@ func (s *ContentModerationService) updateEngineProfile(ctx context.Context, cfg 
 			delete(p.APIKeyBaseURLs, hash)
 		}
 	}
-	if engine == ContentModerationEngineTypeSafe {
-		urls := p.BaseURLs
-		if len(urls) == 0 {
-			urls = []string{p.BaseURL}
-		}
-		for _, raw := range urls {
-			if _, err := typesafe.SystemOneURL(raw); err != nil {
-				return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_BASE_URL", "审计 Base URL 无效")
-			}
-		}
+	if err := validateNestedModerationEndpoint(engine, p); err != nil {
+		return err
 	}
 	check := cloneContentModerationConfig(cfg)
 	check.Engine = engine
@@ -399,10 +416,32 @@ func (s *ContentModerationService) updateEngineProfile(ctx context.Context, cfg 
 		return err
 	}
 	p = &ContentModerationEngineConfig{BaseURL: check.BaseURL, BaseURLs: append([]string(nil), check.BaseURLs...), Model: check.Model, ProxyID: check.ProxyID, APIKeys: check.APIKeys, APIKeyBaseURLs: check.APIKeyBaseURLs, PausedKeyHashes: append([]string(nil), p.PausedKeyHashes...), TimeoutMS: check.TimeoutMS, RetryCount: check.RetryCount, Thresholds: check.Thresholds, CategorySettings: check.CategorySettings}
-	if engine == ContentModerationEngineTypeSafe {
-		cfg.TypeSafe = p
+	if slot, nested := cfg.nestedEngineConfig(engine); nested {
+		*slot = p
 	} else {
 		cfg.applyEngineProfile(p)
+	}
+	return nil
+}
+
+func validateNestedModerationEndpoint(engine string, p *ContentModerationEngineConfig) error {
+	var join func(string) (string, error)
+	switch engine {
+	case ContentModerationEngineTypeSafe:
+		join = typesafe.SystemOneURL
+	case ContentModerationEngineDecisions:
+		join = openaidecisions.DecisionsURL
+	default:
+		return nil
+	}
+	urls := p.BaseURLs
+	if len(urls) == 0 {
+		urls = []string{p.BaseURL}
+	}
+	for _, raw := range urls {
+		if _, err := join(raw); err != nil {
+			return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_BASE_URL", "审计 Base URL 无效")
+		}
 	}
 	return nil
 }
@@ -410,15 +449,20 @@ func (s *ContentModerationService) updateEngineProfile(ctx context.Context, cfg 
 func (s *ContentModerationService) engineConfigView(cfg *ContentModerationConfig) *ContentModerationConfigView {
 	view := s.configView(cfg.effectiveEngine(cfg.Engine))
 	view.EngineConfigs = map[string]*ContentModerationConfigView{}
-	for _, engine := range []string{ContentModerationEngineOpenAI, ContentModerationEngineTypeSafe} {
+	for _, engine := range []string{ContentModerationEngineOpenAI, ContentModerationEngineTypeSafe, ContentModerationEngineDecisions} {
 		view.EngineConfigs[engine] = s.configView(cfg.effectiveEngine(engine))
 	}
 	return view
 }
 
 func scopedModerationKeyHash(key string, engine ...string) string {
-	if len(engine) > 0 && engine[0] == ContentModerationEngineTypeSafe {
-		return moderationAPIKeyHash("typesafe\x00" + key)
+	if len(engine) > 0 {
+		switch engine[0] {
+		case ContentModerationEngineTypeSafe:
+			return moderationAPIKeyHash("typesafe\x00" + key)
+		case ContentModerationEngineDecisions:
+			return moderationAPIKeyHash("decisions\x00" + key)
+		}
 	}
 	return moderationAPIKeyHash(key)
 }

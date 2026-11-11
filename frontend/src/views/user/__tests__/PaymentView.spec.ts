@@ -746,7 +746,7 @@ describe('PaymentView payment recovery', () => {
     wrapper.unmount()
   })
 
-  it('preopens and reuses a payment window for desktop Cloudcat WeChat Pay', async () => {
+  it('does not open a payment window when desktop Cloudcat WeChat renders a local QR code', async () => {
     isMobileDevice.mockReturnValue(false)
     const cloudcatMethod: MethodLimit = {
       daily_limit: 0,
@@ -772,16 +772,12 @@ describe('PaymentView payment recovery', () => {
       expires_at: '2099-01-01T00:10:00.000Z',
       payment_type: 'wxpay',
       out_trade_no: 'sub2_cloudcat_wxpay_903',
+      qr_code: 'weixin://wxpay/bizpayurl?pr=cloudcat-wx-903',
       pay_url: 'https://catfk.com/shopApi/Pay/payment?trade_no=CAT-WX-903',
       payment_mode: 'popup',
       resumable: true,
     })
-    const popup = {
-      closed: false,
-      close: vi.fn(),
-      location: { href: '' },
-    }
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
 
     const wrapper = shallowMount(PaymentView, {
       global: {
@@ -802,11 +798,8 @@ describe('PaymentView payment recovery', () => {
     await submit!.trigger('click')
     await flushPromises()
 
-    expect(openSpy).toHaveBeenCalledWith('', 'paymentPopup', expect.any(String))
-    expect(openSpy.mock.invocationCallOrder[0]).toBeLessThan(createOrder.mock.invocationCallOrder[0])
-    expect((popup as { opener?: unknown }).opener).toBeNull()
-    expect(popup.location.href).toBe('https://catfk.com/shopApi/Pay/payment?trade_no=CAT-WX-903')
-    expect(popup.close).not.toHaveBeenCalled()
+    expect(openSpy).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toContain('weixin://wxpay/bizpayurl?pr=cloudcat-wx-903')
     wrapper.unmount()
   })
 
@@ -1256,6 +1249,7 @@ describe('PaymentView subscription feature flag', () => {
 
   it('keeps the notice visible with no online payment methods without enabling checkout', async () => {
     routeState.query = {}
+    fetchActiveSubscriptions.mockResolvedValue(undefined)
     getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture({ methods: {} }))
     const wrapper = shallowMount(PaymentView, {
       global: { stubs: { AppLayout: { template: '<div><slot /></div>' } } },

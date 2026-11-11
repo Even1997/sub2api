@@ -196,7 +196,7 @@ describe('AccountsView automatic declaration refresh', () => {
     // Defensive response-contract case: normal probe writers advance updated_at.
     rows = rows.map(row => ({ ...row, extra: { upstream_billing_probe: snapshot(0.5) } }))
     const view = await mountView()
-    expect(view.text()).toContain('上游渠道声明')
+    expect(view.text()).toContain(i18n.global.t('admin.accounts.columns.upstreamBillingRate'))
     expect(view.findAll('[data-testid="upstream-billing-rate"]').map(cell => cell.text())).toEqual(['0.50x', '0.50x'])
 
     rows = rows.map(row => ({ ...row, extra: { upstream_billing_probe: { ...snapshot(0.8), status: 'failed' } } }))

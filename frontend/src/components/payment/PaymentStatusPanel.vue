@@ -377,8 +377,9 @@ const CLOUDCAT_QR_RETRY_INTERVAL_MS = 5000
 
 const isAlipay = computed(() => isBuiltInAlipayMethod(props.paymentType))
 const isWxpay = computed(() => isBuiltInWxpayMethod(props.paymentType))
+const isCloudcatQRCode = computed(() => props.resumable === true && (isAlipay.value || isWxpay.value))
 const isMobileAlipayDeepLink = computed(() => props.mobileAlipayDeepLink === true && isAlipay.value && !!qrUrl.value)
-const isQRCodeLoading = computed(() => props.resumable === true && isAlipay.value && !qrUrl.value)
+const isQRCodeLoading = computed(() => isCloudcatQRCode.value && !qrUrl.value)
 const showQRCode = computed(() => !!qrUrl.value && (!isMobileAlipayDeepLink.value || deepLinkFallbackVisible.value))
 
 const qrBorderClass = computed(() => {
@@ -475,7 +476,7 @@ async function resumePayment() {
 }
 
 async function refreshCloudcatQRCode() {
-  if (!props.resumable || !isAlipay.value || !props.orderId || outcome.value || qrRefreshInFlight) return
+  if (!isCloudcatQRCode.value || !props.orderId || outcome.value || qrRefreshInFlight) return
   qrRefreshInFlight = true
   try {
     const result = await paymentAPI.resumeOrder(props.orderId)
@@ -491,7 +492,7 @@ async function refreshCloudcatQRCode() {
 
 function scheduleCloudcatQRCodeRefresh() {
   if (qrRefreshTimer) clearTimeout(qrRefreshTimer)
-  if (qrRefreshStopped || !props.resumable || !isAlipay.value || !props.orderId || outcome.value) return
+  if (qrRefreshStopped || !isCloudcatQRCode.value || !props.orderId || outcome.value) return
   qrRefreshTimer = setTimeout(
     refreshCloudcatQRCode,
     qrUrl.value ? CLOUDCAT_QR_REFRESH_INTERVAL_MS : CLOUDCAT_QR_RETRY_INTERVAL_MS,
@@ -500,7 +501,7 @@ function scheduleCloudcatQRCodeRefresh() {
 
 function startCloudcatQRCodeRefresh(refreshNow = true) {
   if (qrRefreshTimer) clearTimeout(qrRefreshTimer)
-  if (!props.resumable || !isAlipay.value || !props.orderId || outcome.value) return
+  if (!isCloudcatQRCode.value || !props.orderId || outcome.value) return
   if (refreshNow) {
     void refreshCloudcatQRCode()
     return
@@ -619,6 +620,7 @@ async function pollStatus() {
 }
 
 function startCountdown(seconds: number) {
+  const deadline = Date.now() + seconds * 1000
   remainingSeconds.value = Math.max(0, seconds)
   if (remainingSeconds.value <= 0) {
     if (!props.resumable) setOutcome('expired')
@@ -626,7 +628,7 @@ function startCountdown(seconds: number) {
   }
   countdownTimer = setInterval(() => {
     if (isProcessing.value) return
-    remainingSeconds.value--
+    remainingSeconds.value = Math.max(0, Math.floor((deadline - Date.now()) / 1000))
     if (remainingSeconds.value <= 0) {
       if (props.resumable) {
         // A Cloudcat payment may settle at the deadline; use the server state.

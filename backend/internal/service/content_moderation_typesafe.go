@@ -101,8 +101,13 @@ func (s *ContentModerationService) callTypeSafeModeration(ctx context.Context, c
 
 func moderationAttemptMeta(cfg *ContentModerationConfig, input ContentModerationInput) *ContentModerationEngineMeta {
 	meta := &ContentModerationEngineMeta{Engine: moderationEngine(cfg.Engine)}
-	if cfg.Engine == ContentModerationEngineTypeSafe {
+	switch cfg.Engine {
+	case ContentModerationEngineTypeSafe:
 		meta.RulesVersion = TypeSafeModerationRulesVersion
+		meta.CategorySettings = mergeModerationCategorySettings(cfg.Engine, nil, cfg.CategorySettings)
+		meta.SkippedImages = len(limitContentModerationImages(input.Images))
+	case ContentModerationEngineDecisions:
+		meta.RulesVersion = DecisionsModerationRulesVersion
 		meta.CategorySettings = mergeModerationCategorySettings(cfg.Engine, nil, cfg.CategorySettings)
 		meta.SkippedImages = len(limitContentModerationImages(input.Images))
 	}

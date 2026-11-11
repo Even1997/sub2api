@@ -197,7 +197,7 @@ describe('decidePaymentLaunch', () => {
     expect(decision.recovery.payUrl).toBe('')
   })
 
-  it('opens the hosted checkout for a resumable Cloudcat WeChat order', () => {
+  it('keeps a resumable Cloudcat WeChat order on the local QR flow', () => {
     const decision = decidePaymentLaunch(createOrderResult({
       pay_url: 'https://catfk.com/pay/CAT-WX-1',
       payment_mode: 'popup',
@@ -208,7 +208,7 @@ describe('decidePaymentLaunch', () => {
       isMobile: false,
     })
 
-    expect(decision.kind).toBe('redirect_waiting')
+    expect(decision.kind).toBe('qr_waiting')
     expect(decision.paymentState.payUrl).toBe('https://catfk.com/pay/CAT-WX-1')
     expect(decision.paymentState.qrCode).toBe('')
     expect(decision.recovery.payUrl).toBe('')

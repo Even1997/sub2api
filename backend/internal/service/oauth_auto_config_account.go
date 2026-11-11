@@ -170,6 +170,8 @@ func applyInitialAccountSettings(input *CreateAccountInput, c OAuthAutoConfig) {
 		input.RateMultiplier = &v
 	}
 	if s.ProxyID != nil {
+		// 0 selects "no proxy" and overrides a proxy chosen on the create form.
+		// Create treats that sentinel as unset instead of inserting a foreign key.
 		v := *s.ProxyID
 		input.ProxyID = &v
 	}

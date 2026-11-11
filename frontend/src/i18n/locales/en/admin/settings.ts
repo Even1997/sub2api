@@ -1049,6 +1049,8 @@ export default {
         field_cidAlipay: 'Alipay Channel ID',
         field_cidWxpay: 'WeChat Channel ID',
         field_channelId: 'Payment Channel ID',
+        cloudcatChannelUnavailable: 'The product merchant has not enabled this payment method.',
+        cloudcatChannelsFailed: 'Could not load payment channels. Reopen this dialog or update the product URL to retry.',
         cloudcatProducts: 'Recharge product mapping',
         cloudcatProductsHint: 'Map each supported recharge amount to one card product. Checkout fills the current user email automatically.',
         addCloudcatProduct: 'Add product',

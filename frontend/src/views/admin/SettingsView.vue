@@ -9962,6 +9962,7 @@ import GroupSelector from "@/components/common/GroupSelector.vue";
 import { NEW_FEATURE_NOTICES } from "@/constants/newFeatureNotices";
 import { DEFAULT_SMART_OPS_HIDDEN_MENU_ITEMS } from "@/constants/smartOpsMenu";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
+import { parseCloudcatProducts } from "@/components/payment/providerConfig";
 import {
   isRegistrationEmailSuffixDomainValid,
   normalizeRegistrationEmailSuffixDomain,
@@ -14064,7 +14065,8 @@ async function handleToggleType(provider: ProviderInstance, type: string) {
   const currentTypes = Array.isArray(provider.supported_types)
     ? provider.supported_types
     : [];
-  const updated = currentTypes.includes(type)
+  if (provider.provider_key === "cloudcat" && currentTypes.includes(type)) return;
+  const updated = provider.provider_key === "cloudcat" ? [type] : currentTypes.includes(type)
     ? currentTypes.filter((t) => t !== type)
     : [...currentTypes, type];
   const conflict = findProviderEnablementConflict({
@@ -14079,9 +14081,25 @@ async function handleToggleType(provider: ProviderInstance, type: string) {
     return;
   }
   try {
+    let config: Record<string, string> | undefined;
+    if (provider.provider_key === "cloudcat") {
+      const itemUrl = parseCloudcatProducts(provider.config?.products || "")[0]?.itemUrl;
+      if (!itemUrl) {
+        appStore.showError(t("admin.settings.payment.cloudcatChannelUnavailable"));
+        return;
+      }
+      const channels = (await adminAPI.payment.getCloudcatChannels(itemUrl)).data;
+      const channel = channels.find(channel => channel.payment_type === type);
+      if (!channel) {
+        appStore.showError(t("admin.settings.payment.cloudcatChannelUnavailable"));
+        return;
+      }
+      config = { channelId: channel.id };
+    }
     await adminAPI.payment.updateProvider(provider.id, {
       supported_types: updated,
-    } as any);
+      ...(config ? { config } : {}),
+    });
     await loadProviders();
   } catch (err: unknown) {
     appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));

@@ -41,7 +41,7 @@ class RuntimeControlsTest(unittest.TestCase):
             stop.set()
             return True
         with patch.object(worker, 'run_once', side_effect=finish_current) as run:
-            worker._worker_loop(self.config(), stop)
+            worker._run_worker_loop(self.config(), stop)
         run.assert_called_once()
 
     def test_real_processes_scale_down_without_interrupting_active_work_then_scale_up(self):

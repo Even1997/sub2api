@@ -91,6 +91,12 @@ export const adminPaymentAPI = {
     return apiClient.get<CloudcatMerchantOverview>('/admin/payment/cloudcat/overview')
   },
 
+  getCloudcatChannels(itemUrl: string) {
+    return apiClient.get<{ id: string; payment_type: string; name: string }[]>('/admin/payment/cloudcat/channels', {
+      params: { item_url: itemUrl },
+    })
+  },
+
   loginCloudcat(data: CloudcatMerchantLoginRequest) {
     return apiClient.post<CloudcatMerchantOverview>('/admin/payment/cloudcat/login', data)
   },

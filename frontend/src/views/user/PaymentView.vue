@@ -950,8 +950,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
   const visibleMethod = normalizeVisibleMethod(requestType) || requestType
   const isCloudcatMethod = visibleMethods.value[requestType]?.amount_selection_only === true
-  const shouldPreopenPaymentWindow = (visibleMethod === 'alipay' && !isCloudcatMethod)
-    || (visibleMethod === 'wxpay' && isCloudcatMethod)
+  const shouldPreopenPaymentWindow = visibleMethod === 'alipay' && !isCloudcatMethod
   const preopenedWindow = typeof window !== 'undefined'
     && !isMobileDevice()
     && shouldPreopenPaymentWindow

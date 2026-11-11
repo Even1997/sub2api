@@ -22,12 +22,11 @@ import (
 
 func TestCloudcatCreatePaymentUsesMappedProductAndEmail(t *testing.T) {
 	provider, requests, closeServer := newCloudcatTestProvider(t, map[string]string{
-		"/shopApi/Shop/goodsInfo":      `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8,"user":{"token":"merchant-1"}}}`,
-		"/shopApi/Shop/getUserChannel": `{"code":1,"data":[{"id":1,"code":"AlipayPc","status":1}]}`,
-		"/shopApi/Shop/getGoodsPrice":  `{"code":1,"data":{"total_amount":5}}`,
-		"/shopApi/Pay/order":           `{"code":1,"data":{"trade_no":"CAT-1","payurl":"https://catfk.com/pay/CAT-1","total_amount":5}}`,
-		"/pay/CAT-1":                   `<form action="https://openapi.alipay.com/gateway.do?charset=UTF-8" method="POST"><input name="method" value="alipay.trade.page.pay"><input name="sign" value="signed"></form>`,
-		"/gateway.do":                  `<html><input value="https://qr.alipay.com/cloudcat-test-1" id="J_qrCode"></html>`,
+		"/shopApi/Shop/goodsInfo":     `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8}}`,
+		"/shopApi/Shop/getGoodsPrice": `{"code":1,"data":{"total_amount":5}}`,
+		"/shopApi/Pay/order":          `{"code":1,"data":{"trade_no":"CAT-1","payurl":"https://catfk.com/pay/CAT-1","total_amount":5}}`,
+		"/pay/CAT-1":                  `<form action="https://openapi.alipay.com/gateway.do?charset=UTF-8" method="POST"><input name="method" value="alipay.trade.page.pay"><input name="sign" value="signed"></form>`,
+		"/gateway.do":                 `<html><input value="https://qr.alipay.com/cloudcat-test-1" id="J_qrCode"></html>`,
 	})
 	defer closeServer()
 	transport := provider.checkoutClient.Transport
@@ -61,12 +60,12 @@ func TestCloudcatCreatePaymentUsesMappedProductAndEmail(t *testing.T) {
 	}
 }
 
-func TestCloudcatCreatePaymentUsesWechatChannelWithoutResolvingAlipayQRCode(t *testing.T) {
+func TestCloudcatCreatePaymentUsesWechatChannelAndResolvesQRCode(t *testing.T) {
 	provider, requests, closeServer := newCloudcatTestProvider(t, map[string]string{
-		"/shopApi/Shop/goodsInfo":      `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8,"user":{"token":"merchant-1"}}}`,
-		"/shopApi/Shop/getUserChannel": `{"code":1,"data":[{"id":1,"code":"WechatPay","status":1}]}`,
-		"/shopApi/Shop/getGoodsPrice":  `{"code":1,"data":{"total_amount":5}}`,
-		"/shopApi/Pay/order":           `{"code":1,"data":{"trade_no":"CAT-WX-1","payurl":"https://catfk.com/pay/CAT-WX-1","total_amount":5}}`,
+		"/shopApi/Shop/goodsInfo":     `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8}}`,
+		"/shopApi/Shop/getGoodsPrice": `{"code":1,"data":{"total_amount":5}}`,
+		"/shopApi/Pay/order":          `{"code":1,"data":{"trade_no":"CAT-WX-1","payurl":"https://catfk.com/pay/CAT-WX-1","total_amount":5}}`,
+		"/pay/CAT-WX-1":               `<img src="/payApi/common/generateQrcode.html?str=https%253A%252F%252Fcatfk.com%252FpayApi%252FWeixinJspay%252Fpay.html%253Ftrade_no%253DCAT-WX-1" class="code">`,
 	})
 	defer closeServer()
 	transport := provider.httpClient.Transport
@@ -84,11 +83,11 @@ func TestCloudcatCreatePaymentUsesWechatChannelWithoutResolvingAlipayQRCode(t *t
 	if err != nil {
 		t.Fatalf("CreatePayment returned error: %v", err)
 	}
-	if result.TradeNo != "CAT-WX-1" || result.PayURL != "https://catfk.com/pay/CAT-WX-1" || result.QRCode != "" {
+	if result.TradeNo != "CAT-WX-1" || result.PayURL != "https://catfk.com/pay/CAT-WX-1" || result.QRCode != "https://catfk.com/payApi/WeixinJspay/pay.html?trade_no=CAT-WX-1" {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if checkoutRequests.Load() != 0 {
-		t.Fatalf("WeChat payment made %d checkout requests, want 0", checkoutRequests.Load())
+	if checkoutRequests.Load() != 1 {
+		t.Fatalf("WeChat payment made %d checkout requests, want 1", checkoutRequests.Load())
 	}
 	if requests["/shopApi/Pay/order"]["channel_id"] != json.Number("1") {
 		t.Fatalf("unexpected channel payload: %#v", requests["/shopApi/Pay/order"])
@@ -96,98 +95,42 @@ func TestCloudcatCreatePaymentUsesWechatChannelWithoutResolvingAlipayQRCode(t *t
 	if got := provider.SupportedTypes(); len(got) != 2 || got[0] != payment.TypeAlipay || got[1] != payment.TypeWxpay {
 		t.Fatalf("SupportedTypes() = %v", got)
 	}
-}
-
-func TestCloudcatCreatePaymentRejectsMismatchedChannelType(t *testing.T) {
-	provider, requests, closeServer := newCloudcatTestProvider(t, map[string]string{
-		"/shopApi/Shop/goodsInfo":      `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8,"user":{"token":"merchant-1"}}}`,
-		"/shopApi/Shop/getUserChannel": `{"code":1,"data":[{"id":1,"code":"AlipayPc","status":1}]}`,
-		"/shopApi/Shop/getGoodsPrice":  `{"code":1,"data":{"total_amount":5}}`,
-	})
-	defer closeServer()
-
-	_, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
-		Amount: "5.00", PaymentType: payment.TypeWxpay, PayerEmail: "buyer@example.com",
-	})
-	if err == nil || !strings.Contains(err.Error(), "does not support wxpay") {
-		t.Fatalf("error = %v", err)
-	}
-	if _, created := requests["/shopApi/Pay/order"]; created {
-		t.Fatal("order was created with a mismatched channel")
+	if _, queried := requests["/shopApi/Shop/getUserChannel"]; queried {
+		t.Fatal("Cloudcat payment should not query or classify the configured channel")
 	}
 }
 
-func TestCloudcatCreatePaymentParallelPreflight(t *testing.T) {
+func TestCloudcatCreatePaymentValidatesQuotedPriceBeforeOrder(t *testing.T) {
 	for _, tt := range []struct {
-		name        string
-		failurePath string
-		failureBody string
-		wantError   string
+		name      string
+		quoteBody string
+		wantError string
 	}{
-		{name: "success"},
-		{"inactive channel", "/shopApi/Shop/getUserChannel", `{"code":1,"data":[{"id":1,"code":"AlipayPc","status":0}]}`, "not active"},
-		{"price mismatch", "/shopApi/Shop/getGoodsPrice", `{"code":1,"data":{"total_amount":6}}`, "amount does not match"},
-		{"quote rejected", "/shopApi/Shop/getGoodsPrice", `{"code":0,"msg":"quote rejected"}`, "quote rejected"},
+		{name: "success", quoteBody: `{"code":1,"data":{"total_amount":5}}`},
+		{name: "price mismatch", quoteBody: `{"code":1,"data":{"total_amount":6}}`, wantError: "amount does not match"},
+		{name: "quote rejected", quoteBody: `{"code":0,"msg":"quote rejected"}`, wantError: "quote rejected"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			responses := map[string]string{
-				"/shopApi/Shop/goodsInfo":      `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8,"user":{"token":"merchant-1"}}}`,
-				"/shopApi/Shop/getUserChannel": `{"code":1,"data":[{"id":1,"code":"AlipayPc","status":1}]}`,
-				"/shopApi/Shop/getGoodsPrice":  `{"code":1,"data":{"total_amount":5}}`,
-				"/shopApi/Pay/order":           `{"code":1,"data":{"trade_no":"CAT-1","payurl":"https://catfk.com/pay/CAT-1","total_amount":5}}`,
-				"/pay/CAT-1":                   `<input id="J_qrCode" value="https://qr.alipay.com/cloudcat-test-1">`,
+				"/shopApi/Shop/goodsInfo":     `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8}}`,
+				"/shopApi/Shop/getGoodsPrice": tt.quoteBody,
+				"/shopApi/Pay/order":          `{"code":1,"data":{"trade_no":"CAT-1","payurl":"https://catfk.com/pay/CAT-1","total_amount":5}}`,
+				"/pay/CAT-1":                  `<input id="J_qrCode" value="https://qr.alipay.com/cloudcat-test-1">`,
 			}
-			if tt.failurePath != "" {
-				responses[tt.failurePath] = tt.failureBody
-			}
-			p, _, closeServer := newCloudcatTestProvider(t, responses)
+			p, requests, closeServer := newCloudcatTestProvider(t, responses)
 			defer closeServer()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			// Release a serial implementation instead of hanging the regression test.
-			timer := time.AfterFunc(5*time.Second, cancel)
-			defer timer.Stop()
-			bothStarted := make(chan struct{})
-			var started, finished, orders atomic.Int32
-			var siblingCancelled atomic.Bool
-			transport := p.httpClient.Transport
-			p.httpClient.Transport = cloudcatTestRoundTripper(func(r *http.Request) (*http.Response, error) {
-				switch r.URL.Path {
-				case "/shopApi/Shop/getUserChannel", "/shopApi/Shop/getGoodsPrice":
-					if started.Add(1) == 2 {
-						close(bothStarted)
-					}
-					select {
-					case <-bothStarted:
-					case <-r.Context().Done():
-						return nil, r.Context().Err()
-					}
-					if tt.failurePath != "" && r.URL.Path != tt.failurePath {
-						<-r.Context().Done()
-						siblingCancelled.Store(true)
-						return nil, r.Context().Err()
-					}
-					resp, err := transport.RoundTrip(r)
-					finished.Add(1)
-					return resp, err
-				case "/shopApi/Pay/order":
-					orders.Add(1)
-					if finished.Load() != 2 {
-						t.Error("order started before both preflight requests completed")
-					}
-				}
-				return transport.RoundTrip(r)
-			})
-
-			result, err := p.CreatePayment(ctx, payment.CreatePaymentRequest{Amount: "5.00", PayerEmail: "buyer@example.com"})
+			result, err := p.CreatePayment(context.Background(), payment.CreatePaymentRequest{Amount: "5.00", PayerEmail: "buyer@example.com"})
 			if tt.wantError != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantError) || orders.Load() != 0 || !siblingCancelled.Load() || ctx.Err() != nil {
-					t.Fatalf("error=%v orders=%d siblingCancelled=%t context=%v", err, orders.Load(), siblingCancelled.Load(), ctx.Err())
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("error=%v", err)
+				}
+				if _, created := requests["/shopApi/Pay/order"]; created {
+					t.Fatal("order was created before the quoted price passed validation")
 				}
 				return
 			}
-			if err != nil || orders.Load() != 1 || result == nil || result.QRCode != "https://qr.alipay.com/cloudcat-test-1" {
-				t.Fatalf("result=%+v error=%v orders=%d", result, err, orders.Load())
+			if err != nil || result == nil || result.QRCode != "https://qr.alipay.com/cloudcat-test-1" {
+				t.Fatalf("result=%+v error=%v", result, err)
 			}
 		})
 	}
@@ -224,12 +167,51 @@ func TestCloudcatQueryOrderReturnsPaidBeforeAndAfterCardDelivery(t *testing.T) {
 	}
 }
 
+func TestCloudcatTimedOutPaymentQueryRecoversOnlyConfirmedPaidDetails(t *testing.T) {
+	for _, tt := range []struct {
+		name, info, wantCode string
+		wantPaid, wantError  bool
+	}{
+		{name: "paid and delivered", info: `{"code":1,"data":{"status":1,"trade_no":"CAT-1","response":{"total_amount":5,"cards":["CDK-123"]}}}`, wantPaid: true, wantCode: "CDK-123"},
+		{name: "paid awaiting card", info: `{"code":1,"data":{"status":"1","trade_no":"CAT-1","total_amount":5}}`, wantPaid: true},
+		{name: "unpaid with card", info: `{"code":1,"data":{"status":0,"total_amount":5,"cards":["CDK-123"]}}`},
+		{name: "closed with card", info: `{"code":1,"data":{"status":2,"total_amount":5,"cards":["CDK-123"]}}`},
+		{name: "missing payment status", info: `{"code":1,"data":{"total_amount":5,"cards":["CDK-123"]}}`},
+		{name: "unauthorized", info: `{"code":0,"msg":"query requires authorization"}`, wantError: true},
+		{name: "different trade", info: `{"code":1,"data":{"status":1,"trade_no":"CAT-OTHER","total_amount":5}}`, wantError: true},
+		{name: "missing confirmed amount", info: `{"code":1,"data":{"status":1,"cards":["CDK-123"]}}`, wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p, requests, closeServer := newCloudcatTestProvider(t, map[string]string{
+				"/shopApi/Pay/query":  `{"code":0,"msg":"超时无法查询","data":{"total_amount":5}}`,
+				"/shopApi/Order/info": tt.info,
+			})
+			defer closeServer()
+			result, err := p.QueryOrder(context.Background(), "CAT-1")
+			if (err != nil) != tt.wantError {
+				t.Fatalf("error = %v, wantError = %v", err, tt.wantError)
+			}
+			if _, queried := requests["/shopApi/Order/info"]; !queried {
+				t.Fatal("timed-out payment query did not check order details")
+			}
+			if tt.wantError {
+				return
+			}
+			if result == nil || (result.Status == payment.ProviderStatusPaid) != tt.wantPaid {
+				t.Fatalf("result = %+v, wantPaid = %v", result, tt.wantPaid)
+			}
+			if result.Metadata[payment.MetadataCloudcatRechargeCode] != tt.wantCode || (tt.wantPaid && result.Amount != 5) {
+				t.Fatalf("unexpected paid details: %+v", result)
+			}
+		})
+	}
+}
+
 func TestCloudcatRejectsUntrustedPaymentURL(t *testing.T) {
 	provider, _, closeServer := newCloudcatTestProvider(t, map[string]string{
-		"/shopApi/Shop/goodsInfo":      `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8,"user":{"token":"merchant-1"}}}`,
-		"/shopApi/Shop/getUserChannel": `{"code":1,"data":[{"id":1,"code":"AlipayPc","status":1}]}`,
-		"/shopApi/Shop/getGoodsPrice":  `{"code":1,"data":{"total_amount":5}}`,
-		"/shopApi/Pay/order":           `{"code":1,"data":{"trade_no":"CAT-1","payurl":"https://evil.example/pay/CAT-1","total_amount":5}}`,
+		"/shopApi/Shop/goodsInfo":     `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8}}`,
+		"/shopApi/Shop/getGoodsPrice": `{"code":1,"data":{"total_amount":5}}`,
+		"/shopApi/Pay/order":          `{"code":1,"data":{"trade_no":"CAT-1","payurl":"https://evil.example/pay/CAT-1","total_amount":5}}`,
 	})
 	defer closeServer()
 
@@ -264,18 +246,81 @@ func TestCloudcatVisitorIDSurvivesProviderRecreation(t *testing.T) {
 	}
 }
 
-func TestExtractCloudcatPaymentQRCodeValidatesAlipayPayload(t *testing.T) {
-	qrCode, err := extractCloudcatPaymentQRCode(strings.NewReader(`<input value="https://qr.alipay.com/order?a=1&amp;b=2" id="J_qrCode">`))
-	if err != nil {
-		t.Fatalf("extractCloudcatPaymentQRCode returned error: %v", err)
-	}
-	if qrCode != "https://qr.alipay.com/order?a=1&b=2" {
-		t.Fatalf("qr code = %q", qrCode)
+func TestExtractCloudcatPaymentQRCodeValidatesPayload(t *testing.T) {
+	for _, want := range []string{
+		"https://qr.alipay.com/order?a=1&b=2",
+		"weixin://wxpay/bizpayurl?pr=cloudcat-wx-1",
+	} {
+		html := `<input value="` + strings.ReplaceAll(want, "&", "&amp;") + `" id="J_qrCode">`
+		qrCode, err := extractCloudcatPaymentQRCode(strings.NewReader(html))
+		if err != nil {
+			t.Fatalf("extractCloudcatPaymentQRCode(%q) returned error: %v", want, err)
+		}
+		if qrCode != want {
+			t.Fatalf("qr code = %q, want %q", qrCode, want)
+		}
 	}
 
-	_, err = extractCloudcatPaymentQRCode(strings.NewReader(`<input id="J_qrCode" value="https://evil.example/order">`))
+	_, err := extractCloudcatPaymentQRCode(strings.NewReader(`<input id="J_qrCode" value="https://evil.example/order">`))
 	if err == nil {
 		t.Fatal("extractCloudcatPaymentQRCode should reject an untrusted QR host")
+	}
+}
+
+func TestCloudcatCheckoutQRImage(t *testing.T) {
+	want := "https://catfk.com/payApi/WeixinJspay/pay.html?trade_no=CAT-WX-1"
+	for _, payload := range []string{url.QueryEscape(want), url.QueryEscape(url.QueryEscape(want))} {
+		for _, prefix := range []string{"", "https://catfk.com"} {
+			body := `<img src="data:image/png;base64,ignored"><img class="code" src="` + prefix + `/payApi/common/generateQrcode.html?str=` + payload + `">`
+			got, err := extractCloudcatPaymentQRCode(strings.NewReader(body))
+			if err != nil || got != want {
+				t.Fatalf("QR image = %q, %v; want %q", got, err, want)
+			}
+		}
+	}
+	for _, target := range []string{
+		"https://evil.example/payApi/WeixinJspay/pay.html?trade_no=CAT-1",
+		"https://catfk.com:444/payApi/WeixinJspay/pay.html?trade_no=CAT-1",
+		"https://user@catfk.com/payApi/WeixinJspay/pay.html?trade_no=CAT-1",
+		"https://catfk.com/payApi/WeixinJspay/pay.html",
+		"https://catfk.com/payApi/WeixinJspay/pay.html?trade_no=CAT-1#fragment",
+		"https://catfk.com/redirect?trade_no=CAT-1",
+		"javascript:alert(1)",
+	} {
+		body := `<img src="/payApi/common/generateQrcode.html?str=` + url.QueryEscape(url.QueryEscape(target)) + `">`
+		if _, err := extractCloudcatPaymentQRCode(strings.NewReader(body)); err == nil {
+			t.Fatalf("accepted invalid QR target %q", target)
+		}
+	}
+	if _, err := extractCloudcatPaymentQRCode(strings.NewReader(`<img src="https://evil.example/payApi/common/generateQrcode.html?str=` + url.QueryEscape(want) + `">`)); err == nil {
+		t.Fatal("accepted untrusted QR image host")
+	}
+}
+
+func TestCloudcatDiscoverChannels(t *testing.T) {
+	p, requests, closeServer := newCloudcatTestProvider(t, map[string]string{
+		"/shopApi/Shop/goodsInfo": `{"code":1,"data":{"user":{"token":"merchant-public-id"}}}`,
+		"/shopApi/Shop/getUserChannel": `{"code":1,"data":[
+			{"id":5,"code":"WeixinJspay","show_name":"WeChat","status":1,"custom_status":1},
+			{"id":9,"code":"AlipayF2f","show_name":"Alipay","status":"1","custom_status":"1"},
+			{"id":1,"code":"Alipay","status":1,"custom_status":0},
+			{"id":2,"code":"Weixin","status":0,"custom_status":1},
+			{"id":3,"code":"Unknown","status":1,"custom_status":1}
+		]}`,
+	})
+	defer closeServer()
+	channels, err := p.discoverChannels(context.Background(), "ee9c69")
+	if err != nil || len(channels) != 2 {
+		t.Fatalf("channels = %+v, %v", channels, err)
+	}
+	if channels[0].ID != "5" || channels[0].PaymentType != payment.TypeWxpay || channels[1].ID != "9" || channels[1].PaymentType != payment.TypeAlipay {
+		t.Fatalf("unexpected channels: %+v", channels)
+	}
+	if requests["/shopApi/Shop/getUserChannel"]["token"] != "merchant-public-id" {
+		t.Fatal("channel discovery did not use the product merchant")
+	}
+	if _, ok := requests["/shopApi/Pay/order"]; ok {
+		t.Fatal("channel discovery created an order")
 	}
 }
 
@@ -688,9 +733,8 @@ func TestCloudcatReadRetryStopsOnCancellation(t *testing.T) {
 
 func TestCloudcatDoesNotStartAnOrderWithAnExhaustedPreflightBudget(t *testing.T) {
 	p, requests, closeServer := newCloudcatTestProvider(t, map[string]string{
-		"/shopApi/Shop/goodsInfo":      `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8,"user":{"token":"merchant-1"}}}`,
-		"/shopApi/Shop/getUserChannel": `{"code":1,"data":[{"id":1,"code":"AlipayPc","status":1}]}`,
-		"/shopApi/Shop/getGoodsPrice":  `{"code":1,"data":{"total_amount":5}}`,
+		"/shopApi/Shop/goodsInfo":     `{"code":1,"data":{"goods_type":"card","price":5,"status":1,"stock":8}}`,
+		"/shopApi/Shop/getGoodsPrice": `{"code":1,"data":{"total_amount":5}}`,
 	})
 	defer closeServer()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

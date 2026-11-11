@@ -107,6 +107,7 @@ func RegisterPaymentRoutes(
 		cloudcat := adminGroup.Group("/cloudcat")
 		{
 			cloudcat.GET("/overview", adminPaymentHandler.GetCloudcatOverview)
+			cloudcat.GET("/channels", adminPaymentHandler.GetCloudcatChannels)
 			cloudcat.POST("/login", adminPaymentHandler.LoginCloudcat)
 			cloudcat.POST("/refresh", adminPaymentHandler.RefreshCloudcat)
 			cloudcat.POST("/logout", adminPaymentHandler.LogoutCloudcat)

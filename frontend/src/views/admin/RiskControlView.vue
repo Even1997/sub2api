@@ -444,6 +444,9 @@
               <div v-if="configForm.engine === 'typesafe'" class="lg:col-span-2 text-sm text-amber-700 dark:text-amber-300" role="status">
                 {{ t('admin.riskControl.typeSafeNotice') }}
               </div>
+              <div v-else-if="configForm.engine === 'decisions'" class="lg:col-span-2 text-sm text-amber-700 dark:text-amber-300" role="status">
+                {{ t('admin.riskControl.decisionsNotice') }}
+              </div>
               <div class="lg:col-span-2 space-y-3">
                 <div class="flex items-center justify-between gap-3">
                   <label class="input-label mb-0">{{ t('admin.riskControl.baseUrl') }}</label>
@@ -453,7 +456,7 @@
                   </button>
                 </div>
                 <div v-for="(row, index) in configForm.endpoint_rows" :key="index" class="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                  <input :ref="index === 0 ? setBaseUrlInput : undefined" v-model="row.url" data-test="audit-base-url" type="text" class="input font-mono text-sm" :class="row.paused ? 'opacity-60' : ''" :placeholder="configForm.engine === 'typesafe' ? 'https://api.typesafe.ai' : 'https://api.openai.com'" :aria-label="t('admin.riskControl.endpointUrl')" />
+                  <input :ref="index === 0 ? setBaseUrlInput : undefined" v-model="row.url" data-test="audit-base-url" type="text" class="input font-mono text-sm" :class="row.paused ? 'opacity-60' : ''" :placeholder="engineDefaultBaseURL(configForm.engine)" :aria-label="t('admin.riskControl.endpointUrl')" />
                   <input v-model="row.key" data-test="audit-endpoint-key" type="password" autocomplete="new-password" class="input font-mono text-sm" :class="row.paused ? 'opacity-60' : ''" :placeholder="row.mask || t('admin.riskControl.endpointKey')" :aria-label="t('admin.riskControl.endpointKey')" />
                   <div class="flex gap-2">
                     <button type="button" class="btn btn-secondary" data-test="audit-endpoint-pause" @click="toggleEndpointPause(index)">{{ row.paused ? t('admin.riskControl.resumeApiKey') : t('admin.riskControl.pauseApiKey') }}</button>
@@ -464,10 +467,11 @@
                 </div>
                 <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.baseUrlHint') }}</p>
                 <p v-if="configForm.engine === 'typesafe'" data-test="audit-base-url-hint" class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.typeSafeBaseUrlHint') }}</p>
+                <p v-else-if="configForm.engine === 'decisions'" data-test="audit-base-url-hint" class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.decisionsBaseUrlHint') }}</p>
               </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.model') }}</label>
-                <input v-model.trim="configForm.model" data-test="audit-model" type="text" class="input" :placeholder="configForm.engine === 'typesafe' ? 'jev-latest' : 'omni-moderation-latest'" />
+                <input v-model.trim="configForm.model" data-test="audit-model" type="text" class="input" :placeholder="engineDefaultModel(configForm.engine)" />
               </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.timeoutMs') }}</label>
@@ -964,6 +968,7 @@
           <div v-else-if="activeSettingsTab === 'riskThresholds'" class="space-y-5">
             <p class="text-sm font-medium">{{ engineLabel(configForm.engine) }}</p>
             <p v-if="configForm.engine === 'typesafe'" class="text-sm text-amber-700 dark:text-amber-300">{{ t('admin.riskControl.typeSafeThresholds') }}</p>
+            <p v-else-if="configForm.engine === 'decisions'" class="text-sm text-amber-700 dark:text-amber-300">{{ t('admin.riskControl.decisionsThresholds') }}</p>
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.riskThresholds') }}</h3>
@@ -1308,8 +1313,16 @@ const moderationTestImages = ref<string[]>([])
 const moderationTestResult = ref<ContentModerationTestAuditResult | null>(null)
 const inputDetailRow = ref<ContentModerationLog | null>(null)
 const savedEngine = ref<ModerationEngine>('openai')
-const engineOptions: SelectOption[] = [{ value: 'openai', label: 'OpenAI' }, { value: 'typesafe', label: 'TypeSafe AI' }]
-const engineLabel = (engine: ModerationEngine) => engine === 'typesafe' ? 'TypeSafe AI' : 'OpenAI'
+const engineOptions: SelectOption[] = [{ value: 'openai', label: 'OpenAI' }, { value: 'decisions', label: 'OpenAI Decisions' }, { value: 'typesafe', label: 'TypeSafe AI' }]
+const engineLabel = (engine: ModerationEngine) => engine === 'typesafe' ? 'TypeSafe AI' : engine === 'decisions' ? 'OpenAI Decisions' : 'OpenAI'
+function engineDefaultBaseURL(engine: ModerationEngine) {
+  return engine === 'typesafe' ? 'https://api.typesafe.ai' : 'https://api.openai.com'
+}
+function engineDefaultModel(engine: ModerationEngine) {
+  if (engine === 'typesafe') return 'jev-latest'
+  if (engine === 'decisions') return 'gpt-6-luna'
+  return 'omni-moderation-latest'
+}
 let statusTimer: number | null = null
 
 const configForm = reactive({
@@ -1364,7 +1377,7 @@ function captureEngineDraft(): EngineDraft {
 }
 
 function switchEngine(value: string | number | boolean | null) {
-  if ((value !== 'openai' && value !== 'typesafe') || apiKeyTesting.value || saving.value) return
+  if ((value !== 'openai' && value !== 'typesafe' && value !== 'decisions') || apiKeyTesting.value || saving.value) return
   engineDrafts.value[configForm.engine] = captureEngineDraft()
   configForm.engine = value
   const draft = engineDrafts.value[value]
@@ -1435,9 +1448,9 @@ function removeEndpointRow(index: number) {
 
 function engineDraftFromConfig(config: ContentModerationConfig | undefined, engine: ModerationEngine): EngineDraft {
   return {
-    base_url: moderationBaseURLText(config, engine === 'typesafe' ? 'https://api.typesafe.ai' : 'https://api.openai.com'),
-    endpoint_rows: endpointRowsFromConfig(config, engine === 'typesafe' ? 'https://api.typesafe.ai' : 'https://api.openai.com'),
-    model: config?.model || (engine === 'typesafe' ? 'jev-latest' : 'omni-moderation-latest'),
+    base_url: moderationBaseURLText(config, engineDefaultBaseURL(engine)),
+    endpoint_rows: endpointRowsFromConfig(config, engineDefaultBaseURL(engine)),
+    model: config?.model || engineDefaultModel(engine),
     proxy_id: config?.proxy_id ?? null, api_keys_text: '', api_key_configured: config?.api_key_configured ?? false,
     api_key_masked: config?.api_key_masked ?? '', api_key_count: config?.api_key_count ?? 0,
     api_key_masks: [...(config?.api_key_masks ?? [])], api_key_statuses: [...(config?.api_key_statuses ?? [])],
@@ -1927,6 +1940,7 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.model_filter_models = modelFilter.models
   engineDrafts.value = {
     openai: engineDraftFromConfig(config.engine_configs?.openai ?? (savedEngine.value === 'openai' ? config : undefined), 'openai'),
+    decisions: engineDraftFromConfig(config.engine_configs?.decisions ?? (savedEngine.value === 'decisions' ? config : undefined), 'decisions'),
     typesafe: engineDraftFromConfig(config.engine_configs?.typesafe ?? (savedEngine.value === 'typesafe' ? config : undefined), 'typesafe'),
   }
   const { pendingDeletes, ...fields } = structuredClone(toRaw(engineDrafts.value[configForm.engine]!))

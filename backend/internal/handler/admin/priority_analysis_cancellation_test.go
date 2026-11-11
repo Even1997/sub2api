@@ -44,7 +44,7 @@ func TestPriorityAnalysisHTTPCancellationReachesRepository(t *testing.T) {
 	history := &analysisHTTPHistory{entered: make(chan context.Context, 1), exited: make(chan struct{})}
 	cfg := &config.Config{Runtime: config.RuntimeConfig{Role: config.RuntimeRoleGateway}}
 	settings := service.NewSettingService(&analysisHTTPSettings{}, nil)
-	gateway := service.NewOpenAIGatewayService(&analysisHTTPAccounts{}, nil, history, nil, nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, settings, nil)
+	gateway := service.NewOpenAIGatewayService(&analysisHTTPAccounts{}, history, nil, nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, settings, nil)
 	defer gateway.CloseOpenAIWSPool()
 	h := &AccountHandler{openAIGatewayService: gateway}
 	router := gin.New()

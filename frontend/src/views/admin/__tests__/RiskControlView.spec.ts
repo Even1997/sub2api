@@ -476,10 +476,11 @@ describe('admin RiskControlView', () => {
     expect((wrapper.get('[data-test="audit-base-url"]').element as HTMLInputElement).value).toBe('https://openai-edited.example')
     await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
     await flushPromises()
-    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({ engine: 'openai', engine_configs: {
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({ engine: 'openai', engine_configs: expect.objectContaining({
       openai: expect.objectContaining({ base_url: 'https://openai-edited.example', thresholds: expect.objectContaining({ sexual: 0.73 }) }),
       typesafe: expect.objectContaining({ base_url: 'https://typesafe-edited.example', thresholds: expect.objectContaining({ sexual: 0.91 }) }),
-    } }))
+      decisions: expect.objectContaining({ base_url: 'https://api.openai.com', model: 'gpt-6-luna' }),
+    }) }))
     expect(showError).not.toHaveBeenCalled()
     wrapper.unmount()
   })

@@ -63,6 +63,7 @@ const {
   getGroups,
   listProxies,
   getProviders,
+  getCloudcatChannels,
   updateProvider,
   createProvider,
   deleteProvider,
@@ -109,6 +110,7 @@ const {
   getGroups: vi.fn(),
   listProxies: vi.fn(),
   getProviders: vi.fn(),
+  getCloudcatChannels: vi.fn(),
   updateProvider: vi.fn(),
   createProvider: vi.fn(),
   deleteProvider: vi.fn(),
@@ -156,6 +158,7 @@ vi.mock("@/api", () => ({
     },
     payment: {
       getProviders,
+      getCloudcatChannels,
       updateProvider,
       createProvider,
       deleteProvider,
@@ -164,7 +167,7 @@ vi.mock("@/api", () => ({
 }));
 
 vi.mock("@/stores", () => ({
-  useAuthStore: () => ({ user: { id: 41 }, isAdmin: true }),
+  useAuthStore: () => ({ user: { id: 41 }, isAdmin: true, isSimpleMode: false }),
   useAppStore: () => ({
     showError,
     showSuccess,
@@ -172,8 +175,6 @@ vi.mock("@/stores", () => ({
     showInfo: vi.fn(),
     fetchPublicSettings,
   }),
-  // GroupSelector (Pelican showcase groups) reads simple mode.
-  useAuthStore: () => ({ isSimpleMode: false }),
 }));
 
 vi.mock("@/stores/adminSettings", () => ({
@@ -190,6 +191,7 @@ vi.mock("@/composables/useClipboard", () => ({
 
 vi.mock("@/utils/apiError", () => ({
   extractApiErrorMessage: () => "error",
+  extractI18nErrorMessage: () => "error",
 }));
 
 vi.mock("vue-i18n", async () => {
@@ -2492,6 +2494,40 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateProvider).toHaveBeenCalledWith(7, { enabled: true });
     expect(getProviders).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["switch", "selected", "unavailable", "lookup failure"])("keeps the Cloudcat quick payment type and channel consistent: %s", async (scenario) => {
+    const provider = { id: 7, provider_key: "cloudcat", name: "Cloudcat", enabled: true,
+      config: { channelId: "1", products: '[{"amount":"5","itemUrl":"https://catfk.com/item/ee9c69"}]' },
+      supported_types: ["alipay"], payment_mode: "qrcode", refund_enabled: false,
+      allow_user_refund: false, limits: "", sort_order: 0 };
+    getProviders.mockResolvedValue({ data: [provider] });
+    getCloudcatChannels.mockReset().mockResolvedValue({ data: scenario === "unavailable" ? [] : [
+      { id: "1", payment_type: "alipay", name: "Alipay" },
+      { id: "9", payment_type: "wxpay", name: "WeChat" },
+    ] });
+    if (scenario === "lookup failure") getCloudcatChannels.mockRejectedValueOnce(new Error("lookup failed"));
+    const wrapper = mount(SettingsView, { global: { stubs: {
+      AppLayout: AppLayoutStub, Select: SelectStub, Toggle: ToggleStub, Icon: true,
+      ConfirmDialog: true, PaymentProviderDialog: true, GroupBadge: true, GroupOptionItem: true,
+      ProxySelector: true, ImageUpload: ImageUploadStub, BackupSettings: true, MihomoProxySelector: true, EmailTemplateEditor: true,
+      PaymentProviderList: defineComponent({ emits: ["toggleType"], setup(_, { emit }) {
+        return () => h("button", { class: "cloudcat-toggle-stub", onClick: () =>
+          emit("toggleType", provider, scenario === "selected" ? "alipay" : "wxpay") }, "switch");
+      } }),
+    }, plugins: [createPinia()] } });
+    await flushPromises();
+    await openPaymentTab(wrapper);
+    await wrapper.get(".cloudcat-toggle-stub").trigger("click");
+    await flushPromises();
+    if (scenario === "switch") {
+      expect(getCloudcatChannels).toHaveBeenCalledWith("https://catfk.com/item/ee9c69");
+      expect(updateProvider).toHaveBeenCalledWith(7, { supported_types: ["wxpay"], config: { channelId: "9" } });
+    } else {
+      expect(updateProvider).not.toHaveBeenCalled();
+      if (scenario !== "selected") expect(showError).toHaveBeenCalled();
+      else expect(getCloudcatChannels).not.toHaveBeenCalled();
+    }
   });
 
   it("renders advanced scheduler copy as local experimental gateway policy", async () => {

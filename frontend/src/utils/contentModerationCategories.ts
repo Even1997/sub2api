@@ -7,12 +7,16 @@ const originalDefaults: Record<string, number> = {
 }
 export const optionalModerationCategories = ['jailbreak', 'control_bypass'] as const
 
+function usesOptionalCategories(engine: ModerationEngine) {
+  return engine === 'typesafe' || engine === 'decisions'
+}
+
 export function moderationThresholdDefaults(engine: ModerationEngine): Record<string, number> {
-  return engine === 'typesafe' ? { ...originalDefaults, jailbreak: 95, control_bypass: 95 } : { ...originalDefaults }
+  return usesOptionalCategories(engine) ? { ...originalDefaults, jailbreak: 95, control_bypass: 95 } : { ...originalDefaults }
 }
 
 export function moderationCategorySettings(engine: ModerationEngine, saved?: ModerationCategorySettings): ModerationCategorySettings {
-  return engine === 'typesafe'
+  return usesOptionalCategories(engine)
     ? Object.fromEntries(optionalModerationCategories.map(category => [category, { enabled: saved?.[category]?.enabled === true }]))
     : {}
 }

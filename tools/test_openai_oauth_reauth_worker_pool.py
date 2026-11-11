@@ -43,6 +43,20 @@ def linux_process_running(pid):
     return state != "Z"
 
 
+def holding_worker_probe(config, _stop=None):
+    process = subprocess.Popen(["/bin/sleep", "30"])
+    (Path(config.base_url) / (config.worker_id + ".pid")).write_text(str(process.pid), encoding="utf-8")
+    process.wait()
+
+
+def signal_pool_probe(directory):
+    config = worker.WorkerConfig(directory, "x" * 32, "probe", None, concurrency=2)
+    signal.signal(signal.SIGTERM, worker.terminate_worker_pool)
+    with patch.object(worker.WorkerAPI, "runtime_concurrency", return_value=2), \
+            patch.object(worker, "_run_worker_loop", holding_worker_probe):
+        worker.run_worker_pool(config)
+
+
 class ReauthWorkerPoolTests(unittest.TestCase):
     def test_config_concurrency_defaults_and_bounds(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -98,7 +112,7 @@ class ReauthWorkerPoolTests(unittest.TestCase):
                     patch.object(worker, "_run_worker_loop", parallel_probe):
                 with self.assertRaisesRegex(worker.WorkerError, "process exited"):
                     worker.run_worker_pool(config)
-            self.assertEqual(len(list(Path(directory).glob("done-*"))), 2)
+            self.assertEqual(len(list(Path(directory).glob("done-*"))), 3)
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "process-group integration")
     def test_pool_failure_terminates_protocol_descendants(self):
@@ -116,6 +130,30 @@ class ReauthWorkerPoolTests(unittest.TestCase):
             if running:
                 os.kill(pid, signal.SIGKILL)
             self.assertFalse(running)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "process-group integration")
+    def test_parent_sigterm_stops_all_slots_and_protocol_descendants(self):
+        with tempfile.TemporaryDirectory() as directory:
+            process = worker.multiprocessing.get_context("fork").Process(target=signal_pool_probe, args=(directory,))
+            process.start()
+            try:
+                deadline = time.monotonic() + 5
+                while len(list(Path(directory).glob("*.pid"))) < 2 and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertEqual(len(list(Path(directory).glob("*.pid"))), 2)
+                process.terminate()
+                process.join(timeout=8)
+                self.assertFalse(process.is_alive())
+                for path in Path(directory).glob("*.pid"):
+                    self.assertFalse(linux_process_running(int(path.read_text(encoding="utf-8"))))
+            finally:
+                if process.is_alive():
+                    process.kill()
+                    process.join()
+                for path in Path(directory).glob("*.pid"):
+                    pid = int(path.read_text(encoding="utf-8"))
+                    if linux_process_running(pid):
+                        os.kill(pid, signal.SIGKILL)
 
     def test_once_does_not_start_a_pool(self):
         config = worker.WorkerConfig("http://127.0.0.1", "x" * 32, "test", None, concurrency=3)

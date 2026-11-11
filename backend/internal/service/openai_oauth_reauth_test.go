@@ -885,7 +885,7 @@ func TestOpenAIOAuthReauthTaskLogIsScopedAndRedacted(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, log.Events, 1)
 	require.Equal(t, taskID, *log.Events[0].TaskID)
-	require.Equal(t, "re-login failed; sensitive provider details were omitted", log.Task.Error)
+	require.Equal(t, "re-login failed; provider details omitted", log.Task.Error)
 	payload, err := json.Marshal(log)
 	require.NoError(t, err)
 	require.NotContains(t, string(payload), "secret")

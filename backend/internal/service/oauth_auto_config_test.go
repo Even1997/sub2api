@@ -302,3 +302,35 @@ func TestOAuthAutoConfigOptionalGroupsAndAccountSettings(t *testing.T) {
 }
 
 func ratePtr(v float64) *float64 { return &v }
+
+func TestAutoConfigZeroOrMissingProxyIsNotInserted(t *testing.T) {
+	zero := int64(0)
+	chosen := int64(9)
+	cfg := DefaultOAuthAutoConfig()
+	cfg.Enabled = true
+	cfg.AccountSettings.ProxyID = &zero
+	raw, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	svc := &adminServiceImpl{settingService: NewSettingService(&accountOpsSettingsStub{raw: string(raw)}, nil)}
+	in := &CreateAccountInput{Platform: PlatformOpenAI, Type: AccountTypeOAuth, ProxyID: &chosen}
+	require.NoError(t, svc.ApplyOAuthAutoConfig(context.Background(), in))
+	require.NotNil(t, in.ProxyID)
+	require.Zero(t, *in.ProxyID)
+	require.NoError(t, svc.resolveCreateProxyID(context.Background(), in))
+	account, err := buildAccountForCreate(in, in.Extra)
+	require.NoError(t, err)
+	require.Nil(t, account.ProxyID)
+
+	kept := int64(9)
+	direct := &CreateAccountInput{Platform: PlatformOpenAI, Type: AccountTypeOAuth, ProxyID: &kept}
+	account, err = buildAccountForCreate(direct, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(9), *account.ProxyID)
+
+	missing := int64(4)
+	next, err := proxyIDAfterLookup(&missing, ErrProxyNotFound)
+	require.NoError(t, err)
+	require.Nil(t, next)
+	_, err = proxyIDAfterLookup(&missing, errors.New("db down"))
+	require.Error(t, err)
+}

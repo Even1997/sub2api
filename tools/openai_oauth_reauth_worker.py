@@ -1702,8 +1702,19 @@ def terminate_worker(_signum: int, _frame: Any) -> None:
     raise SystemExit(0)
 
 
+def terminate_worker_pool(_signum: int, _frame: Any) -> None:
+    # Let the pool's finally block stop slots in their separate process groups.
+    raise SystemExit(0)
+
+
 def _worker_loop(config: WorkerConfig, stop: Any = None) -> None:
+    if hasattr(os, "setpgid"):
+        os.setpgid(0, 0)
     signal.signal(signal.SIGTERM, terminate_worker)
+    _run_worker_loop(config, stop)
+
+
+def _run_worker_loop(config: WorkerConfig, stop: Any = None) -> None:
     protocol = load_protocol(config.protocol_root) if config.protocol_root is not None else None
     api = WorkerAPI(config)
     LOGGER.info("worker=%s ready", config.worker_id)
@@ -1721,12 +1732,27 @@ def worker_slot_config(config: WorkerConfig, slot: int) -> WorkerConfig:
     return replace(config, worker_id=config.worker_id[:128-len(suffix)] + suffix, concurrency=1)
 
 
+def signal_worker_group(child: Any, signum: int) -> None:
+    if hasattr(os, "killpg"):
+        try:
+            os.killpg(child.pid, signum)
+            return
+        except ProcessLookupError:
+            pass
+    if child.is_alive():
+        if signum == signal.SIGTERM:
+            child.terminate()
+        else:
+            child.kill()
+
+
 def reconcile_worker_pool(context: Any, children: dict, config: WorkerConfig, target: int) -> None:
     # Retiring processes finish their current task before exiting. They do not
     # claim another task. Never replace a retiring slot until it has exited.
     for slot, (child, stop) in list(children.items()):
         if not child.is_alive():
             child.join()
+            signal_worker_group(child, getattr(signal, "SIGKILL", 9))
             del children[slot]
             if not stop.is_set():
                 raise WorkerError("a re-login worker process exited")
@@ -1762,12 +1788,11 @@ def run_worker_pool(config: WorkerConfig) -> None:
             time.sleep(0.25)
     finally:
         for child, _stop in children.values():
-            if child.is_alive():
-                child.terminate()
+            signal_worker_group(child, signal.SIGTERM)
         for child, _stop in children.values():
             child.join(timeout=5)
+            signal_worker_group(child, getattr(signal, "SIGKILL", 9))
             if child.is_alive():
-                child.kill()
                 child.join()
 
 
@@ -1791,7 +1816,7 @@ def main() -> int:
     if args.check:
         LOGGER.info("worker configuration valid (password_totp=%s email_otp_url=%s)", config.tosub2_root is not None, protocol is not None)
         return 0
-    signal.signal(signal.SIGTERM, terminate_worker)
+    signal.signal(signal.SIGTERM, terminate_worker if args.once else terminate_worker_pool)
     LOGGER.info("worker=%s concurrency=%s ready", config.worker_id, config.concurrency)
     try:
         if not args.once:

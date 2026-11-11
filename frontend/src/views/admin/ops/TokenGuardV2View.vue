@@ -852,7 +852,10 @@ async function act(item: TokenGuardV2Account, action: () => Promise<unknown>, su
     const recoveryInProgress = successKey === 'tokenGuardV2.inspectionQueued' && failure?.category === 'requires_relogin'
       && ['waiting', 'scheduled', 'queued', 'running', 'cooldown', 'verifying'].includes(automationState(result as TokenGuardV2Account))
     if (failure && !recoveryInProgress) error.value = `${t(`tokenGuardV2.operationFailure.reasons.${failure.category}`)} ${t(`tokenGuardV2.operationFailure.actions.${failure.action}`)}`
-    else notice.value = t(successKey, { account: item.account_name })
+    else {
+      const refreshed = result && typeof result === 'object' && 'refreshed' in result && result.refreshed
+      notice.value = t(refreshed ? 'tokenGuardV2.tokenRefreshed' : successKey, { account: item.account_name })
+    }
   } catch (value) {
     error.value = message(value)
   } finally {
@@ -864,20 +867,7 @@ async function act(item: TokenGuardV2Account, action: () => Promise<unknown>, su
 
 const probe = (item: TokenGuardV2Account) => act(item, () => probeTokenGuardV2Account(item.account_id), 'tokenGuardV2.inspectionQueued')
 async function relogin(item: TokenGuardV2Account, force = false) {
-  if (busyId.value) return
-  busyId.value = item.account_id
-  error.value = ''
-  notice.value = ''
-  try {
-    const result = await reloginTokenGuardV2Account(item.account_id, force)
-    const refreshed = !!result && typeof result === 'object' && 'refreshed' in result && result.refreshed
-    notice.value = t(refreshed ? 'tokenGuardV2.tokenRefreshed' : 'tokenGuardV2.reloginQueued', { account: item.account_name })
-    await load(true)
-  } catch (value) {
-    error.value = message(value)
-  } finally {
-    busyId.value = 0
-  }
+  await act(item, () => reloginTokenGuardV2Account(item.account_id, force), 'tokenGuardV2.reloginQueued')
 }
 async function resumeBudget(item: TokenGuardV2Account) {
   if (mutationBusy.value) return
