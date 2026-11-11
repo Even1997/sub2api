@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- pywebview builds its native bridge with new Function; no remote scripts or renderer networking. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'">
+<title>狗王 · 桌面监控</title>
+<style>
+:root{color-scheme:light dark;--bg:light-dark(#fff,#202127);--tile:light-dark(#f6f7fa,#292b33);--text:light-dark(#202736,#f0f1f5);--muted:light-dark(#69758b,#adb6c7);--line:light-dark(#e9ecf1,#373b46);--purple:light-dark(#8054e8,#b59aff);--soft-purple:light-dark(#f0eaff,#393045);--green:light-dark(#15965b,#64d49b);--orange:light-dark(#c98010,#f2be65);--red:light-dark(#c54545,#ff9090)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:13px "Segoe UI","Microsoft YaHei",sans-serif;user-select:none}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid var(--purple);outline-offset:2px}button:disabled{opacity:.5;cursor:wait}[hidden]{display:none!important}
+.app{height:100vh;display:flex;flex-direction:column;border:1px solid var(--line);overflow:hidden}header{padding:15px 16px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0}.brand{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;flex:1;min-width:0;cursor:move}.brandmark{width:28px;height:28px;border-radius:8px;background:var(--soft-purple);color:var(--purple);display:grid;place-items:center}.brandmark svg{width:18px;height:18px}.site{display:block;max-width:135px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;color:var(--muted);font-weight:400;margin-top:2px}.window-controls{display:flex;gap:3px}.tool{border:0;background:transparent;color:var(--muted);border-radius:7px;padding:6px;min-width:27px;height:28px;display:grid;place-items:center}.tool:hover{background:var(--tile)}.tool svg{width:14px;height:14px}.tool[aria-pressed=true]{background:var(--soft-purple);color:var(--purple)}.close:hover{background:var(--red);color:var(--bg)}
+.tabs{display:flex;background:var(--tile);padding:4px;margin:0 12px 12px;border-radius:10px;gap:4px;flex-shrink:0}.tab{flex:1;border:0;border-radius:7px;padding:8px;background:transparent;color:var(--muted);font-size:12px}.tab[aria-selected=true]{background:var(--bg);color:var(--purple);box-shadow:0 1px 4px #0000000c}.content{overflow:auto;flex:1;min-height:0;padding-bottom:4px}.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;padding:0 12px}.metric{background:var(--tile);padding:14px;border-radius:12px;min-width:0;position:relative}.label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-bottom:9px}.label svg{height:14px;width:14px;color:var(--purple)}.tokens .label svg{color:var(--orange)}.value{font-size:27px;font-weight:600;letter-spacing:-.7px;font-variant-numeric:tabular-nums;white-space:nowrap}.unit{font-size:12px;letter-spacing:0;color:var(--muted);font-weight:400;margin-left:4px}.sub{font-size:11px;color:var(--muted);margin-top:7px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-variant-numeric:tabular-nums}.sub strong{font-weight:500;color:var(--purple)}.amounts{gap:3px;user-select:text}.amounts span:nth-child(1){color:var(--green)}.amounts span:nth-child(3){color:var(--orange)}.slash{opacity:.5}.group{grid-column:1/-1;display:flex;justify-content:space-between;gap:8px;padding:8px 3px 2px;font-size:11px;color:var(--muted)}.group b{color:var(--text);font-weight:500}.quota-value{font-size:22px}.quota-total{margin-top:4px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}.good{color:var(--green)}.bad{color:var(--red)}.stale .value,.stale .sub strong,.stale .amounts span{color:var(--muted)}.stale .label:after{content:"过期";margin-left:auto;color:var(--orange);font-size:10px}.data-note{padding:10px 16px 0;font-size:10px;color:var(--muted)}
+.ranking{padding:0 12px}.rank-caption{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:11px;padding:3px 4px 12px}.rank-caption b{color:var(--text);font-weight:500}table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}col:first-child{width:55%}col:nth-child(2){width:22%}col:nth-child(3){width:23%}th{font-size:11px;font-weight:400;background:var(--tile);color:var(--muted);text-align:right;padding:9px 5px;position:sticky;top:0}th:first-child{text-align:left;border-radius:7px 0 0 7px}th:last-child{border-radius:0 7px 7px 0}th:nth-child(2){color:var(--purple)}td{padding:10px 5px;text-align:right;border-bottom:1px solid var(--line);vertical-align:middle}td:first-child{text-align:left}td:last-child{color:var(--green);white-space:nowrap}tr:last-child td{border-bottom:0}.rank-user{display:flex;align-items:center;gap:7px}.rank-number{flex:none;width:18px;height:18px;border-radius:50%;background:var(--tile);color:var(--muted);display:grid;place-items:center;font-size:11px}tr:first-child .rank-number{background:var(--soft-purple);color:var(--purple)}.email{display:block;overflow-wrap:anywhere;font-size:11px;user-select:text}.user-id{display:block;color:var(--muted);font-size:11px;margin-top:3px}.empty{text-align:center;padding:36px 12px;color:var(--muted);font-size:12px}.ranking.stale td{color:var(--muted)}
+footer{border-top:1px solid var(--line);padding:10px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--muted);flex-shrink:0}.status{display:flex;align-items:center;gap:6px}.dot{width:6px;height:6px;flex:none;border-radius:50%;background:var(--orange)}.dot.live{background:var(--green)}.setup{margin:0 12px 10px;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:12px;color:var(--muted)}.setup button{background:var(--soft-purple);color:var(--purple);border:0;border-radius:7px;padding:8px 12px;margin-top:8px}.issue{margin:0 12px 10px;color:var(--orange);font-size:11px;overflow-wrap:anywhere}svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.defs{position:absolute;width:0;height:0;overflow:hidden}
+@media(max-width:380px){.metric{padding:12px 10px}.value{font-size:24px}.quota-value{font-size:20px}.window-controls{gap:0}.site{max-width:110px}}
+</style>
+</head>
+<body>
+<svg class="defs" aria-hidden="true"><defs>
+<symbol id="i-pulse" viewBox="0 0 24 24"><path d="M2 12h5l3-8 4 16 3-8h5"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="m16 3 5 5-4 1-3 5 1 3-2 2-8-8 2-2 3 1 5-3zM3 21l6-6"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="m9 3-1 3-3 1-2 4 2 2v4l4 2 3-1 3 1 4-2v-4l2-2-2-4-3-1-1-3z"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 5v9l-9 5-9-5V8zm0 10v9M3 8l9 5 9-5M8 5l9 5"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="m13 2-9 12h7l-1 8 10-13h-8z"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="7" r="3"/><path d="M2 21v-2a7 7 0 0 1 14 0v2M17 4a3 3 0 0 1 0 6m2 5a5 5 0 0 1 3 5"/></symbol>
+<symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3v4l10 10v4M17 3v4L7 17v4"/></symbol>
+</defs></svg>
+<main class="app">
+<header><div class="brand pywebview-drag-region"><span class="brandmark"><svg><use href="#i-pulse"/></svg></span><span>狗王<span class="site" id="host">桌面监控</span></span></div><div class="window-controls">
+<button class="tool" id="pin" aria-label="置顶" aria-pressed="true" title="置顶"><svg><use href="#i-pin"/></svg></button>
+<button class="tool" id="settings" aria-label="选择连接配置" title="选择 .env 连接配置"><svg><use href="#i-gear"/></svg></button>
+<button class="tool" id="minimize" aria-label="最小化" title="最小化">−</button><button class="tool close" id="close" aria-label="关闭" title="关闭">×</button></div></header>
+<nav class="tabs" aria-label="监控页面"><button class="tab" id="overview-tab" aria-controls="overview" aria-selected="true">实时概览</button><button class="tab" id="ranking-tab" aria-controls="ranking" aria-selected="false">今日排行</button></nav>
+<div class="setup" id="setup" hidden><div id="setup-text">选择包含站点地址和管理密钥的 .env 文件。</div><button id="choose">选择配置文件</button></div>
+<div class="issue" id="issue" role="status" hidden></div>
+<div class="content">
+<section id="overview" aria-labelledby="overview-tab"><div class="grid">
+<section class="metric performance" data-section="stats concurrency"><div class="label"><svg><use href="#i-bolt"/></svg>性能指标</div><div class="value"><span id="rpm">—</span><span class="unit">RPM</span></div><div class="sub"><strong id="concurrency">—</strong> OpenAI 并发 <span>/</span><strong id="tpm">—</strong> TPM</div></section>
+<section class="metric tokens" data-section="stats"><div class="label"><svg><use href="#i-box"/></svg>今日 Token</div><div class="value" id="tokens">—</div><div class="sub amounts"><span id="actual" title="实际扣费">—</span><span class="slash">/</span><span id="account-cost" title="账号成本">—</span><span class="slash">/</span><span id="standard" title="标准计费">—</span></div></section>
+<section class="metric" data-section="ops"><div class="label"><svg><use href="#i-clock"/></svg>首字延迟</div><div class="value"><span id="ttft">—</span><span class="unit">s</span></div><div class="sub">最近 5 分钟 · 平均首 Token</div></section>
+<section class="metric" data-section="ops"><div class="label"><svg><use href="#i-alert"/></svg>错误率</div><div class="value" id="error-value"><span id="error-rate">—</span><span class="unit">%</span></div><div class="sub" id="error-hint">最近 5 分钟 · 后台口径</div></section>
+<div class="group"><b>稳定不降智</b><span id="group-label">分组 #3</span></div>
+<section class="metric" data-section="capacity"><div class="label"><svg><use href="#i-users"/></svg>可用账号</div><div class="value"><span id="available">—</span><span class="unit">个</span></div><div class="sub">OAuth · 后台正常可调度数</div></section>
+<section class="metric" data-section="capacity"><div class="label"><svg><use href="#i-hourglass"/></svg>5h 预估</div><div class="value quota-value" id="quota-remaining">—</div><div class="quota-total">/ <span id="quota-total">—</span><span> 预估总额</span></div><div class="sub" id="quota-coverage">剩余额度 / 预估总额</div></section>
+</div><div class="data-note">金额顺序：实际扣费 / 账号成本 / 标准计费</div></section>
+<section class="ranking" id="ranking" aria-labelledby="ranking-tab" hidden><div class="rank-caption"><b>今日用户使用排行</b><span id="rank-date">北京时间 · Top 50</span></div>
+<table aria-label="今日用户使用排行"><colgroup><col><col><col></colgroup><thead><tr><th scope="col">用户</th><th scope="col" aria-sort="descending">总 Token ↓</th><th scope="col" title="实际扣费">费用</th></tr></thead><tbody id="rank-body"></tbody></table><div class="empty" id="rank-empty">正在读取排行…</div></section>
+</div>
+<footer><span class="status"><span class="dot" id="dot"></span><span id="status">正在连接…</span></span><span id="updated">每 5 秒读取</span></footer>
+</main>
+<script>
+(() => {
+'use strict';
+const $=id=>document.getElementById(id);
+let page='overview',busy=false,last=null,bridgeReady=false;
+const valid=v=>typeof v==='number'&&Number.isFinite(v);
+const compact=v=>!valid(v)?'—':v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(2)+'K':v.toLocaleString('en-US');
+const money=(v,d=2)=>valid(v)?'$'+v.toFixed(d):'—';
+const text=(id,value)=>$(id).textContent=value;
+const sectionNames={stats:'今日统计',ops:'首字与错误率',capacity:'账号与额度',concurrency:'并发',ranking:'今日排行'};
+function render(s){
+ last=s;const sections=s.sections||{};const data=k=>sections[k]?.data||{};
+ const stats=data('stats'),ops=data('ops'),cap=data('capacity');
+ text('host',s.host);$('host').title=s.host;text('group-label','分组 #'+s.group_id);
+ text('rpm',compact(stats.rpm));text('tpm',compact(stats.tpm));text('concurrency',compact(data('concurrency').used));
+ text('tokens',compact(stats.today_tokens));text('actual',money(stats.today_actual_cost));text('account-cost',money(stats.today_account_cost));text('standard',money(stats.today_cost));
+ text('ttft',valid(ops.ttft_ms)?(ops.ttft_ms/1000).toFixed(2):'—');
+ text('error-rate',valid(ops.error_rate)?(ops.error_rate*100).toFixed(2):'—');
+ $('error-value').classList.toggle('good',valid(ops.error_rate)&&ops.error_rate===0);$('error-value').classList.toggle('bad',valid(ops.error_rate)&&ops.error_rate>0);
+ text('error-hint',valid(ops.error_count_sla)?'异常 '+ops.error_count_sla+' 次 · 5 分钟 SLA 口径':'最近 5 分钟 · 后台口径');
+ text('available',compact(cap.available));text('quota-remaining',money(cap.remaining_cost));text('quota-total',money(cap.estimated_cost));
+ text('quota-coverage',valid(cap.estimated_accounts)&&valid(cap.total_accounts)?'估算覆盖 '+cap.estimated_accounts+' / '+cap.total_accounts+' 个':'等待后台估算');
+ document.querySelectorAll('[data-section]').forEach(el=>{
+  const names=el.dataset.section.split(' ');el.classList.toggle('stale',names.some(n=>sections[n]?.stale));
+  el.title=names.map(n=>sectionNames[n]+': '+(sections[n]?.error||(sections[n]?.stale?'数据已过期':'后台原值'))).join('\n');
+ });
+ $('setup').hidden=s.configured&&!s.config_error;text('setup-text',s.config_error||'请选择 .env 连接配置。');
+ if(typeof s.pinned==='boolean')$('pin').setAttribute('aria-pressed',String(s.pinned));
+ const rank=data('ranking');const tbody=$('rank-body');tbody.replaceChildren();
+ (rank.users||[]).forEach((u,i)=>{
+  const tr=document.createElement('tr'),a=document.createElement('td'),b=document.createElement('td'),c=document.createElement('td');
+  const wrap=document.createElement('div');wrap.className='rank-user';
+  const index=document.createElement('span');index.className='rank-number';index.textContent=String(i+1);
+  const identity=document.createElement('span'),email=document.createElement('span'),id=document.createElement('span');
+  email.className='email';email.textContent=u.email;id.className='user-id';id.textContent='#'+u.user_id;
+  identity.append(email,id);wrap.append(index,identity);a.append(wrap);b.textContent=compact(u.total_tokens);c.textContent=money(u.actual_cost,4);tr.append(a,b,c);tbody.append(tr);
+ });
+ $('ranking').classList.toggle('stale',Boolean(sections.ranking?.stale));
+ $('rank-empty').hidden=Boolean(rank.users?.length);
+ text('rank-empty',!sections.ranking?'正在读取排行…':sections.ranking.error?'排行读取失败，稍后自动重试':!sections.ranking.data?'正在读取今日排行…':'今日暂无使用记录');
+ text('rank-date',s.day+' · Top 50');
+ const visible=page==='ranking'?['ranking']:['stats','ops','capacity','concurrency'];
+ const failed=visible.filter(k=>sections[k]?.error);const stale=visible.some(k=>sections[k]?.stale);const waiting=visible.some(k=>!sections[k]);
+ $('issue').hidden=!failed.length;text('issue',failed.map(k=>sectionNames[k]+'：'+sections[k].error).join('；'));
+ const online=s.configured&&!failed.length&&!stale&&!waiting;
+ $('dot').classList.toggle('live',online);
+ text('status',!s.configured?'等待配置':failed.length?'读取异常':stale?'数据已过期':waiting?'正在读取…':'已连接');
+ const times=visible.map(k=>sections[k]?.updated_at).filter(valid);
+ text('updated',times.length?'更新 '+new Date(Math.min(...times)*1000).toLocaleTimeString('zh-CN',{hour12:false,timeZone:'Asia/Shanghai'}):'等待后台数据');
+}
+async function invoke(name,...args){if(!bridgeReady)return;try{return await window.pywebview.api[name](...args);}catch{ text('status','窗口连接异常');$('dot').classList.remove('live'); }}
+async function refresh(){if(busy||!bridgeReady)return;busy=true;try{const s=await invoke('snapshot');if(s)render(s);}finally{busy=false;}}
+for(const name of ['overview','ranking'])$(name+'-tab').addEventListener('click',()=>{
+ page=name;for(const n of ['overview','ranking']){$(n).hidden=n!==page;$(n+'-tab').setAttribute('aria-selected',String(n===page));}
+ invoke('page',page);if(last)render(last);refresh();
+});
+$('pin').addEventListener('click',async()=>{const pinned=await invoke('pin',$('pin').getAttribute('aria-pressed')!=='true');if(typeof pinned==='boolean')$('pin').setAttribute('aria-pressed',String(pinned));});
+for(const name of ['minimize','close'])$(name).addEventListener('click',()=>invoke(name));
+async function choose(){for(const id of ['settings','choose'])$(id).disabled=true;try{await invoke('choose_config');await refresh();}finally{for(const id of ['settings','choose'])$(id).disabled=false;}}
+$('settings').addEventListener('click',choose);$('choose').addEventListener('click',choose);
+window.addEventListener('pywebviewready',()=>{bridgeReady=true;refresh();});
+setInterval(refresh,1000);
+})();
+</script>
+</body>
+</html>
