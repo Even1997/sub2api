@@ -63,8 +63,8 @@ backup() {
   sudo -n cp /etc/caddy/Caddyfile "$BACKUP_DIR/Caddyfile"
   for db in "${DBS[@]}"; do
     sudo -n docker exec sub2api-postgres pg_dump -U sub2api -Fc -Z1 "$db" | sudo -n tee "$BACKUP_DIR/$db.dump" >/dev/null
-    sudo -n cat "$BACKUP_DIR/$db.dump" | sudo -n docker exec -i sub2api-postgres pg_restore --list >/dev/null
     sudo -n chmod 600 "$BACKUP_DIR/$db.dump"
+    sudo -n cat "$BACKUP_DIR/$db.dump" | sudo -n docker exec -i sub2api-postgres pg_restore --file=/dev/null
     printf 'database_backup_verified %s\n' "$db"
   done
   for worker in "${WORKERS[@]}"; do
