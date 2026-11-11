@@ -9,7 +9,8 @@ import { pathToFileURL } from 'node:url'
 const output = process.env.SCREENSHOT_DIR
 if (!output || !process.env.SOURCE_BASE || !process.env.BASELINE_ROOT || !process.env.PLAYWRIGHT_ROOT) throw Error('Missing isolated CI configuration')
 const fallbackEvidence = process.env.EVIDENCE_SCENARIO === 'apikey-fallback'
-if (fallbackEvidence) assert.equal(process.env.SOURCE_BASE, '8545bf9ffac5a870ade18fbe7c4b61a48755c8db')
+const currentOnly = process.env.CURRENT_ONLY === 'true'
+if (fallbackEvidence && !currentOnly) assert.equal(process.env.SOURCE_BASE, '8545bf9ffac5a870ade18fbe7c4b61a48755c8db')
 mkdirSync(output, { recursive: true })
 const manifest = {
   base_commit: process.env.SOURCE_BASE, head_commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
@@ -18,9 +19,9 @@ const manifest = {
   results: [], screenshots: [], errors: [],
 }
 const { chromium } = await import(pathToFileURL(join(process.env.PLAYWRIGHT_ROOT, 'index.mjs')).href)
-const browser = await chromium.launch({ headless: true })
+const browser = await chromium.launch({ headless: true, ...(process.env.SUB2API_BROWSER_CHANNEL ? { channel: process.env.SUB2API_BROWSER_CHANNEL } : {}) })
 try {
-  for (const mode of ['before', 'after']) {
+  for (const mode of currentOnly ? ['after'] : ['before', 'after']) {
     const root = resolve(mode === 'before' ? process.env.BASELINE_ROOT : 'frontend')
     const require = createRequire(join(root, 'package.json'))
     const { build, preview } = await import(pathToFileURL(join(root, 'node_modules/vite/dist/node/index.js')).href)
@@ -61,6 +62,7 @@ try {
             const matches=${fallbackEvidence}?accounts.filter(account=>params.status!=='active'||account.schedulable):[];
             data={items:matches.slice((params.page-1)*100,params.page*100),total:matches.length,page:params.page,page_size:100,pages:Math.max(1,Math.ceil(matches.length/100))};
           }
+          else if(path==='/admin/proxies/all')data=[];
           else if(path==='/admin/groups/all')data=groups;
           else if(path==='/admin/groups')data={items:groups,total:groups.length,page:1,page_size:100,pages:1};
           else if(path==='/admin/account-quality-plans')data=[];
@@ -72,8 +74,11 @@ try {
         app.use(router).use(createI18n({legacy:false,locale:new URLSearchParams(location.search).get('lang')||'zh',messages:{zh,en}})).mount('#app');
       `)
       await build({ root, configFile: false, cacheDir: join(output, `${mode}-cache`),
-        resolve: { alias: [{ find: '@/components/layout/AppLayout.vue', replacement: shell }, { find: '@', replacement: join(root, 'src') }] }, plugins: [vue()],
-        css: { postcss: { plugins: [tailwindcss({ ...tailwindConfig, content: [html, join(root, 'src/**/*.{vue,js,ts}')] }), autoprefixer()] } },
+        resolve: { alias: [{ find: '@/components/layout/AppLayout.vue', replacement: shell }, { find: '@', replacement: join(root, 'src') }] }, plugins: [{ name: 'isolated-tailwind-config', enforce: 'pre', transform(code, id) {
+          // The source @config overrides inline Tailwind options and resolves its globs from the harness cwd.
+          if (id.replaceAll('\\', '/').endsWith('/src/style.css')) return code.replace(/^@config[^\n]*;\s*/m, '')
+        } }, vue()],
+        css: { postcss: { plugins: [tailwindcss({ ...tailwindConfig, content: [html, join(root, 'src/**/*.{vue,js,ts}')].map(path => path.replaceAll('\\', '/')) }), autoprefixer()] } },
         build: { outDir: buildDir, emptyOutDir: true, minify: false, target: 'esnext', rollupOptions: { input: html } },
       })
       server = await preview({ root, configFile: false, build: { outDir: buildDir }, preview: { host: '127.0.0.1', port: 4198, strictPort: true } })

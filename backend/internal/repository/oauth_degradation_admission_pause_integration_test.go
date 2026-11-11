@@ -67,7 +67,7 @@ func TestOAuthDegradationNativePauseSurvivesAdmissionPass(t *testing.T) {
 }
 
 func TestOAuthDegradationMigratedPauseSurvivesAdmissionPass(t *testing.T) {
-	migration, err := dbmigrations.FS.ReadFile("338_oauth_degradation_native_controls.sql")
+	migration, err := dbmigrations.FS.ReadFile("344_oauth_degradation_native_controls.sql")
 	require.NoError(t, err)
 	for _, tc := range []struct {
 		name, action string

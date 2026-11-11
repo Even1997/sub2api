@@ -352,7 +352,7 @@ func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account
 		}
 		for i := range groups {
 			if len(groups[i].AllowedModels) > 0 {
-				if err := persistAccountGroupAllowedModels(ctx, r.sql, account.ID, groups[i].GroupID, groups[i].AllowedModels); err != nil {
+				if err := persistAccountGroupAllowedModels(ctx, txClient, account.ID, groups[i].GroupID, groups[i].AllowedModels); err != nil {
 					return err
 				}
 			}
@@ -2351,7 +2351,7 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 	}
 
 	// 绑定关系是整体删除重建的；仍保留的分组要沿用原有的模型限制，否则每次改分组都会把它清掉。
-	existingAllowedModels, err := loadAccountGroupAllowedModels(ctx, r.sql, accountID)
+	existingAllowedModels, err := loadAccountGroupAllowedModels(ctx, txClient, accountID)
 	if err != nil {
 		return err
 	}
@@ -2380,7 +2380,7 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 	}
 	for _, groupID := range groupIDs {
 		if models := existingAllowedModels[groupID]; len(models) > 0 {
-			if err := persistAccountGroupAllowedModels(ctx, r.sql, accountID, groupID, models); err != nil {
+			if err := persistAccountGroupAllowedModels(ctx, txClient, accountID, groupID, models); err != nil {
 				return err
 			}
 		}
@@ -2402,6 +2402,9 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 // SetGroupAllowedModels 覆盖账号在各个已绑定分组内的模型限制：allowed 里没有的分组恢复为不限制，
 // 账号未绑定的分组被忽略。有变化时通知调度器刷新该账号的缓存。
 func (r *accountRepository) SetGroupAllowedModels(ctx context.Context, accountID int64, allowed map[int64][]string) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.SetGroupAllowedModels(ctx, accountID, allowed)
+	}
 	tx, err := r.client.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
 		return err
@@ -2424,7 +2427,7 @@ func (r *accountRepository) SetGroupAllowedModels(ctx context.Context, accountID
 	}
 
 	changedGroupIDs := make([]int64, 0, len(entries))
-	current, err := loadAccountGroupAllowedModels(ctx, r.sql, accountID)
+	current, err := loadAccountGroupAllowedModels(ctx, txClient, accountID)
 	if err != nil {
 		return err
 	}
@@ -2437,23 +2440,22 @@ func (r *accountRepository) SetGroupAllowedModels(ctx context.Context, accountID
 		if slices.Equal(next, current[groupID]) {
 			continue
 		}
-		if err := persistAccountGroupAllowedModels(ctx, r.sql, accountID, groupID, next); err != nil {
+		if err := persistAccountGroupAllowedModels(ctx, txClient, accountID, groupID, next); err != nil {
 			return err
 		}
 		changedGroupIDs = append(changedGroupIDs, groupID)
 	}
 
+	if len(changedGroupIDs) > 0 {
+		payload := buildSchedulerGroupPayload(changedGroupIDs)
+		if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+			return err
+		}
+	}
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
 			return err
 		}
-	}
-	if len(changedGroupIDs) == 0 {
-		return nil
-	}
-	payload := buildSchedulerGroupPayload(changedGroupIDs)
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue group allowed models failed: account=%d err=%v", accountID, err)
 	}
 	return nil
 }

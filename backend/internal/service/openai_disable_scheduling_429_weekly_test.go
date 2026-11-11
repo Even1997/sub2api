@@ -217,7 +217,8 @@ func TestWeekly429ThresholdAppliesBeforeGatewayAndBPSPersistence(t *testing.T) {
 			gateway := &OpenAIGatewayService{rateLimitService: rates}
 			rates.SetAccountRuntimeBlocker(gateway)
 			if bps {
-				gateway.coolDownExcelBPS(t.Context(), account, "5", headers)
+				headers.Set("Retry-After", "5")
+				gateway.coolDownExcelBPS(t.Context(), account, headers, nil)
 			} else {
 				gateway.handleOpenAIAccountUpstreamError(t.Context(), account, 429, headers, nil)
 			}

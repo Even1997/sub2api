@@ -20,7 +20,7 @@
 
 达到上限后删除的是检测规则及其历史、质量恢复记录，账号本身保留。删除沿用原生所有权保护，仍持有模型隔离、分组隔离或模型冷却的规则会保留，不自动恢复或清除账号限制。动态分组规则的账号关联仍保留，已删除的规则不会被模板补建。
 
-规则配置使用 `pelican_config.quality.oauth_401_max_rounds`。运行时计数由迁移 `338_quality_oauth_401_streaks.sql` 创建的独立表保存；迁移 `339_quality_oauth_401_trusted_revocation.sql` 增加内部可信证据字段，并清零旧版本可能采信通用错误正文的计数。回退二进制不会恢复已经删除的规则和历史。启用前需完成所有执行检测任务实例的升级。
+规则配置使用 `pelican_config.quality.oauth_401_max_rounds`。运行时计数由迁移 `345_quality_oauth_401_streaks.sql` 创建的独立表保存；迁移 `346_quality_oauth_401_trusted_revocation.sql` 增加内部可信证据字段，并清零旧版本可能采信通用错误正文的计数。回退二进制不会恢复已经删除的规则和历史。启用前需完成所有执行检测任务实例的升级。
 
 ## 降智后复测静置
 

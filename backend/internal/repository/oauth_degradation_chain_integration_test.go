@@ -219,7 +219,7 @@ func degradationGateway(t *testing.T, repo *accountRepository, snapshot *service
 	cfg := &config.Config{}
 	cfg.Runtime.Role = config.RuntimeRoleGateway // No upstream background traffic.
 	cfg.Gateway.Scheduling.LoadBatchEnabled = true
-	gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, NewGatewayCache(rdb), cfg, snapshot, service.NewConcurrencyService(NewConcurrencyCache(rdb, 1, 1)), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, NewGatewayCache(rdb), cfg, snapshot, service.NewConcurrencyService(NewConcurrencyCache(rdb, 1, 1)), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	t.Cleanup(func() {
 		gateway.StopOpenAICodexTicketHarvester()
 		gateway.CloseOpenAIWSPool()

@@ -33,7 +33,7 @@ func TestOpenAIResponsesRouteOffersManagedBPSParent(t *testing.T) {
 		Status: service.StatusActive, Schedulable: true, Priority: 5,
 		Credentials: map[string]any{"access_token": "fixture-ordinary-token"},
 	}
-	handler := newOpenAIResponsesFailoverTestHandler(t, &issue715Upstream{}, managed, ordinary)
+	handler := newOpenAIResponsesFailoverTestHandlerWithCache(t, &issue715Upstream{}, nil, managed, ordinary)
 	c, _ := newIssue715Context(t, `{"model":"gpt-5.1","stream":true,"input":[{"type":"message","role":"user","content":"hello"}]}`)
 
 	handler.Responses(c)

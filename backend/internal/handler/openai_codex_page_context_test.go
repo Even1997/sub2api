@@ -58,7 +58,7 @@ func TestOpenAIResponsesCodexPageContextReachesUpstream(t *testing.T) {
 					model = "gpt-5.6-luna"
 				}
 				upstream := &codexPageContextUpstream{}
-				h := newOpenAIResponsesFailoverTestHandler(t, upstream, service.Account{
+				h := newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, nil, service.Account{
 					ID: 1, Platform: service.PlatformOpenAI, Type: accountType, Status: service.StatusActive, Schedulable: true,
 					Credentials: map[string]any{"api_key": "synthetic", "access_token": "synthetic"},
 				})

@@ -3,11 +3,60 @@
 package repository
 
 import (
+	"context"
 	"strings"
+	"testing"
+	"time"
+
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
+
+func TestGroupAllowedModelsTransactionBoundaries(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	client := testEntClient(t)
+	repo := newAccountRepositoryWithSQL(client, integrationDB, nil)
+	group := mustCreateGroup(t, client, &service.Group{Name: t.Name(), Platform: service.PlatformOpenAI})
+	account := &service.Account{Name: t.Name(), Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Credentials: map[string]any{}, Extra: map[string]any{}}
+	defer func() {
+		if account.ID != 0 {
+			_, err := integrationDB.ExecContext(context.Background(), "DELETE FROM scheduler_outbox WHERE account_id=$1", account.ID)
+			require.NoError(t, err)
+			require.NoError(t, client.Account.DeleteOneID(account.ID).Exec(context.Background()))
+		}
+		require.NoError(t, client.Group.DeleteOneID(group.ID).Exec(context.Background()))
+	}()
+	require.NoError(t, repo.CreateWithAccountGroups(ctx, account, []service.AccountGroup{{GroupID: group.ID, Priority: 1, AllowedModels: []string{"gpt-5.5"}}}))
+	got, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-5.5"}, got.GroupAllowedModels(group.ID), "new rows and restrictions commit together")
+	require.NoError(t, repo.SetGroupAllowedModels(ctx, account.ID, map[int64][]string{group.ID: {"gpt-6-luna"}}))
+	var before int
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE account_id=$1", account.ID).Scan(&before))
+	tx, err := client.Tx(ctx)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+	require.NoError(t, repo.SetGroupAllowedModels(txCtx, account.ID, map[int64][]string{group.ID: {"gpt-6.1-terra"}}))
+	require.NoError(t, repo.BindGroups(txCtx, account.ID, []int64{group.ID}))
+	inTransaction, err := repo.GetByID(txCtx, account.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-6.1-terra"}, inTransaction.GroupAllowedModels(group.ID))
+	outside, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-6-luna"}, outside.GroupAllowedModels(group.ID), "uncommitted restrictions stay private")
+	require.NoError(t, tx.Rollback())
+	after, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-6-luna"}, after.GroupAllowedModels(group.ID))
+	var events int
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE account_id=$1", account.ID).Scan(&events))
+	require.Equal(t, before, events, "rollback must also discard the scheduler events")
+}
 
 func (s *AccountRepoSuite) groupAllowedModelsByGroup(accountID int64) map[int64][]string {
 	s.T().Helper()

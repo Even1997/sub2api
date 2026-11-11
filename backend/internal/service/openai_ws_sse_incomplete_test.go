@@ -172,7 +172,8 @@ func TestOpenAIWSSSEIncompleteMetadataThenOverloadCannotEnableFailover(t *testin
 	require.Error(t, err)
 	var failover *UpstreamFailoverError
 	require.False(t, errors.As(err, &failover), "buffering must not turn an already-started metadata stream into a new account attempt")
-	require.Contains(t, w.Body.String(), "server_is_overloaded")
+	require.Contains(t, w.Body.String(), `"code":"server_error"`)
+	require.Contains(t, w.Body.String(), "synthetic busy")
 	messages := issue776SSEMessages(t, w.Body.String())
 	require.GreaterOrEqual(t, len(messages), 3)
 	require.JSONEq(t, issue776RateLimits, string(messages[0]))

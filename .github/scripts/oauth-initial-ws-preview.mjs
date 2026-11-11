@@ -52,6 +52,7 @@ const expected={page:1,page_size:100,platform:'openai',type:'apikey',lite:'1',so
 if(request.method!=='get'||Object.keys(request.params||{}).length!==Object.keys(expected).length||Object.entries(expected).some(([key,value])=>request.params[key]!==value))throw Error('Unexpected preview account query');
 data={items:[],page:1,page_size:100,pages:1,total:0};break;
 }
+case '/admin/proxies/all':data=[];break;
 case '/admin/groups/all':data=groups;break;
 case '/admin/groups':data={items:groups,page:1,pages:1,page_size:100,total:groups.length};break;
 case '/admin/account-quality-plans':data=[];break;

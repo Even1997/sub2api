@@ -67,7 +67,7 @@ func TestIssue715HTTPNativeCompactionReachesProvenOwner(t *testing.T) {
 		t.Run(accountType, func(t *testing.T) {
 			accounts := issue715AccountsOfType(accountType)
 			upstream := &issue715HeaderUpstream{issue715Upstream: &issue715Upstream{}}
-			handler := newOpenAIResponsesFailoverTestHandler(t, upstream, accounts...)
+			handler := newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, nil, accounts...)
 			status, first := issue715Request(t, handler, issue715Body(false, true), 99, "fixture-715-thread", false)
 			require.Equal(t, 200, status, first)
 			accounts[0].Priority, accounts[1].Priority = 100, 0
@@ -91,7 +91,7 @@ func TestIssue715HTTPNativeCompactionDoesNotRelaxOwnerChecks(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			accounts := issue715Accounts()
 			upstream := &issue715Upstream{}
-			handler := newOpenAIResponsesFailoverTestHandler(t, upstream, accounts...)
+			handler := newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, nil, accounts...)
 			status, _ := issue715Request(t, handler, issue715Body(false, true), 99, "fixture-715-thread", false)
 			require.Equal(t, 200, status)
 			accounts[0].Priority, accounts[1].Priority = 100, 0
@@ -116,7 +116,7 @@ func TestIssue715HTTPLegacyCompactStaysOutsideContract(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	accounts := issue715Accounts()
 	upstream := &issue715Upstream{}
-	handler := newOpenAIResponsesFailoverTestHandler(t, upstream, accounts...)
+	handler := newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, nil, accounts...)
 	status, _ := issue715Request(t, handler, issue715Body(false, false), 99, "fixture-715-thread", false)
 	require.Equal(t, 200, status)
 
@@ -131,7 +131,7 @@ func TestIssue715HTTPNativeCompactionNeverGrantsOwner(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	accounts := issue715Accounts()
 	upstream := &issue715Upstream{}
-	handler := newOpenAIResponsesFailoverTestHandler(t, upstream, accounts...)
+	handler := newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, nil, accounts...)
 	// No prior proof: an unseen task compacts through ordinary admission and
 	// must not turn that compaction into an ownership observation.
 	status, answer := issue715Request(t, handler, issue715CompactionBody(), 99, "fixture-715-thread", false)
