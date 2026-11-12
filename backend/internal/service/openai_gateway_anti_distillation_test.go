@@ -214,7 +214,7 @@ func TestOpenAIUsageProtectionCCFallbackRequiresCompletedGeneration(t *testing.T
 				var result *OpenAIForwardResult
 				var err error
 				if protocol == "responses" {
-					result, err = svc.streamChatCompletionsAsResponses(c, resp, forceChatResponsesFallbackAccount(), "gpt-5.4", nil, nil, false, nil, "gpt-5.4", "gpt-5.4", nil, nil, false, time.Now(), nil)
+					result, err = svc.streamChatCompletionsAsResponses(c, resp, forceChatResponsesFallbackAccount(), "gpt-5.4", nil, nil, false, nil, "gpt-5.4", "gpt-5.4", nil, nil, time.Now(), nil)
 				} else {
 					result, err = svc.streamChatCompletionsAsAnthropic(c, resp, forceChatResponsesFallbackAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", nil, nil, time.Now())
 				}

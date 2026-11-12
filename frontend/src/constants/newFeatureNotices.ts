@@ -4,6 +4,14 @@
  * browser; use a new ID to announce the feature again in a later release.
  */
 export const NEW_FEATURE_NOTICES = {
+  pelicanRandomQuestionBank: 'pelican-random-question-bank',
+  antigravityUsageQuery: 'antigravity-usage-query-initial-announcement',
+  openaiCacheWriteTTL12h: 'openai-cache-write-12h-initial-announcement',
+  easyPayRefundSuccessCode: 'easypay-refund-success-code-initial-announcement',
+  settingsSaveDock: 'settings-save-dock-initial-announcement',
+  qwenPlatform: 'qwen-platform-initial-announcement',
+  qwenCache: 'qwen-cache-strict-session-initial-announcement',
+  oauthDegradation429: 'oauth-degradation-429-conditions-initial-announcement',
   oauthDegradationActions: 'oauth-degradation-actions-initial-announcement',
   openaiAPIKeyFallback: 'openai-apikey-fallback-initial-announcement',
   dashboardAccountConcurrency: 'dashboard-account-concurrency-initial-announcement',
@@ -27,6 +35,7 @@ export const NEW_FEATURE_NOTICES = {
   profitOperationsToday: 'profit-operations-today-filter-initial-announcement',
   profitOperationsTimeRanges: 'profit-operations-time-ranges-initial-announcement',
   vipAutoCredit: 'vip-auto-credit-initial-announcement',
+  vipAutoCreditEmail: 'vip-auto-credit-email',
   oauthInitialTOTPRotation429: 'oauth-initial-totp-rotation-on-429-initial-announcement',
   oauthInitialDisableScheduling429: 'oauth-initial-disable-scheduling-on-429-initial-announcement',
   oauthInitialWSSettings: 'oauth-initial-ws-settings-initial-announcement',

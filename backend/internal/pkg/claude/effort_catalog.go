@@ -57,6 +57,16 @@ func isExactEffortFamily(model, family string) bool {
 	return id == family || strings.HasPrefix(id, family+"-")
 }
 
+// IsFable52 identifies Fable 5.2 after provider/local suffix normalization.
+func IsFable52(model string) bool {
+	return normalizeEffortModelID(model) == "claude-fable-5-2"
+}
+
+// IsMythos52 identifies Mythos 5.2 after provider/local suffix normalization.
+func IsMythos52(model string) bool {
+	return normalizeEffortModelID(model) == "claude-mythos-5-2"
+}
+
 func normalizeEffortModelID(model string) string {
 	id := strings.ToLower(strings.TrimSpace(model))
 	id = strings.TrimPrefix(id, "models/")

@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   shell:
     runs-on: macos-15
@@ -14,6 +17,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact candidate head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
       - name: Check deployment scripts
         run: |
           /bin/bash -n deploy/apple-container.sh
@@ -29,6 +34,10 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact candidate head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - name: Check Docker Compose simple mode environment
+        run: /bin/sh deploy/tests/docker-compose-simple-mode-env-test.sh
       - name: Check Docker Compose trusted proxy environment
         run: /bin/sh deploy/tests/docker-compose-trusted-proxies-env-test.sh
       - uses: actions/setup-go@v6
@@ -42,6 +51,7 @@ jobs:
           go version | grep -q 'go1.27.4'
       - name: Install Redis for isolated snapshot adapter checks
         run: |
+          bash .github/scripts/ci-ubuntu-mirrors.sh
           if ! command -v redis-server >/dev/null; then
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends redis-server
@@ -95,14 +105,20 @@ jobs:
         run: make test-unit
       - name: Integration tests
         working-directory: backend
+        env:
+          # Keep real network timing fixtures isolated from other package/DB workloads.
+          # Every integration package and its existing assertions still run.
+          GOFLAGS: '-p=1'
         run: make test-integration
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.SUB2API_SUPPLEMENTARY_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact candidate head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
@@ -125,6 +141,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact candidate head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
@@ -149,6 +167,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact candidate head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
@@ -174,6 +194,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: red
+      - name: Assert exact candidate head
+        working-directory: red
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
       - uses: actions/setup-go@v6
         with:
           go-version-file: red/backend/go.mod
@@ -218,6 +241,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact candidate head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -228,11 +253,13 @@ jobs:
       - run: python -m unittest discover -s deploy/connection-diagnostics -p 'test_collect.py'
 
   prism-adapter:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.SUB2API_SUPPLEMENTARY_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact candidate head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'

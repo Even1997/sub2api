@@ -84,6 +84,7 @@ type OpenAIAccountScheduleRequest struct {
 	StickyWeighted          bool
 	SubscriptionPriority    bool
 	PreserveStickyBinding   bool
+	StrictSessionAffinity   bool
 	// DisableStickyEscape keeps task-owner lookups on their account even when
 	// generic sticky health or concurrency heuristics would prefer another.
 	DisableStickyEscape bool
@@ -471,6 +472,21 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	if s != nil && s.service != nil && s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
 		req.RequirePrivacySet = true
 	}
+	qwenPreviousOwner := int64(0)
+	if req.Platform == PlatformQwen && strings.TrimSpace(req.PreviousResponseID) != "" {
+		store := s.service.getOpenAIWSStateStore()
+		if store == nil {
+			return nil, decision, strictSessionUnavailable("Qwen response ownership is unavailable")
+		}
+		var ownerErr error
+		qwenPreviousOwner, ownerErr = store.GetResponseAccount(ctx, derefGroupID(req.GroupID), strings.TrimSpace(req.PreviousResponseID))
+		if ownerErr != nil || qwenPreviousOwner <= 0 {
+			return nil, decision, strictSessionUnavailable("Qwen response ownership is unknown")
+		}
+		if strings.TrimSpace(req.SessionHash) == "" {
+			req.SessionHash = "qwen-response:" + DeriveSessionHashFromSeed(req.PreviousResponseID)
+		}
+	}
 	stickyKnown := req.StickyAccountID > 0
 	if !stickyKnown && strings.TrimSpace(req.SessionHash) != "" && s.service.cache != nil {
 		accountID, readErr := s.service.getStickySessionAccountID(ctx, req.GroupID, req.SessionHash)
@@ -483,12 +499,43 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	if recovery != nil && recovery.owner != nil && req.StickyAccountID <= 0 {
 		req.StickyAccountID = recovery.owner.accountID
 	}
+	req.StrictSessionAffinity = qwenPreviousOwner > 0 || s.service.strictOpenAISessionAffinity(req.GroupID, req.Platform, req.RequiredImageCapability)
+	if qwenPreviousOwner > 0 {
+		if req.StickyAccountID > 0 && req.StickyAccountID != qwenPreviousOwner {
+			return nil, decision, strictSessionUnavailable("Qwen response ownership conflicts with the session")
+		}
+		req.StickyAccountID = qwenPreviousOwner
+	}
+	if req.Platform == PlatformQwen && req.StickyAccountID > 0 && req.RequiredImageCapability == "" {
+		owner, ownerErr := s.service.accountRepo.GetByID(ctx, req.StickyAccountID)
+		if ownerErr != nil || owner == nil {
+			return nil, decision, strictSessionUnavailable("Qwen session owner is unavailable")
+		}
+		if qwenPreviousOwner > 0 && !owner.QwenSessionCacheEnabled() {
+			return nil, decision, strictSessionUnavailable("Qwen response owner no longer supports native continuation")
+		}
+		req.StrictSessionAffinity = req.StrictSessionAffinity || owner.QwenStrictSessionAffinity()
+	}
 
 	start := time.Now()
 	latencyOwnerID := int64(0)
 	// 命名返回值保证 defer 写入的耗时同时返回给调用方。
 	defer func() {
 		if err == nil && selection != nil && selection.Account != nil {
+			// Every identified Qwen first turn participates in the atomic claim:
+			// a non-strict candidate must not dispatch past a concurrent strict owner.
+			qwenFirstTurn := req.Platform == PlatformQwen && req.StickyAccountID == 0 && strings.TrimSpace(req.SessionHash) != ""
+			if (selection.Account.QwenStrictSessionAffinity() || qwenFirstTurn) && !req.StrictSessionAffinity && req.RequiredImageCapability == "" {
+				if bindErr := s.service.claimStrictSessionAccount(ctx, req, selection.Account.ID); bindErr != nil {
+					if selection.ReleaseFunc != nil {
+						selection.ReleaseFunc()
+					}
+					selection = nil
+					err = bindErr
+					decision = OpenAIAccountScheduleDecision{}
+					return
+				}
+			}
 			denied := s.service.priorityLatencyAdmission(req, selection.Account)
 			if recoveryErr := s.service.checkOpenAIAgentRecoveryAccount(ctx, selection.Account); recoveryErr != nil {
 				denied = recoveryErr
@@ -518,6 +565,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 
 	if err := s.checkOpenAIAgentRecoveryCooldown(ctx, req, recovery); err != nil {
 		return nil, decision, err
+	}
+	if req.StrictSessionAffinity {
+		return s.selectStrictSessionAccount(ctx, req)
 	}
 
 	if priorityHardStopApplies(s.service.prioritySchedulingRuntimeConfig(), req) {
@@ -678,7 +728,10 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 	}
 
-	if !req.StickyWeighted {
+	// For a new Qwen session, retain the original empty observation until the
+	// atomic claim. Learning a concurrent first turn's owner here would turn a
+	// capacity escape into an authorized overwrite of that fresh binding.
+	if !req.StickyWeighted && (req.Platform != PlatformQwen || req.StickyAccountID != 0 || !stickyKnown) {
 		selection, _, err := s.selectBySessionHash(ctx, req)
 		if err != nil {
 			return nil, decision, err
@@ -816,11 +869,11 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	// Ordinary affinity is a preference. A current measured latency penalty
 	// must enter the same scored pool as a freely routed request, independently
 	// of the optional EWMA/capacity escape setting. Ownership paths stay pinned.
-	if s.shouldYieldPriorityLatencySticky(req, account) {
+	if !req.StrictSessionAffinity && s.shouldYieldPriorityLatencySticky(req, account) {
 		return nil, true, nil
 	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
-	if escapeCfg.enabled && !req.DisableStickyEscape && s.shouldRebalancePrioritySticky(ctx, req, account) {
+	if escapeCfg.enabled && !req.DisableStickyEscape && !req.StrictSessionAffinity && s.shouldRebalancePrioritySticky(ctx, req, account) {
 		slog.Info("sticky_escape_triggered", "account_id", accountID, "reason", "priority_capacity_imbalance")
 		return nil, true, nil
 	}
@@ -2879,7 +2932,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		stickyAccountID, stickyReadErr = s.getStickySessionAccountID(ctx, groupID, sessionHash)
 	}
 	ctx = withOpenAIStickyBindingSnapshot(ctx, groupID, sessionHash, stickyAccountID, stickyReadErr == nil || errors.Is(stickyReadErr, ErrStickySessionNotFound))
-	scheduler := s.getOpenAIAccountScheduler(ctx, openAIAgentRecoveryBound(ctx) || (platform == PlatformOpenAI && requiredImageCapability == "" && useUpstreamTokenCost && priorityApplies(priority, OpenAIAccountScheduleRequest{GroupID: groupID, RequestedModel: requestedModel, HistoryModel: observation.model})))
+	scheduler := s.getOpenAIAccountScheduler(ctx, platform == PlatformQwen || s.strictOpenAISessionAffinity(groupID, platform, requiredImageCapability) || openAIAgentRecoveryBound(ctx) || (platform == PlatformOpenAI && requiredImageCapability == "" && useUpstreamTokenCost && priorityApplies(priority, OpenAIAccountScheduleRequest{GroupID: groupID, RequestedModel: requestedModel, HistoryModel: observation.model})))
 	if scheduler == nil {
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
 		if guardianParentAccountID > 0 {

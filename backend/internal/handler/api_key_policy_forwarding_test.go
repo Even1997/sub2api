@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -57,6 +58,19 @@ func (u *apiKeyPolicyForwardingUpstream) DoWithTLS(req *http.Request, proxy stri
 	return u.Do(req, proxy, account, concurrency)
 }
 
+func newPolicyForwardingHandler(t *testing.T, repo *excelBPSFailoverAccountRepo, upstream service.HTTPUpstream) *OpenAIGatewayHandler {
+	t.Helper()
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	concurrency := service.NewConcurrencyService(&helperConcurrencyCacheStub{accountSeq: []bool{true, true, true}})
+	gw := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg,
+		nil, concurrency, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
+	t.Cleanup(gw.CloseOpenAIWSPool)
+	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billing.Stop)
+	return NewOpenAIGatewayHandler(gw, concurrency, billing,
+		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg), nil, nil, nil, nil, cfg)
+}
+
 func TestAPIKeyPolicyHTTPFinalUpstreamPayloadAndKeyIsolation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, mode := range []string{"oauth", "apikey", "passthrough", "raw-chat"} {
@@ -66,8 +80,8 @@ func TestAPIKeyPolicyHTTPFinalUpstreamPayloadAndKeyIsolation(t *testing.T) {
 			}
 			t.Run(mode+"/"+endpoint, func(t *testing.T) {
 				upstream := &apiKeyPolicyForwardingUpstream{}
-				repo := &initialAdmissionRepo{}
-				h := newInitialAdmissionHandler(t, repo, upstream)
+				repo := &excelBPSFailoverAccountRepo{}
+				h := newPolicyForwardingHandler(t, repo, upstream)
 				account := service.Account{ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
 					Status: service.StatusActive, Schedulable: true, GroupIDs: []int64{3131}, Concurrency: 1,
 					Credentials: map[string]any{"api_key": "test-upstream-key"},

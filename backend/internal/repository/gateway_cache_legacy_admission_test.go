@@ -112,7 +112,7 @@ func newLegacyAdmissionRedisGateway(t *testing.T, batch bool) (*service.OpenAIGa
 	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 3
 	concurrency := &legacyAdmissionConcurrency{}
 	gateway := service.NewOpenAIGatewayService(
-		repo, nil, nil, nil, nil, nil, nil, cache, cfg, nil,
+		repo, nil, nil, nil, nil, nil, cache, cfg, nil,
 		service.NewConcurrencyService(concurrency),
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)

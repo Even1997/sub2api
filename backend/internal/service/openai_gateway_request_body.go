@@ -150,8 +150,8 @@ func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte
 	if account == nil {
 		return body
 	}
+	applyStateless := account.UsesNativeCNResponses() && !account.QwenSessionCacheEnabled()
 	applyImages := shouldAliasDeepSeekResponsesInputImages(account)
-	applyStateless := account.UsesNativeCNResponses()
 	if !applyStateless && !applyImages {
 		return body
 	}
@@ -2614,6 +2614,12 @@ func normalizeOpenAIReasoningEffort(raw string) string {
 }
 
 func normalizeOpenAIReasoningEffortForModel(raw, model string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "glm-") {
+		switch value := normalizeEffortToken(raw); value {
+		case "none", "minimal":
+			return value
+		}
+	}
 	if strings.EqualFold(strings.TrimSpace(raw), "none") && (openai.IsGPT6SolOrLunaModelSpelling(model) || openai.IsGPT61TerraModelSpelling(model)) {
 		return "none"
 	}
@@ -2647,24 +2653,31 @@ func supportsOpenAIReasoningEffortMax(model string) bool {
 	}
 }
 
-// validateGPT61SolCompatRequest runs after model mapping, before conversion can
-// discard unsupported explicit effort selections or disabled thinking.
-func validateGPT61SolCompatRequest(body []byte, model string) error {
-	if !openai.IsGPT61SolModelSpelling(model) {
+// validateGPT61CompatRequest validates the converted request after model
+// mapping and reasoning effort policy application.
+func validateGPT61CompatRequest(body []byte, model string) error {
+	if err := validateGPT61RawEffort(body, model); err != nil {
+		return err
+	}
+	if gjson.GetBytes(body, "thinking.type").String() == "disabled" {
+		return openai.ValidateGPT61ReasoningEffort(model, "none")
+	}
+	return nil
+}
+
+func validateGPT61RawEffort(body []byte, model string) error {
+	if !openai.IsGPT61SolModelSpelling(model) && !openai.IsGPT61TerraModelSpelling(model) {
 		return nil
 	}
 	for _, path := range []string{"reasoning.effort", "reasoning_effort", "output_config.effort"} {
-		if err := openai.ValidateGPT61SolReasoningEffort(model, gjson.GetBytes(body, path).String()); err != nil {
+		if err := openai.ValidateGPT61ReasoningEffort(model, gjson.GetBytes(body, path).String()); err != nil {
 			return err
 		}
 	}
-	if gjson.GetBytes(body, "thinking.type").String() == "disabled" {
-		return openai.ValidateGPT61SolReasoningEffort(model, "none")
-	}
-	requestedModel := gjson.GetBytes(body, "model").String()
+	requestedModel := openai.CanonicalizeOpenAIModelAliasSpelling(gjson.GetBytes(body, "model").String())
 	for _, effort := range []string{"none", "minimal"} {
 		if strings.HasSuffix(strings.ToLower(requestedModel), "-"+effort) {
-			return openai.ValidateGPT61SolReasoningEffort(model, effort)
+			return openai.ValidateGPT61ReasoningEffort(model, effort)
 		}
 	}
 	return nil

@@ -46,7 +46,7 @@ func pr612HTTPHandler(t *testing.T, cfg *config.Config, baseURL, mode string) *O
 			accounts[i].Extra["openai_responses_supported"] = false
 		}
 	}
-	gateway := service.NewOpenAIGatewayService(openAIImagesFailoverAccountRepo{accounts: accounts}, nil, nil, nil, nil, nil, nil, nil,
+	gateway := service.NewOpenAIGatewayService(openAIImagesFailoverAccountRepo{accounts: accounts}, nil, nil, nil, nil, nil, nil,
 		cfg, nil, nil, nil, nil, nil, repository.NewHTTPUpstream(cfg), nil, nil, nil, nil, nil, nil, nil, nil)
 	t.Cleanup(gateway.CloseOpenAIWSPool)
 	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
@@ -138,7 +138,7 @@ func TestPR612WSHTTPBridgeDelayedHeadersNeverReplay(t *testing.T) {
 		Status: service.StatusActive, Schedulable: true, Concurrency: 1,
 		Credentials: map[string]any{"api_key": "synthetic", "base_url": upstream.URL},
 		Extra:       map[string]any{"openai_apikey_responses_websockets_v2_mode": service.OpenAIWSIngressModeHTTPBridge}}
-	gateway := service.NewOpenAIGatewayService(&openAIWSUsageHandlerAccountRepoStub{account: account}, nil, nil, nil, nil, nil, nil, nil,
+	gateway := service.NewOpenAIGatewayService(&openAIWSUsageHandlerAccountRepoStub{account: account}, nil, nil, nil, nil, nil, nil,
 		cfg, nil, nil, nil, nil, nil, repository.NewHTTPUpstream(cfg), nil, nil, nil, nil, nil, nil, nil, nil)
 	t.Cleanup(gateway.CloseOpenAIWSPool)
 	finished := make(chan error, 1)

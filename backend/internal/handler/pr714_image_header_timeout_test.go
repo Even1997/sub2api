@@ -54,7 +54,7 @@ func TestPR714ImagesWaitOnlyForSelectedGroups(t *testing.T) {
 				Status: service.StatusActive, Schedulable: true,
 				Credentials: map[string]any{"api_key": "fixture-only", "base_url": upstream.URL}, GroupIDs: []int64{tc.groupID}}
 			repo := openAIImagesFailoverAccountRepo{accounts: []service.Account{*account}}
-			gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, nil,
+			gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil,
 				cfg, nil, nil, nil, nil, nil, repository.ProvideHTTPUpstream(cfg, settings), nil, nil, nil, nil, nil, nil, settings, nil)
 			t.Cleanup(gateway.CloseOpenAIWSPool)
 			body := []byte(`{"model":"gpt-image-2","prompt":"synthetic","response_format":"b64_json"}`)

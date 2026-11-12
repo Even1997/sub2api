@@ -4,7 +4,7 @@
 
 # Sub2API
 
-[![Go](https://img.shields.io/badge/Go-1.27.3-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/Go-1.27.4-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
@@ -51,7 +51,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 
 | Component | Technology |
 |-----------|------------|
-| Backend | Go 1.27.3, Gin, Ent |
+| Backend | Go 1.27.4, Gin, Ent |
 | Frontend | Vue 3.4+, Vite 5+, TailwindCSS |
 | Database | PostgreSQL 15+ |
 | Cache/Queue | Redis 6.0+ |
@@ -743,3 +743,11 @@ Copyright (c) 2026 Wesley Liddick
 **If you find this project useful, please give it a star!**
 
 </div>
+
+## OpenAI Image Output Formats
+
+On `/v1/images/generations` and `/v1/images/edits`, OAuth / Setup Token requests for GPT Image 1.5, 2, 2.5 and 2.6 (after model mapping) use Codex-native Images endpoints. Pre-2.6 models retain Responses fallback for endpoint 404/405; 2.6 does not fall back. `output_format` and `output_compression` are forwarded, but upstream account and endpoint capabilities determine the output. A 4xx rejection or HTTP 200 containing PNG data and `output_format: "png"` is possible even when requesting JPEG or SVG.
+
+A JPEG format mismatch has also been reported for `gpt-image-2.5-flare`.
+
+Compare the returned `output_format` (including per-image values) with the request and verify the actual image format before saving or serving it. Filename extensions and MIME types must match actual output. A successful image response retains its status, content and usage even when the format differs; automatically retrying may generate and bill another image.

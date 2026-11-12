@@ -265,7 +265,8 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// 策略：客户端传了什么就透传；没传则补默认 1。
 	// Sonnet 5.5 / Haiku 5.5 上 temperature 和 top_p 不能同时出现，客户端只传了 top_p 时不要再补 temperature。
 	samplingLocked := claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID)
-	if !gjson.GetBytes(out, "temperature").Exists() && (!samplingLocked || !gjson.GetBytes(out, "top_p").Exists()) {
+	if !gjson.GetBytes(out, "temperature").Exists() && !claude.IsOpus55(modelID) && !claude.IsFable52(modelID) && !claude.IsMythos52(modelID) &&
+		(!samplingLocked || !gjson.GetBytes(out, "top_p").Exists()) {
 		if next, ok := setJSONValueBytes(out, "temperature", 1); ok {
 			out = next
 			modified = true

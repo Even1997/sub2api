@@ -160,8 +160,8 @@ export async function cancelTokenGuardV2Task(taskId: number): Promise<TokenGuard
   return (await apiClient.post(`/admin/account-ops/token-guard-v2/tasks/${taskId}/cancel`)).data
 }
 
-export async function createTokenGuardV2Account(input: SaveTokenGuardV2Account): Promise<TokenGuardV2Account> {
-  return (await apiClient.post('/admin/account-ops/token-guard-v2/accounts', input)).data
+export async function createTokenGuardV2Account(input: SaveTokenGuardV2Account, options?: { signal?: AbortSignal }): Promise<TokenGuardV2Account> {
+  return (await apiClient.post('/admin/account-ops/token-guard-v2/accounts', input, options)).data
 }
 
 export async function updateTokenGuardV2Account(accountId: number, input: SaveTokenGuardV2Account): Promise<TokenGuardV2Account> {
