@@ -30,6 +30,7 @@
 - Ignore stale balance-history results/errors/loading completion after a new request, user change, close, or unmount.
 - Preserve signed thinking/tool input envelopes, local model aliases and billing fields; fix locale compiler escapes and pricing transfer compatibility.
 - Restore the baseline effort-filtered latency assertions after deferring the unified scheduler, and remove obsolete constructor placeholders from two gateway integration fixtures. The complete integration-tagged repository test binary compiles locally.
+- Update two old desktop page-context expectations for the imported external-data envelope. Preserve the envelope and assert that genuine tool output remains unchanged; do not remove the production trust-boundary change to make old tests pass.
 
 ## Validation ledger
 
@@ -55,7 +56,9 @@ Results are measured on Windows unless stated otherwise. This ledger is updated 
 - GitHub Security Scan passes on the candidate. A staged credential/conflict-marker scan finds no matches; diff whitespace checks pass.
 - Final source commit a545bee5caace766254761a8465cbb7140d757ed passes GitHub run 43188675200: real PostgreSQL VIP ledger/admission/SMTP/concurrency/upgrades, six release repository cases (cache TTL persistence/pricing, OAuth 429 degradation/attribution, Qwen platform statistics and effort-isolated latency), and Linux memory/mount-escape regressions. The log has 51 passing test events, no failed or skipped tests and no race reports. Two historical RED workflow steps are intentionally branch-gated and do not run on this branch; they are not counted as executed tests.
 - The same source passes Qwen actual-component/browser run 43188675377 and Security Scan run 43188675627. Main CI run 43188675586 also passes its Usage trend local bucket regressions after the integration fixture repairs. Full CI remains non-green for the documented baseline debt.
-- Subsequent validation-ledger commits change documentation only; a545bee5caace766254761a8465cbb7140d757ed identifies the validated production and test source.
+- The completed main unit-test job reports 76 distinct top-level failing tests. All 74 failures other than the two old page-context expectations reproduce on the baseline, including the final service panic. Additional baseline runs use the same unit build tag; their test-only overlay adapts obsolete constructor signatures without changing baseline production code.
+- The two page-context expectation repairs pass locally with unit tags. All normalization checks and the actual upstream forwarding case pass: 65 test events, no failures or skips. The related full CI job was not rerun to green; the 74 baseline failures remain.
+- a545bee5caace766254761a8465cbb7140d757ed identifies the database/browser/security-validated production source. Subsequent changes affect only this ledger and the two page-context test assertions; production files are identical to that commit.
 
 ## Deployment risks
 

@@ -27,7 +27,7 @@ func TestNormalizeCodexAppsContextRewritesDesktopSnapshots(t *testing.T) {
 			require.True(t, changed)
 			require.Equal(t, "message", gjson.GetBytes(got, "input.0.type").String())
 			require.Equal(t, "user", gjson.GetBytes(got, "input.0.role").String())
-			require.Equal(t, tt.output, gjson.GetBytes(got, "input.0.content.0.text").String())
+			require.Equal(t, "<external_"+tt.tool+">\n"+tt.output+"\n</external_"+tt.tool+">", gjson.GetBytes(got, "input.0.content.0.text").String())
 			require.False(t, gjson.GetBytes(got, `input.#(type=="function_call_output")`).Exists())
 		})
 	}
@@ -39,9 +39,10 @@ func TestNormalizeCodexAppsContextKeepsRealToolResults(t *testing.T) {
 	require.True(t, changed)
 	require.Equal(t, "before", gjson.GetBytes(got, "input.0.content").String())
 	require.Equal(t, "message", gjson.GetBytes(got, "input.1.type").String())
-	require.Equal(t, `{"page_id":null}`, gjson.GetBytes(got, "input.1.content.0.text").String())
+	require.Equal(t, "<external_codex_apps_open_page>\n"+`{"page_id":null}`+"\n</external_codex_apps_open_page>", gjson.GetBytes(got, "input.1.content.0.text").String())
 	require.Equal(t, "function_call", gjson.GetBytes(got, "input.2.type").String())
 	require.Equal(t, "call-1", gjson.GetBytes(got, "input.3.call_id").String())
+	require.Equal(t, "done", gjson.GetBytes(got, "input.3.output").String())
 	require.Equal(t, "after", gjson.GetBytes(got, "input.4.content").String())
 	require.Equal(t, "resp_1", gjson.GetBytes(got, "previous_response_id").String())
 
