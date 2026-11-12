@@ -29,6 +29,7 @@
 - Create automatic quality rules once per new 2FA account and retain cancellation.
 - Ignore stale balance-history results/errors/loading completion after a new request, user change, close, or unmount.
 - Preserve signed thinking/tool input envelopes, local model aliases and billing fields; fix locale compiler escapes and pricing transfer compatibility.
+- Restore the baseline effort-filtered latency assertions after deferring the unified scheduler, and remove obsolete constructor placeholders from two gateway integration fixtures. The complete integration-tagged repository test binary compiles locally.
 
 ## Validation ledger
 
@@ -49,12 +50,17 @@ Results are measured on Windows unless stated otherwise. This ledger is updated 
 - Final current-source backend regressions: 74 passing test events, no failures or skips.
 - GitHub run 43186409953 passes the real PostgreSQL VIP ledger, admission, SMTP retry, concurrency and upgrade suite, and the Linux memory/mount-escape suite. Release repository tests initially failed to compile because an imported assertion referenced the deferred unified scheduler; restore the baseline effort-filtered latency assertions and include that case in the release database gate.
 - Existing historical workflows are not a clean release gate: for example, run 43186883695 fails fetching historical commit 94937267b2acb32bbbd44a7aae13218709c466fc, before executing tests. Do not treat these failures as passing or rewrite unrelated workflow history in this integration.
+- The current-source frontend critical CI reports 2,516 passes, 11 failures, 10 skips and one suite setup error. All eleven failed test names and the suite setup error are present in the baseline results. The local final repaired suites remain 76/76 passing.
+- Lint is not green: run 43186883619 reports 113 findings. The thirteen reported locations within changed files retain the same source lines as the baseline; the remaining locations are outside this release diff. This comparison is not a claim that the entire baseline lint job was rerun.
 - GitHub Security Scan passes on the candidate. A staged credential/conflict-marker scan finds no matches; diff whitespace checks pass.
-- Release repository database results after the assertion repair are still being collected; see PR #12 checks for their live status.
+- Final source commit a545bee5caace766254761a8465cbb7140d757ed passes GitHub run 43188675200: real PostgreSQL VIP ledger/admission/SMTP/concurrency/upgrades, six release repository cases (cache TTL persistence/pricing, OAuth 429 degradation/attribution, Qwen platform statistics and effort-isolated latency), and Linux memory/mount-escape regressions. The log has 51 passing test events, no failed or skipped tests and no race reports. Two historical RED workflow steps are intentionally branch-gated and do not run on this branch; they are not counted as executed tests.
+- The same source passes Qwen actual-component/browser run 43188675377 and Security Scan run 43188675627. Main CI run 43188675586 also passes its Usage trend local bucket regressions after the integration fixture repairs. Full CI remains non-green for the documented baseline debt.
+- Subsequent validation-ledger commits change documentation only; a545bee5caace766254761a8465cbb7140d757ed identifies the validated production and test source.
 
 ## Deployment risks
 
-- Additive migrations 249/250/340 require the disposable PostgreSQL upgrade run before deployment; local Docker is unavailable, so the GitHub VIP ledger/upgrade and separate release-repository jobs provide this gate.
-- Linux cgroup/symlink behavior requires a Linux runner. Windows cannot validate that boundary with the current symlink permission.
+- Additive migrations 249/250/340 passed the disposable PostgreSQL upgrade and repository runs. Production data volume and migration duration remain unmeasured; no production deployment was attempted.
+- Linux cgroup/symlink behavior passed the Linux runner checks; Windows alone cannot validate that boundary with the current symlink permission.
 - Existing baseline test failures remain visible and are not silenced, skipped, or rewritten to assert the current behavior.
+- No production load test was performed. Passing race, memory-boundary and SQL regressions does not establish production throughput or migration duration.
 - SMTP acceptance followed by a crash before outbox acknowledgement can still resend an email, as documented by the upstream outbox contract. Notification is disabled unless configured.
