@@ -39,10 +39,12 @@ func issue715Body(followup bool, stream bool) string {
 
 type issue715Upstream struct {
 	service.HTTPUpstream
-	mu     sync.Mutex
-	ids    []int64
-	bodies [][]byte
-	mode   string
+	mu           sync.Mutex
+	ids          []int64
+	bodies       [][]byte
+	mode         string
+	portable     bool
+	rejectStatus int
 }
 
 func (u *issue715Upstream) Do(req *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
@@ -54,6 +56,7 @@ func (u *issue715Upstream) Do(req *http.Request, _ string, accountID int64, _ in
 	u.ids = append(u.ids, accountID)
 	u.bodies = append(u.bodies, body)
 	mode := u.mode
+	portable, rejectStatus := u.portable, u.rejectStatus
 	u.mu.Unlock()
 	response := func(status int, contentType, payload string) (*http.Response, error) {
 		return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {contentType}}, Body: io.NopCloser(bytes.NewBufferString(payload))}, nil
@@ -61,7 +64,13 @@ func (u *issue715Upstream) Do(req *http.Request, _ string, accountID int64, _ in
 	if mode == "timeout" {
 		return nil, context.DeadlineExceeded
 	}
-	if accountID != 1 {
+	if accountID == 1 && rejectStatus != 0 {
+		if rejectStatus == http.StatusTooManyRequests {
+			return response(rejectStatus, "application/json", `{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_in_seconds":3600}}`)
+		}
+		return response(rejectStatus, "application/json", `{"error":{"type":"rate_limit_error","message":"fixture authentication or quota rejection"}}`)
+	}
+	if accountID != 1 && !portable {
 		return response(400, "application/json", `{"error":{"code":"unsupported_encrypted_agent_message","type":"invalid_request_error","param":"input[0].content[1].encrypted_content","message":"fixture incompatible route"}}`)
 	}
 	input := gjson.GetBytes(body, "input").Raw
@@ -196,7 +205,7 @@ func TestIssue715HTTPResumesSameTaskAcrossTwoTurns(t *testing.T) {
 
 func TestIssue715HTTPRecoveryKeepsHardRestrictionsAndScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	for _, change := range []string{"disabled", "credentials", "other_key", "other_session", "new_task", "canceled", "timeout"} {
+	for _, change := range []string{"disabled", "other_key", "other_session", "new_task", "canceled", "timeout"} {
 		t.Run(change, func(t *testing.T) {
 			accounts := issue715Accounts()
 			upstream := &issue715Upstream{}
@@ -221,8 +230,10 @@ func TestIssue715HTTPRecoveryKeepsHardRestrictionsAndScope(t *testing.T) {
 			}
 			status, answer := issue715Request(t, handler, body, key, session, change == "canceled")
 			require.NotContains(t, answer, "Same task: ledger balance 18", "unproved or unavailable route must not report recovered work")
-			if change == "disabled" || change == "credentials" || change == "canceled" {
+			if change == "canceled" {
 				require.Len(t, upstream.ids, 1, "hard rejection/cancellation must not send another task")
+			} else if change == "disabled" {
+				require.Equal(t, []int64{1, 2}, upstream.ids, "unavailable producer permits an attempt; provider compatibility still decides acceptance")
 			} else if change == "timeout" {
 				require.Equal(t, []int64{1, 1}, upstream.ids, "ambiguous submitted request must never move to a different account")
 			} else {
@@ -328,7 +339,7 @@ func TestIssue715HTTPFailedDeliveryNeverGrantsOwner(t *testing.T) {
 	}
 }
 
-func TestIssue715HTTPRecoveryErrorsIdentifyCompatibility(t *testing.T) {
+func TestIssue715HTTPFlexibleRecoveryUsesCurrentCredentialsAndProviderCompatibility(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, stream := range []bool{false, true} {
 		for _, change := range []string{"disabled", "credentials"} {
@@ -338,19 +349,21 @@ func TestIssue715HTTPRecoveryErrorsIdentifyCompatibility(t *testing.T) {
 				handler := newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, nil, accounts...)
 				status, _ := issue715Request(t, handler, issue715Body(false, stream), 99, "fixture-715-thread", false)
 				require.Equal(t, 200, status)
-				code := "encrypted_agent_recovery_owner_unavailable"
 				if change == "disabled" {
 					accounts[0].Schedulable = false
 				} else {
 					accounts[0].Credentials = map[string]any{"access_token": "fixture-rotated"}
-					code = "encrypted_agent_recovery_route_changed"
 				}
 				status, answer := issue715Request(t, handler, issue715Body(true, stream), 99, "fixture-715-thread", false)
-				require.Equal(t, http.StatusConflict, status, "compatibility refusal must not be a generic empty-pool response")
-				require.Equal(t, code, gjson.Get(answer, "error.code").String())
-				require.Equal(t, "invalid_request_error", gjson.Get(answer, "error.type").String())
-				require.Contains(t, gjson.Get(answer, "error.message").String(), "Preserve this task and context")
-				require.Equal(t, []int64{1}, upstream.ids)
+				if change == "disabled" {
+					require.NotEqual(t, http.StatusOK, status)
+					require.Contains(t, answer, "unsupported_encrypted_agent_message")
+					require.Equal(t, []int64{1, 2}, upstream.ids)
+				} else {
+					require.Equal(t, http.StatusOK, status, answer)
+					require.Contains(t, answer, "Same task: ledger balance 18")
+					require.Equal(t, []int64{1, 1}, upstream.ids)
+				}
 			})
 		}
 	}
@@ -531,7 +544,7 @@ func TestIssue715HTTPGeneratedOwnerSurvivesApplicationRestart(t *testing.T) {
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr(), MaxRetries: -1})
 	defer client.Close()
 	accounts := issue715Accounts()
-	upstream := &issue715Upstream{mode: "generated-json"}
+	upstream := &issue715Upstream{mode: "generated-json", portable: true}
 	producer := newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, repository.NewGatewayCache(client), accounts...)
 	firstBody := strings.Replace(issue715Body(false, false), issue715Agent+",", "", 1)
 	status, answer := issue715Request(t, producer, firstBody, 99, "fixture-715-thread", false)
@@ -539,8 +552,8 @@ func TestIssue715HTTPGeneratedOwnerSurvivesApplicationRestart(t *testing.T) {
 	require.Contains(t, answer, "fixture-task-reference-715")
 	accounts[0].Priority, accounts[1].Priority = 100, 0
 	upstream.mode = ""
-	// Fresh service/adapter, with no process-local state. Ordinary sticky changes
-	// are deliberately overwritten and cannot establish this compatibility grant.
+	// Fresh service/adapter, with no process-local state. A current session
+	// preference can move intact history while the producer records remain valid.
 	for node := 0; node < 2; node++ {
 		cache := repository.NewGatewayCache(client)
 		resumed := newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, cache, accounts...)
@@ -552,7 +565,7 @@ func TestIssue715HTTPGeneratedOwnerSurvivesApplicationRestart(t *testing.T) {
 		require.Equal(t, 200, status, answer)
 		require.Contains(t, answer, "Same task: ledger balance 18")
 	}
-	require.Equal(t, []int64{1, 1, 1}, upstream.ids, "shared generated ownership must survive fresh services and scheduler drift")
+	require.Equal(t, []int64{1, 2, 2}, upstream.ids, "current sticky preference must survive fresh services without an immutable producer lock")
 	// Deleting/expiring authoritative records cannot resurrect a local grant.
 	for _, key := range mr.Keys() {
 		if strings.HasPrefix(key, "openai_agent_owner:") {

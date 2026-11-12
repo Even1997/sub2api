@@ -22,17 +22,17 @@ type openAIGuardianParentAffinity struct {
 	legacySessionHash  string
 }
 
-// WithOpenAIGuardianParentAffinity records a Codex review request's parent
+// WithOpenAIGuardianParentAffinity records a Codex subagent request's parent
 // thread as a routing hint. The hint is resolved against the current group's
 // sticky-session namespace later; client headers never carry an account ID.
-func WithOpenAIGuardianParentAffinity(ctx context.Context, c *gin.Context, body []byte, requestedModel string) context.Context {
-	if ctx == nil || c == nil || !strings.EqualFold(strings.TrimSpace(requestedModel), codexAutoReviewModel) {
+func WithOpenAIGuardianParentAffinity(ctx context.Context, c *gin.Context, body []byte, _ string) context.Context {
+	if ctx == nil || c == nil {
 		return ctx
 	}
 
 	headerMetadata := c.GetHeader(codexTurnMetadataHeader)
 	bodyMetadata := openAIRequestPayloadView(body).Get("client_metadata.x-codex-turn-metadata").String()
-	if !hasUnambiguousOpenAICodexReviewSubagent(
+	if !hasUnambiguousOpenAICodexSubagent(
 		c.GetHeader(openAISubagentHeader),
 		codexSubagentKindFromMetadata(headerMetadata),
 		codexSubagentKindFromMetadata(bodyMetadata),
@@ -84,7 +84,7 @@ func codexSubagentKindFromMetadata(raw string) string {
 	return strings.TrimSpace(gjson.Get(raw, "subagent_kind").String())
 }
 
-func hasUnambiguousOpenAICodexReviewSubagent(candidates ...string) bool {
+func hasUnambiguousOpenAICodexSubagent(candidates ...string) bool {
 	subagent := ""
 	for _, candidate := range candidates {
 		candidate = strings.ToLower(strings.TrimSpace(candidate))
@@ -96,7 +96,7 @@ func hasUnambiguousOpenAICodexReviewSubagent(candidates ...string) bool {
 		}
 		subagent = candidate
 	}
-	return subagent == "guardian" || subagent == "review"
+	return subagent != ""
 }
 
 func openAIGuardianParentAffinityFromContext(ctx context.Context) (openAIGuardianParentAffinity, bool) {

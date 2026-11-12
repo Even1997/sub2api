@@ -132,7 +132,7 @@ func TestIssue715HTTPFirstDeliveryCrossNodeBarrier(t *testing.T) {
 			client := redis.NewClient(&redis.Options{Addr: mr.Addr(), MaxRetries: -1})
 			defer client.Close()
 			base := repository.NewGatewayCache(client)
-			upstream := &issue715Upstream{mode: format}
+			upstream := &issue715Upstream{mode: format, portable: true}
 			producer := newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, base, issue715Accounts()...)
 			stream := strings.HasPrefix(format, "generated-stream-")
 			first := strings.Replace(issue715Body(false, stream), issue715Agent+",", "", 1)
@@ -227,7 +227,7 @@ func TestIssue715HTTPFirstDeliveryCrossNodeBarrier(t *testing.T) {
 			ids := append([]int64(nil), upstream.ids...)
 			bodies := append([][]byte(nil), upstream.bodies...)
 			upstream.mu.Unlock()
-			require.Equal(t, []int64{1, 1, 1, 1}, ids, fmt.Sprint(ids))
+			require.Equal(t, []int64{1, 2, 2, 2}, ids, fmt.Sprint(ids))
 			for _, body := range bodies[1:] {
 				require.Contains(t, string(body), "fixture-task-reference-715")
 				require.Contains(t, string(body), "ledger balance 18; applied once")

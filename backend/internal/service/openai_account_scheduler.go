@@ -460,11 +460,13 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			derefGroupID(req.GroupID) != recovery.groupID || req.RequestedModel != recovery.model {
 			return nil, decision, openAIAgentRecoveryError("owner_unavailable")
 		}
-		req.StickyAccountID = recovery.owner.accountID
 		req.StickyWeighted = false
-		req.PreserveStickyBinding = true
-		req.DisableStickyEscape = true
-		req.PreviousResponseCanMove = false
+		if !recovery.canSwitchAccount() || strings.TrimSpace(req.PreviousResponseID) != "" {
+			req.StickyAccountID = recovery.owner.accountID
+			req.PreserveStickyBinding = true
+			req.DisableStickyEscape = true
+			req.PreviousResponseCanMove = false
+		}
 	}
 	if s != nil && s.service != nil && s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
 		req.RequirePrivacySet = true
@@ -478,6 +480,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 	}
 	ctx = withOpenAIStickyBindingSnapshot(ctx, req.GroupID, req.SessionHash, req.StickyAccountID, stickyKnown)
+	if recovery != nil && recovery.owner != nil && req.StickyAccountID <= 0 {
+		req.StickyAccountID = recovery.owner.accountID
+	}
 
 	start := time.Now()
 	latencyOwnerID := int64(0)
@@ -581,7 +586,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			}
 		}
 	}
-	if recovery != nil && recovery.owner != nil {
+	if recovery != nil && recovery.owner != nil && (!recovery.canSwitchAccount() || previousResponseID != "") {
 		if req.GuardianParentAccountID > 0 && req.GuardianParentAccountID != recovery.owner.accountID {
 			return nil, decision, openAIAgentRecoveryError("owner_unavailable")
 		}
@@ -2258,6 +2263,11 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) (bool, string) {
 	if account == nil {
 		return false, "account_nil"
+	}
+	if recovery := openAIAgentRecoveryFromContext(ctx); recovery != nil && recovery.owner != nil &&
+		(!openAIAgentHistoryAccount(account, req.RequestedModel) ||
+			s.service.resolveUpstreamProtocolFor(ctx, account, APIProtocolResponses, account.GetMappedModel(req.RequestedModel)) != APIProtocolResponses) {
+		return false, "encrypted_agent_transport_incompatible"
 	}
 	if account.IsExcelOAuth() && s != nil && s.service != nil && !s.service.excelBPSGloballyEnabled(ctx) {
 		return false, "excel_bps_disabled"

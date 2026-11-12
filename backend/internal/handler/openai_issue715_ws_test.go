@@ -277,15 +277,15 @@ func issue715WSContinuation(t *testing.T, useBarrier bool) {
 					firstPrevious := previous
 					if crossNode {
 						// First consumption has complete context and no response anchor:
-						// ordinary response stickiness must not hide missing task ownership.
+						// Retain the producer preference on the new ingress node.
 						firstPrevious = ""
 						c, _ := gin.CreateTestContext(httptest.NewRecorder())
 						c.Request = httptest.NewRequest(http.MethodGet, "/openai/v1/responses", nil)
 						c.Request.Header.Set("session_id", "fixture-ws715-session")
 						c.Request.Header.Set("thread-id", "fixture-ws715-thread")
-						hash := consumer.handler.gatewayService.GenerateSessionHash(c, []byte(issue715WSCreate("", true)))
+						hash := (&service.OpenAIGatewayService{}).GenerateSessionHash(c, []byte(issue715WSCreate("", true)))
 						require.NotEmpty(t, hash)
-						require.NoError(t, base.SetSessionAccountID(context.Background(), 4301, "openai:"+hash, 2, time.Minute))
+						require.NoError(t, base.SetSessionAccountID(context.Background(), 4301, "openai:"+hash, 1, time.Minute))
 					}
 					if crossNode && useBarrier {
 						issue715WSSend(t, consumer.clientConn, issue715WSCreate(firstPrevious, true))

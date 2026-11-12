@@ -90,6 +90,9 @@ func (d *openAIAgentRecoveryDelivery) reserve(items [][32]byte) error {
 	defer cancel()
 	for _, item := range items {
 		key := d.request.itemKey(item)
+		if d.request.canSwitchAccount() && d.request.known[key] {
+			continue
+		}
 		if d.keys[key] {
 			continue
 		}

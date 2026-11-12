@@ -28,7 +28,8 @@ func (s *OpenAIGatewayService) WithOpenAIWSAgentRecovery(ctx context.Context, c 
 
 func OpenAIWSAgentRecoveryCanRetry(ctx context.Context) bool {
 	blocked, _ := ctx.Value(openAIWSAgentRecoveryRetryKey{}).(*atomic.Bool)
-	return !openAIAgentRecoveryBound(ctx) && (blocked == nil || !blocked.Load())
+	r := openAIAgentRecoveryFromContext(ctx)
+	return (!openAIAgentRecoveryBound(ctx) || (r != nil && r.canSwitchAccount() && !r.conflict && r.lookupErr == nil)) && (blocked == nil || !blocked.Load())
 }
 
 func OpenAIWSAgentRecoveryBound(ctx context.Context) bool { return openAIAgentRecoveryBound(ctx) }
