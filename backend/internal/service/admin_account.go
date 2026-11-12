@@ -522,8 +522,11 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	accountExtra = MergeOpenAICodexTicketExtra(accountExtra, nil)
 	StripRetiredCodexTurnStateExtra(accountExtra)
 	delete(accountExtra, OAuthDegradationActionExtraKey)
-	if (input.Platform == PlatformTypeSafe || input.Platform == PlatformMistral) && input.Type != AccountTypeAPIKey {
+	if (input.Platform == PlatformTypeSafe || input.Platform == PlatformMistral || input.Platform == PlatformQwen) && input.Type != AccountTypeAPIKey {
 		return nil, fmt.Errorf("%s accounts only support apikey credentials", input.Platform)
+	}
+	if err := validateQwenCacheCredentials(input.Credentials); err != nil {
+		return nil, err
 	}
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
@@ -745,7 +748,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
-	if (account.Platform == PlatformTypeSafe || account.Platform == PlatformMistral) && input.Type != "" && input.Type != AccountTypeAPIKey {
+	if (account.Platform == PlatformTypeSafe || account.Platform == PlatformMistral || account.Platform == PlatformQwen) && input.Type != "" && input.Type != AccountTypeAPIKey {
 		return nil, fmt.Errorf("%s accounts only support apikey credentials", account.Platform)
 	}
 	var normalizedExtra map[string]any
@@ -820,6 +823,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
 		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		if err := validateQwenCacheCredentials(account.Credentials); err != nil {
+			return nil, err
+		}
 		if err := ValidateModelMappingMode(account.Credentials); err != nil {
 			return nil, err
 		}

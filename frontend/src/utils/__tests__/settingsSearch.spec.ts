@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { parse } from 'vue/compiler-sfc'
 import settingsSource from '@/views/admin/SettingsView.vue?raw'
 import pelicanSource from '@/views/admin/settings/PelicanShowcaseSettings.vue?raw'
+import smartOpsSource from '@/components/settings/SmartOpsSidebarSettings.vue?raw'
 import zh from '@/i18n/locales/zh'
 import en from '@/i18n/locales/en'
 import { buildFeatureSearchEntries, searchFeatures } from '../featureSearch'
@@ -62,6 +63,7 @@ describe('settings feature search', () => {
     const anchors = new Map<string, string>()
     collectAnchors(settingsSource, anchors)
     collectAnchors(pelicanSource, anchors, 'features')
+    collectAnchors(smartOpsSource, anchors, 'features')
     expect(anchors.size).toBe(SETTINGS_SECTIONS.length)
     for (const section of SETTINGS_SECTIONS) expect(anchors.get(`settings-section-${section.id}`), section.id).toBe(section.tab)
   })

@@ -15,6 +15,7 @@ export interface PlazaOfficialPricing {
   cache_write_price: number | null
   /** 1h 缓存写入（LiteLLM cache_creation_above_1hr），多数模型缺失。 */
   cache_write_1h_price?: number | null
+  cache_write_12h_price?: number | null
   cache_read_price: number | null
   /** 官方长上下文阶梯（多档模型才有），不受分组开关影响。 */
   intervals?: UserPricingInterval[]
@@ -73,6 +74,8 @@ export interface ModelPlazaGroup {
   /** 生图独立倍率：true 时图片计费模型的实付倍率取 image_rate_multiplier，不取分组/专属倍率。 */
   image_rate_independent: boolean
   image_rate_multiplier: number
+  video_rate_independent?: boolean
+  video_rate_multiplier?: number
   /** 分组是否启用长上下文阶梯计费；false 时实付列只展示最低档，官方阶梯仅供参考。 */
   long_context_pricing_enabled: boolean
   models: PlazaModel[]

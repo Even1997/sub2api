@@ -112,7 +112,7 @@ func TestSmartProtocolGatewayBillingAndQuotaIntegration(t *testing.T) {
 	deferred := service.NewDeferredService(f.accounts, nil, time.Hour)
 	prices := service.NewBillingService(cfg, nil)
 	transport := issue605LoopbackInference{client: upstream.Client(), host: strings.TrimPrefix(upstream.URL, "http://")}
-	gateway := service.NewOpenAIGatewayService(f.accounts, nil, repository.NewUsageLogRepository(client, f.db), repository.NewUsageBillingRepository(client, f.db), users, nil, nil, repository.NewGatewayCache(redis), cfg, nil, concurrency, prices, nil, billing, transport, deferred, nil, nil, nil, nil, nil, nil, nil)
+	gateway := service.NewOpenAIGatewayService(f.accounts, repository.NewUsageLogRepository(client, f.db), repository.NewUsageBillingRepository(client, f.db), users, nil, nil, repository.NewGatewayCache(redis), cfg, nil, concurrency, prices, nil, billing, transport, deferred, nil, nil, nil, nil, nil, nil, nil)
 	defer gateway.StopOpenAICodexTicketHarvester()
 	defer gateway.CloseOpenAIWSPool()
 	keyService := service.NewAPIKeyService(keys, users, groups, nil, nil, nil, cfg)

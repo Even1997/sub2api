@@ -152,7 +152,7 @@ func runPassthroughPartialBilling(t *testing.T, failure string, prior bool) {
 	prices := service.NewBillingService(cfg, nil)
 	pricing, err := prices.GetModelPricing("gpt-5.4")
 	require.NoError(t, err)
-	gateway := service.NewOpenAIGatewayService(f.accounts, nil, repository.NewUsageLogRepository(client, f.db), repository.NewUsageBillingRepository(client, f.db), users, nil, nil, repository.NewGatewayCache(redis), cfg, nil, concurrency, prices, nil, billing, issue605LoopbackInference{client: upstream.Client(), host: strings.TrimPrefix(upstream.URL, "http://")}, service.NewDeferredService(f.accounts, nil, time.Hour), nil, nil, nil, nil, nil, nil, nil)
+	gateway := service.NewOpenAIGatewayService(f.accounts, repository.NewUsageLogRepository(client, f.db), repository.NewUsageBillingRepository(client, f.db), users, nil, nil, repository.NewGatewayCache(redis), cfg, nil, concurrency, prices, nil, billing, issue605LoopbackInference{client: upstream.Client(), host: strings.TrimPrefix(upstream.URL, "http://")}, service.NewDeferredService(f.accounts, nil, time.Hour), nil, nil, nil, nil, nil, nil, nil)
 	defer gateway.StopOpenAICodexTicketHarvester()
 	defer gateway.CloseOpenAIWSPool()
 	keyService := service.NewAPIKeyService(keys, users, groups, nil, nil, nil, cfg)

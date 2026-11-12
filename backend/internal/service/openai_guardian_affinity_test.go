@@ -59,11 +59,11 @@ func guardianAffinityTestContext(t *testing.T, model, subagent, parentHeader, me
 	return WithOpenAIGuardianParentAffinity(context.Background(), c, nil, model)
 }
 
-func TestWithOpenAIGuardianParentAffinity_RequiresUnambiguousReviewLineage(t *testing.T) {
+func TestWithOpenAIGuardianParentAffinity_RequiresUnambiguousSubagentLineage(t *testing.T) {
 	parentID := "11111111-1111-4111-8111-111111111111"
 	wantHash := DeriveSessionHashFromSeed(parentID)
 
-	for _, subagent := range []string{"guardian", "review", "GUARDIAN"} {
+	for _, subagent := range []string{"guardian", "review", "GUARDIAN", "collab_spawn", "worker"} {
 		t.Run(subagent, func(t *testing.T) {
 			ctx := guardianAffinityTestContext(t, codexAutoReviewModel, subagent, parentID, `{"parent_thread_id":"`+parentID+`"}`)
 			affinity, ok := openAIGuardianParentAffinityFromContext(ctx)
@@ -71,6 +71,11 @@ func TestWithOpenAIGuardianParentAffinity_RequiresUnambiguousReviewLineage(t *te
 			require.Equal(t, wantHash, affinity.currentSessionHash)
 		})
 	}
+	t.Run("ordinary model", func(t *testing.T) {
+		ctx := guardianAffinityTestContext(t, "gpt-5.6-sol", "collab_spawn", parentID, "")
+		_, ok := openAIGuardianParentAffinityFromContext(ctx)
+		require.True(t, ok)
+	})
 
 	t.Run("metadata only", func(t *testing.T) {
 		ctx := guardianAffinityTestContext(t, codexAutoReviewModel, "guardian", "", `{"parent_thread_id":"`+parentID+`"}`)
@@ -91,8 +96,7 @@ func TestWithOpenAIGuardianParentAffinity_RequiresUnambiguousReviewLineage(t *te
 	})
 
 	for name, ctx := range map[string]context.Context{
-		"ordinary model":       guardianAffinityTestContext(t, "gpt-5.6-sol", "guardian", parentID, ""),
-		"ordinary subagent":    guardianAffinityTestContext(t, codexAutoReviewModel, "collab_spawn", parentID, ""),
+		"missing subagent":     guardianAffinityTestContext(t, "gpt-5.6-sol", "", parentID, ""),
 		"missing parent":       guardianAffinityTestContext(t, codexAutoReviewModel, "guardian", "", ""),
 		"conflicting lineage":  guardianAffinityTestContext(t, codexAutoReviewModel, "guardian", parentID, `{"parent_thread_id":"different-parent"}`),
 		"conflicting subagent": guardianAffinityTestContext(t, codexAutoReviewModel, "guardian", parentID, `{"parent_thread_id":"`+parentID+`","subagent_kind":"collab_spawn"}`),
@@ -113,12 +117,21 @@ func TestOpenAIGatewayService_GuardianParentAffinitySelectsParentAccountAcrossSc
 		name           string
 		advanced       string
 		stickyWeighted string
+		model          string
+		subagent       string
 	}{
 		{name: "legacy", advanced: "false"},
 		{name: "advanced", advanced: "true"},
 		{name: "advanced sticky weighted", advanced: "true", stickyWeighted: "true"},
+		{name: "ordinary legacy", advanced: "false", model: "gpt-5.6-sol", subagent: "collab_spawn"},
+		{name: "ordinary advanced", advanced: "true", model: "gpt-5.6-sol", subagent: "worker"},
+		{name: "ordinary weighted", advanced: "true", stickyWeighted: "true", model: "gpt-5.6-sol", subagent: "collab_spawn"},
 	} {
 		t.Run(mode.name, func(t *testing.T) {
+			model, subagent := mode.model, mode.subagent
+			if model == "" {
+				model, subagent = codexAutoReviewModel, "guardian"
+			}
 			accounts := []Account{
 				{
 					ID: 39001, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
@@ -142,9 +155,9 @@ func TestOpenAIGatewayService_GuardianParentAffinitySelectsParentAccountAcrossSc
 				concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{39001: true, 39002: true}}),
 			}
 
-			ctx := guardianAffinityTestContext(t, codexAutoReviewModel, "guardian", parentID, "")
+			ctx := guardianAffinityTestContext(t, model, subagent, parentID, "")
 			selection, decision, err := svc.SelectAccountWithScheduler(
-				ctx, &groupID, "", "guardian-child-session", codexAutoReviewModel,
+				ctx, &groupID, "", "guardian-child-session", model,
 				nil, OpenAIUpstreamTransportAny, false,
 			)
 			require.NoError(t, err)

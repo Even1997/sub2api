@@ -61,14 +61,21 @@ type openAIAgentRecoveryRequest struct {
 	groupID          int64
 	model            string
 	session          string
+	previousResponse string
+}
+
+// Complete client history can move; provider response anchors and compaction
+// still require their original route. Observations are account preferences,
+// not a claim that another account has already accepted the ciphertext.
+func (r *openAIAgentRecoveryRequest) canSwitchAccount() bool {
+	return r != nil && !r.disallowLearning && r.previousResponse == ""
 }
 
 // WithOpenAIAgentMessageRecovery observes only opaque item identities. A route
-// becomes eligible for transparent continuation only after this same key,
-// group, session and model consumed or generated the intact items on native
-// HTTP Responses. Generated ownership routes the first consumption back to its
-// producer; it cannot prove a provider will accept its own output in the future.
-// Ordinary sticky writes, HTTP 200 and reasoning are not proof.
+// records its producer after this same key, group, session and model consumed
+// or generated intact items on native Responses. Producer observations provide
+// a fallback affinity hint; they cannot prove another account accepts ciphertext.
+// Ordinary sticky writes, HTTP 200 and reasoning are not completion evidence.
 func (s *OpenAIGatewayService) WithOpenAIAgentMessageRecovery(ctx context.Context, c *gin.Context, body []byte, sessionHash, model string) context.Context {
 	request := &openAIAgentRecoveryRequest{groupID: getOpenAIGroupIDFromContext(c), model: model, session: sessionHash}
 	keyID := getAPIKeyIDFromContext(c)
@@ -76,6 +83,7 @@ func (s *OpenAIGatewayService) WithOpenAIAgentMessageRecovery(ctx context.Contex
 	request.userID = openAIAgentRecoveryHTTPUser(c, keyID)
 	request.nativeCompaction = isOpenAINativeCompactionV2(c)
 	request.disallowLearning = isOpenAIResponsesCompactPath(c) || request.nativeCompaction
+	request.previousResponse = strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
 	if s == nil || keyID <= 0 || sessionHash == "" || model == "" {
 		return context.WithValue(ctx, openAIAgentRecoveryContextKey{}, request)
 	}
@@ -105,7 +113,7 @@ func (s *OpenAIGatewayService) WithOpenAIAgentMessageRecovery(ctx context.Contex
 		if !found {
 			continue
 		}
-		if binding.conflicted || (request.owner != nil && !sameOpenAIAgentRecoveryRoute(*request.owner, binding)) {
+		if binding.conflicted || (!request.canSwitchAccount() && request.owner != nil && !sameOpenAIAgentRecoveryRoute(*request.owner, binding)) {
 			request.conflict = true
 			break
 		}
@@ -212,7 +220,13 @@ func (s *OpenAIGatewayService) checkOpenAIAgentRecoveryAccount(ctx context.Conte
 	if request.conflict {
 		return openAIAgentRecoveryError("owner_conflict")
 	}
-	if account == nil || account.ID != request.owner.accountID {
+	if account == nil {
+		return openAIAgentRecoveryError("owner_unavailable")
+	}
+	if request.canSwitchAccount() {
+		return nil
+	}
+	if account.ID != request.owner.accountID {
 		return openAIAgentRecoveryError("owner_unavailable")
 	}
 	if openAIAgentRecoveryConfig(account, request.model) != request.owner.config {
@@ -233,9 +247,7 @@ func (s *OpenAIGatewayService) checkOpenAIAgentRecoveryDispatch(ctx context.Cont
 	// rechecked against the owner's exact wire at send time. The legacy
 	// /responses/compact bridge rewrites the body and endpoint, so it remains
 	// outside this contract.
-	if !account.IsOpenAI() || account.HasManagedOpenAIConnections() || account.AuthConnectionID != "" ||
-		account.IsOpenAIPassthroughEnabled() || account.IsCopilotSDKEnabled() || account.IsSIWCEnabled() ||
-		account.IsExcelBPSEnabledForModel(model) || account.IsPrismBrowserEnabledForModel(model) ||
+	if !openAIAgentHistoryAccount(account, model) ||
 		isOpenAIResponsesCompactPath(c) ||
 		(isOpenAINativeCompactionV2(c) && shouldForwardDeepSeekResponsesCompactViaChatCompletions(account, body)) ||
 		shouldForwardDeepSeekResponsesLiteViaChatCompletions(account, body) ||
@@ -243,6 +255,12 @@ func (s *OpenAIGatewayService) checkOpenAIAgentRecoveryDispatch(ctx context.Cont
 		return openAIAgentRecoveryError("route_changed")
 	}
 	return nil
+}
+
+func openAIAgentHistoryAccount(account *Account, model string) bool {
+	return account != nil && account.IsOpenAI() && !account.HasManagedOpenAIConnections() && account.AuthConnectionID == "" &&
+		!account.IsOpenAIPassthroughEnabled() && !account.IsCopilotSDKEnabled() && !account.IsSIWCEnabled() &&
+		!account.IsExcelBPSEnabledForModel(model) && !account.IsPrismBrowserEnabledForModel(model)
 }
 
 // This gate is called only at the real native HTTP send, after routing,
@@ -324,7 +342,8 @@ func (s *OpenAIGatewayService) prepareOpenAIAgentRecoveryAttempt(ctx context.Con
 	}
 	wire := openAIAgentRecoveryWireDigest(req.URL.String(), req.Header, gjson.GetBytes(body, "model").String())
 	binding := openAIAgentRecoveryBinding{accountID: account.ID, config: openAIAgentRecoveryConfig(account, request.model), wire: wire, expiresAt: time.Now().Add(s.openAIWSSessionStickyTTL())}
-	if request.owner != nil && !sameOpenAIAgentRecoveryRoute(*request.owner, binding) {
+	if request.owner != nil && !sameOpenAIAgentRecoveryRoute(*request.owner, binding) &&
+		(!request.canSwitchAccount() || (request.owner.accountID == binding.accountID && request.owner.config == binding.config)) {
 		return noop, openAIAgentRecoveryError("wire_changed")
 	}
 	shared, _ := s.cache.(OpenAIAgentRecoveryCache)
@@ -340,7 +359,7 @@ func (s *OpenAIGatewayService) prepareOpenAIAgentRecoveryAttempt(ctx context.Con
 			if err != nil {
 				return noop, openAIAgentRecoveryError("store_unavailable")
 			}
-			if found && (old.conflicted || old.failed || old.pending != "" || !sameOpenAIAgentRecoveryRoute(old, binding)) {
+			if found && (old.conflicted || old.failed || old.pending != "" || (!request.canSwitchAccount() && !sameOpenAIAgentRecoveryRoute(old, binding))) {
 				return noop, openAIAgentRecoveryError("owner_conflict")
 			}
 			if !found && request.known[key] {
@@ -352,9 +371,13 @@ func (s *OpenAIGatewayService) prepareOpenAIAgentRecoveryAttempt(ctx context.Con
 		state.mu.Lock()
 		defer state.mu.Unlock()
 		for _, key := range request.keys {
-			if old, exists := state.bindings[key]; exists && time.Now().Before(old.expiresAt) &&
-				(old.conflicted || old.failed || old.pending != "" || !sameOpenAIAgentRecoveryRoute(old, binding)) {
+			old, exists := state.bindings[key]
+			exists = exists && time.Now().Before(old.expiresAt)
+			if exists && (old.conflicted || old.failed || old.pending != "" || (!request.canSwitchAccount() && !sameOpenAIAgentRecoveryRoute(old, binding))) {
 				return noop, openAIAgentRecoveryError("owner_conflict")
+			}
+			if !exists && request.known[key] {
+				return noop, openAIAgentRecoveryError("owner_unavailable")
 			}
 		}
 	}
@@ -366,7 +389,14 @@ func (s *OpenAIGatewayService) prepareOpenAIAgentRecoveryAttempt(ctx context.Con
 			return
 		}
 		binding.expiresAt = time.Now().Add(s.openAIWSSessionStickyTTL())
-		keys := append([][32]byte(nil), request.keys...)
+		keys := make([][32]byte, 0, len(request.keys))
+		for _, key := range request.keys {
+			// Preserve the original producer; consuming intact history on another
+			// account must not publish a conflicting producer for the same item.
+			if !request.canSwitchAccount() || !request.known[key] {
+				keys = append(keys, key)
+			}
+		}
 		shared, _ := s.cache.(OpenAIAgentRecoveryCache)
 		if shared != nil {
 			storeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -455,6 +485,16 @@ func observeOpenAIAgentRecoveryOutput(c *gin.Context, body []byte, nested bool) 
 func OpenAIAgentToolResultContinuation(ctx context.Context) bool {
 	r := openAIAgentRecoveryFromContext(ctx)
 	return r != nil && r.owner != nil && r.toolResult
+}
+
+// Only an explicit pre-generation rejection makes a known tool-result
+// submission safe to retry. Timeouts, stream failures and unknown outcomes do not.
+func OpenAIAgentToolResultCanFailover(ctx context.Context, failure *UpstreamFailoverError) bool {
+	if !OpenAIAgentToolResultContinuation(ctx) {
+		return true
+	}
+	r := openAIAgentRecoveryFromContext(ctx)
+	return r.canSwitchAccount() && failure != nil && failure.RequestRejected
 }
 
 // Native remote compaction v2 consumes an already proven task but proves no new

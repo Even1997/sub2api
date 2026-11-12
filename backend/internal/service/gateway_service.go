@@ -729,6 +729,7 @@ type UpstreamFailoverError struct {
 	SuppressScheduleFailure   bool          // 独立子协议已有专用冷却时，不得污染通用账号健康评分
 	SkipOAuth429AttemptLimit  bool          // 独立子协议已逐账号冷却时，可使用 handler 的完整切号预算
 	SafeToFailoverAfterWrite  bool          // 仅写出 SSE 注释等非语义字节时，仍可在同一客户端流中切换账号
+	RequestRejected           bool          // Native HTTP explicitly rejected authentication or quota before generation.
 	// HeaderTimeoutSubmitted marks a failover caused by an OpenAI response-header
 	// timeout after the request was written. The upstream may have billed the
 	// attempt; the successful usage record adds one retry surcharge unit.

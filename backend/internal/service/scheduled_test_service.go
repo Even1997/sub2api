@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -75,7 +76,23 @@ func (s *ScheduledTestService) UpdatePlan(ctx context.Context, plan *ScheduledTe
 		return nil, fmt.Errorf("invalid test schedule: %w", err)
 	}
 	if plan.Enabled {
-		if err := s.validateQualityAccountModels(ctx, plan); err != nil {
+		validate := s.validateQualityAccountModels
+		if plan.PelicanConfig != nil && plan.PelicanConfig.Quality != nil {
+			previous, err := s.planRepo.GetByID(ctx, plan.ID)
+			if err != nil {
+				return nil, err
+			}
+			if previous != nil && previous.Enabled && previous.AccountID == plan.AccountID &&
+				previous.PelicanConfig != nil && previous.PelicanConfig.Quality != nil &&
+				previous.ModelID == plan.ModelID && slices.Equal(qualityPlanModels(previous), qualityPlanModels(plan)) &&
+				previous.PelicanConfig.QuestionKind == plan.PelicanConfig.QuestionKind &&
+				previous.PelicanConfig.TestChannel == plan.PelicanConfig.TestChannel {
+				// Metadata edits retain local admission checks without rediscovering
+				// unchanged models. Execution still checks the current live catalog.
+				validate = s.validateQualityAccountModelPolicy
+			}
+		}
+		if err := validate(ctx, plan); err != nil {
 			return nil, err
 		}
 	}
@@ -125,6 +142,11 @@ func nextPlanRun(plan *ScheduledTestPlan, now time.Time) (time.Time, error) {
 		cfg.QualityModelActions = nil
 		cfg.RandomQuestion = nil
 		cfg.QualityBatch = nil
+		cfg.PelicanQuestion = nil
+		cfg.ActualPrompt = ""
+		if err := validatePelicanPromptMode(cfg); err != nil {
+			return time.Time{}, err
+		}
 		if cfg.QuestionKind == QualityRandomQuestionKind {
 			if cfg.Quality == nil {
 				return time.Time{}, fmt.Errorf("random questions require a quality rule")
@@ -168,7 +190,7 @@ func nextPlanRun(plan *ScheduledTestPlan, now time.Time) (time.Time, error) {
 			plan.ModelID = models[0]
 		}
 		// 探针题型不需要题目文本；其余题型题目必填。
-		if isOpenAICodexStateProbePlan(cfg) || cfg.QuestionKind == QualityRandomQuestionKind {
+		if isOpenAICodexStateProbePlan(cfg) || cfg.QuestionKind == QualityRandomQuestionKind || cfg.PromptMode == PelicanPromptModeRandom {
 			if len(cfg.Prompt) > 32000 || strings.TrimSpace(plan.ModelID) == "" || len(plan.ModelID) > 100 {
 				return time.Time{}, fmt.Errorf("probe model is required (maximum 32000/100 bytes)")
 			}

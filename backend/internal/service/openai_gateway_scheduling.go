@@ -1280,7 +1280,14 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			}
 			result, acquireErr := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
 			if acquireErr == nil && result != nil && result.Acquired {
-				return s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc, result.RequestID)
+				selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc, result.RequestID)
+				if selectErr != nil {
+					return nil, selectErr
+				}
+				if canBindSticky(selection.Account) {
+					_ = s.bindOpenAIStickySessionDuringSelection(ctx, groupID, sessionHash, selection.Account.ID)
+				}
+				return selection, nil
 			}
 			if groupHasAccountRoutingPreference(routingGroup) {
 				if firstBusyAccount == nil {

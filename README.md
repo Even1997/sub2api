@@ -4,7 +4,7 @@
 
 # Sub2API
 
-[![Go](https://img.shields.io/badge/Go-1.27.3-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/Go-1.27.4-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
@@ -926,6 +926,10 @@ sub2api/
 </a>
 
 ---
+
+## OpenAI 图片输出格式
+
+OAuth / Setup Token 的 GPT Image 1.5、2、2.5、2.6 图片请求以映射后模型调用 Codex 原生端点；2.6 之前的模型保留端点 404/405 时回退 Responses，2.6 不回退。`output_format` / `output_compression` 透传不保证上游按指定格式输出：请求 JPEG/SVG 仍可能返回 4xx 或 HTTP 200、`output_format: "png"` 及 PNG 内容，包括已报告的 `gpt-image-2.5-flare` JPEG 请求。保存或交付前，应核对返回字段（含图片项字段）和真实图片格式，以实际格式设置扩展名和 MIME。成功响应保留状态、内容及 usage；格式不符仍可能计费，自动重试可能重复生成并计费。
 
 ## License
 

@@ -16,9 +16,7 @@ func TestOpenAILegacyAdmissionRebind(t *testing.T) {
 		if batch {
 			mode = "load_batch"
 		}
-		for _, scenario := range []string{"new_session", "rpm_spillover", "capacity_spillover", "load_read_failure"} {
-			// The priority/LRU engine waits on a full sticky account; RPM headroom
-			// supplies its existing, movable spillover path without changing policy.
+		for _, scenario := range []string{"new_session", "unavailable_sticky", "capacity_spillover", "load_read_failure"} {
 			if !batch && (scenario == "capacity_spillover" || scenario == "load_read_failure") {
 				continue
 			}
@@ -66,9 +64,8 @@ func TestOpenAILegacyAdmissionRebind(t *testing.T) {
 					accountRepo: schedulerTestOpenAIAccountRepo{accounts: accounts}, cache: cache, cfg: cfg,
 					concurrencyService: NewConcurrencyService(concurrency),
 				}
-				if scenario == "rpm_spillover" {
-					accounts[len(accounts)-1].Extra["base_rpm"] = 10
-					svc.rpmCache = &openAIRPMTestCache{counts: map[int64]int{a: 8}}
+				if scenario == "unavailable_sticky" {
+					accounts[len(accounts)-1].Schedulable = false
 				}
 				require.Nil(t, svc.getOpenAIAccountScheduler(ctx, false), "LEGACY_ADMISSION_FIXTURE: advanced scheduler must be off")
 				selected, _, err := svc.SelectAccountWithSchedulerForCapability(ctx, &groupID, "", session, "gpt-5.1", nil,

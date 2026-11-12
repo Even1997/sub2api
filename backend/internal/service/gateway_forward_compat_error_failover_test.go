@@ -39,7 +39,7 @@ func TestHandleCCStreamingFromAnthropic_PingsBeforeErrorAreHeldForFailover(t *te
 
 		result, err := (&GatewayService{}).handleCCStreamingFromAnthropic(
 			&http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(stream))},
-			c, "claude-sonnet-4-6", "claude-sonnet-4-6", nil, time.Now(),
+			c, "claude-sonnet-4-6", "claude-sonnet-4-6", nil, time.Now(), false,
 		)
 
 		var sseErr *sseStreamErrorEventError
@@ -58,7 +58,7 @@ func TestHandleCCStreamingFromAnthropic_HeldPingsDoNotLeakOnceOutputStarts(t *te
 
 	result, err := (&GatewayService{}).handleCCStreamingFromAnthropic(
 		&http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(stream))},
-		c, "claude-sonnet-4-6", "claude-sonnet-4-6", nil, time.Now(),
+		c, "claude-sonnet-4-6", "claude-sonnet-4-6", nil, time.Now(), false,
 	)
 
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestHandleCCStreamingFromAnthropic_PingForwardedAfterHoldWindow(t *testing.
 	finished := make(chan error, 1)
 	go func() {
 		_, err := (&GatewayService{}).handleCCStreamingFromAnthropic(
-			&http.Response{Header: http.Header{}, Body: reader}, c, "claude-sonnet-4-6", "claude-sonnet-4-6", nil, time.Now(),
+			&http.Response{Header: http.Header{}, Body: reader}, c, "claude-sonnet-4-6", "claude-sonnet-4-6", nil, time.Now(), false,
 		)
 		finished <- err
 	}()

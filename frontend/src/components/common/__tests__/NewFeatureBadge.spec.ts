@@ -23,12 +23,18 @@ describe('NewFeatureBadge', () => {
 
 
   it.each([
+    ['Antigravity usage query', NEW_FEATURE_NOTICES.antigravityUsageQuery],
+    ['OpenAI cache write TTL', NEW_FEATURE_NOTICES.openaiCacheWriteTTL12h],
+    ['EasyPay refund code', NEW_FEATURE_NOTICES.easyPayRefundSuccessCode],
+    ['settings save dock', NEW_FEATURE_NOTICES.settingsSaveDock],
+    ['VIP automatic credit email', NEW_FEATURE_NOTICES.vipAutoCreditEmail],
     ['dashboard account concurrency', NEW_FEATURE_NOTICES.dashboardAccountConcurrency],
     ['key risk', NEW_FEATURE_NOTICES.keyRisk],
     ['API key usage dates', NEW_FEATURE_NOTICES.apiKeyUsageDateRange],
     ['pricing transfer', NEW_FEATURE_NOTICES.channelPricingTransfer],
     ['stream event timing', NEW_FEATURE_NOTICES.streamFirstEventTiming],
     ['Mistral budget usage', NEW_FEATURE_NOTICES.mistralBudgetUsage],
+    ['Qwen platform', NEW_FEATURE_NOTICES.qwenPlatform],
     ['image header timeout groups', NEW_FEATURE_NOTICES.openaiImageHeaderTimeoutGroups],
     ['profit operations time ranges', NEW_FEATURE_NOTICES.profitOperationsTimeRanges],
     ['quality retest rest', NEW_FEATURE_NOTICES.qualityRetestRest],

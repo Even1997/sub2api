@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/hex"
+	"strings"
 	"time"
 )
 
@@ -10,6 +11,9 @@ import (
 // evidence while waiting, without admitting a request or guessing another owner.
 func (s *defaultOpenAIAccountScheduler) checkOpenAIAgentRecoveryCooldown(ctx context.Context, req OpenAIAccountScheduleRequest, recovery *openAIAgentRecoveryRequest) error {
 	if recovery == nil || recovery.owner == nil || s.service.accountRepo == nil {
+		return nil
+	}
+	if recovery.canSwitchAccount() && strings.TrimSpace(req.PreviousResponseID) == "" {
 		return nil
 	}
 	// The scheduler snapshot may filter out quota-blocked accounts entirely.

@@ -137,6 +137,35 @@ func TestIssue758HTTPLimitedOwnerWaitsAndResumesIntactTask(t *testing.T) {
 					resetAt := time.Now().UTC().Add(5 * time.Hour).Truncate(time.Second)
 					accounts[0].RateLimitResetAt = &resetAt
 					accounts[0].Priority, accounts[1].Priority = 100, 0
+					if !stored {
+						// Complete client history can try another authorized native account.
+						upstream.portable = true
+						resumed := issue758Request(t, handler, followupBody)
+						require.Equal(t, http.StatusOK, resumed.Code, resumed.Body.String())
+						executeTools(issue758CompletedResponse(t, resumed.Body.String(), stream))
+						require.Equal(t, []int64{1, 1, 2}, upstream.ids)
+						require.Equal(t, 1, toolExecutions)
+						require.Equal(t, 18, balance)
+						for _, body := range upstream.bodies[1:] {
+							require.JSONEq(t, issue715Agent, gjson.GetBytes(body, "input.#(type==agent_message)").Raw)
+							require.Equal(t, "ledger balance 18; applied once", gjson.GetBytes(body, "input.#(type==function_call_output).output").String())
+						}
+						if shared {
+							for key, original := range originalOwners {
+								value, err := mr.Get(key)
+								require.NoError(t, err)
+								require.Equal(t, original, value, "cross-account consumption must not corrupt producer observations")
+							}
+							past := time.Now().Add(-time.Minute)
+							accounts[0].RateLimitResetAt = &past
+							handler = newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, cache, accounts...)
+							again := issue758Request(t, handler, followupBody)
+							require.Equal(t, http.StatusOK, again.Code, again.Body.String())
+							// The persisted session preference survives process replacement.
+							require.Equal(t, []int64{1, 1, 2, 2}, upstream.ids)
+						}
+						return
+					}
 					require.True(t, accounts[1].IsSchedulable(), "the pool has an available alternative but no compatibility evidence for it")
 					assertWaiting := func(response *httptest.ResponseRecorder) {
 						t.Helper()
@@ -332,12 +361,11 @@ func TestIssue758HTTPQuotaWaitCannotHideHardRestrictions(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			accounts := issue715Accounts()
 			upstream := &issue715Upstream{}
-			handler := newOpenAIResponsesFailoverTestHandler(t, upstream, accounts...)
+			handler := newOpenAIResponsesFailoverTestHandlerWithCache(t, upstream, nil, accounts...)
 			first := issue758Request(t, handler, issue715Body(false, false))
 			require.Equal(t, http.StatusOK, first.Code, first.Body.String())
 			resetAt := time.Now().Add(5 * time.Hour)
 			accounts[0].RateLimitResetAt = &resetAt
-			code := "encrypted_agent_recovery_owner_unavailable"
 			switch change {
 			case "disabled":
 				accounts[0].Schedulable = false
@@ -347,14 +375,12 @@ func TestIssue758HTTPQuotaWaitCannotHideHardRestrictions(t *testing.T) {
 				accounts[0].ExpiresAt = &past
 			case "credentials":
 				accounts[0].Credentials = map[string]any{"access_token": "fixture-changed-identity"}
-				code = "encrypted_agent_recovery_route_changed"
 			}
 			refused := issue758Request(t, handler, issue715Body(true, false))
-			require.Equal(t, http.StatusConflict, refused.Code, refused.Body.String())
-			require.Equal(t, code, gjson.Get(refused.Body.String(), "error.code").String())
-			require.Equal(t, "invalid_request_error", gjson.Get(refused.Body.String(), "error.type").String())
+			require.NotEqual(t, http.StatusOK, refused.Code, refused.Body.String())
+			require.Contains(t, refused.Body.String(), "unsupported_encrypted_agent_message", "alternative provider rejection must surface honestly")
 			require.Empty(t, refused.Header().Get("Retry-After"), "quota recovery cannot promise that a revoked or changed route will recover")
-			require.Equal(t, []int64{1}, upstream.ids)
+			require.Equal(t, []int64{1, 2}, upstream.ids)
 		})
 	}
 }

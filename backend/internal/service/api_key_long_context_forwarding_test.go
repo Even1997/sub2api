@@ -49,7 +49,7 @@ func TestAPIKeyLongContextForwardingUsesAccountMappedModel(t *testing.T) {
 		}},
 		{"messages to responses", "/v1/messages", messagesBody, false, func(s *OpenAIGatewayService) forward {
 			return func(ctx context.Context, c *gin.Context, a *Account, body []byte) (*OpenAIForwardResult, error) {
-				return s.forwardAsAnthropic(ctx, c, a, body, "", "")
+				return s.ForwardAsAnthropic(ctx, c, a, body, "", "")
 			}
 		}},
 		{"responses", "/v1/responses", responsesBody, false, func(s *OpenAIGatewayService) forward {

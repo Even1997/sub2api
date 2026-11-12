@@ -124,7 +124,7 @@ func TestIssue715WSFinalSendRechecksBinding(t *testing.T) {
 				svc.agentMessageRecovery.mu.Unlock()
 			}
 			err := issue715WSBegin(t, manager, account, body, mode)
-			if mutation == "same" {
+			if mutation == "same" || mutation == "account" || mutation == "credentials" {
 				require.NoError(t, err)
 			} else {
 				require.Error(t, err, "changed binding must fail before any generation write")

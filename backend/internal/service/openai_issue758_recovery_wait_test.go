@@ -22,6 +22,9 @@ func issue758WaitFixture(t *testing.T, cache GatewayCache) (*OpenAIGatewayServic
 	ctx := service.WithOpenAIAgentMessageRecovery(context.Background(), c, []byte(issue715OpaqueBody), "fixture-session", "gpt-6-astra")
 	require.NotNil(t, openAIAgentRecoveryFromContext(ctx).owner)
 	request := OpenAIAccountScheduleRequest{Platform: PlatformOpenAI, GroupID: int64Ptr(715), SessionHash: "fixture-session", RequestedModel: "gpt-6-astra"}
+	// These tests exercise retained stateful ownership. Full client history
+	// now falls back through ordinary scheduling instead of waiting here.
+	openAIAgentRecoveryFromContext(ctx).previousResponse = "resp_fixture758"
 	return service, &defaultOpenAIAccountScheduler{service: service}, ctx, request, &accounts[0]
 }
 
