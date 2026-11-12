@@ -95,7 +95,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/vip-credit-logs"
-          go test -race -p 1 -tags=integration ./internal/repository -run '^(TestUsageLogRepositoryCacheWriteTTLRoundTrip|TestChannelCacheWriteTTLPricesRoundTrip|TestOAuthDegradation429PostgresWithoutProbeVerdicts)$' -count=1 -v -timeout=10m | tee "$RUNNER_TEMP/vip-credit-logs/release-repository.log"
+          go test -race -p 1 -tags=integration ./internal/repository -run '^(TestUsageLogRepositoryCacheWriteTTLRoundTrip|TestChannelCacheWriteTTLPricesRoundTrip|TestOAuthDegradation429PostgresWithoutProbeVerdicts|TestOpenAIOAuthFallbackAttribution|TestQwenPlatformMetricsAreSeparateFromOpenAI)$' -count=1 -v -timeout=10m | tee "$RUNNER_TEMP/vip-credit-logs/release-repository.log"
       - name: Linux memory limits and mount escape regressions
         if: ${{ !cancelled() }}
         working-directory: backend
