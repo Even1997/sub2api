@@ -275,7 +275,7 @@ func (s *ScheduledTestService) eligibleQualityModels(ctx context.Context, plan *
 	return found, blocked, nil
 }
 
-func (s *ScheduledTestService) validateQualityAccountModels(ctx context.Context, plan *ScheduledTestPlan) error {
+func (s *ScheduledTestService) validateQualityAccountModelPolicy(ctx context.Context, plan *ScheduledTestPlan) error {
 	if plan.PelicanConfig != nil && plan.PelicanConfig.Quality != nil && s.accountTests != nil {
 		account, err := s.accountTests.accountRepo.GetByID(ctx, plan.AccountID)
 		if err != nil {
@@ -288,7 +288,17 @@ func (s *ScheduledTestService) validateQualityAccountModels(ctx context.Context,
 			if !qualityAccountAllowsModel(account, model) {
 				return infraerrors.BadRequest("QUALITY_MODEL_NOT_ALLOWED", "账号检测策略不允许所选模型，请核对模型映射、账号权限和检测通道")
 			}
+			if account.Extra[qualityUnsupportedModelKey(model)] != nil || account.Extra[qualityUnsupportedModelKey(account.GetMappedModel(model))] != nil {
+				return fmt.Errorf("账号 #%d 不支持检测模型：%s", plan.AccountID, model)
+			}
 		}
+	}
+	return nil
+}
+
+func (s *ScheduledTestService) validateQualityAccountModels(ctx context.Context, plan *ScheduledTestPlan) error {
+	if err := s.validateQualityAccountModelPolicy(ctx, plan); err != nil {
+		return err
 	}
 
 	_, unsupported, err := s.eligibleQualityModels(ctx, plan)

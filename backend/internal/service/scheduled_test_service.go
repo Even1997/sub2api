@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -75,7 +76,23 @@ func (s *ScheduledTestService) UpdatePlan(ctx context.Context, plan *ScheduledTe
 		return nil, fmt.Errorf("invalid test schedule: %w", err)
 	}
 	if plan.Enabled {
-		if err := s.validateQualityAccountModels(ctx, plan); err != nil {
+		validate := s.validateQualityAccountModels
+		if plan.PelicanConfig != nil && plan.PelicanConfig.Quality != nil {
+			previous, err := s.planRepo.GetByID(ctx, plan.ID)
+			if err != nil {
+				return nil, err
+			}
+			if previous != nil && previous.Enabled && previous.AccountID == plan.AccountID &&
+				previous.PelicanConfig != nil && previous.PelicanConfig.Quality != nil &&
+				previous.ModelID == plan.ModelID && slices.Equal(qualityPlanModels(previous), qualityPlanModels(plan)) &&
+				previous.PelicanConfig.QuestionKind == plan.PelicanConfig.QuestionKind &&
+				previous.PelicanConfig.TestChannel == plan.PelicanConfig.TestChannel {
+				// Metadata edits retain local admission checks without rediscovering
+				// unchanged models. Execution still checks the current live catalog.
+				validate = s.validateQualityAccountModelPolicy
+			}
+		}
+		if err := validate(ctx, plan); err != nil {
 			return nil, err
 		}
 	}
