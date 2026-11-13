@@ -55,7 +55,7 @@ func TestIssue715RecoveryScopeAndPayloadIdentity(t *testing.T) {
 			c, _ := newTurnStateTestContext(t, key, session)
 			c.Set("api_key", &APIKey{ID: key, GroupID: &group})
 			ctx := svc.WithOpenAIAgentMessageRecovery(context.Background(), c, []byte(body), session, model)
-			require.Equal(t, scope == "same", openAIAgentRecoveryBound(ctx), "compatibility evidence is exact and credential scoped")
+			require.Equal(t, scope == "same", openAIAgentRecoveryFromContext(ctx).owner != nil, "compatibility evidence is exact and credential scoped")
 		})
 	}
 }
@@ -74,10 +74,9 @@ func TestIssue715RecoveryDoesNotLearnUncompletedOrChangedWire(t *testing.T) {
 	require.Empty(t, svc.agentMessageRecovery.bindings, "HTTP 200, EOF, cancellation and incomplete are not completion evidence")
 	req, err = http.NewRequest(http.MethodPost, "https://native.example/v1/responses", bytes.NewBufferString(`{"input":[]}`))
 	require.NoError(t, err)
-	complete, err = svc.prepareOpenAIAgentRecoveryAttempt(ctx, account, req)
-	require.NoError(t, err)
-	complete(true)
-	require.Empty(t, svc.agentMessageRecovery.bindings, "a transformed-away task must never earn a compatibility grant")
+	_, err = svc.prepareOpenAIAgentRecoveryAttempt(ctx, account, req)
+	require.Error(t, err, "a transformed-away task must be rejected before dispatch")
+	require.Empty(t, svc.agentMessageRecovery.bindings)
 }
 
 func TestIssue715RecoveryRejectsAmbiguousTask(t *testing.T) {
@@ -151,7 +150,7 @@ func TestIssue715RecoveryConflictingConcurrentCompletionAndExpiry(t *testing.T) 
 		svc.agentMessageRecovery.bindings[key] = binding
 	}
 	next = svc.WithOpenAIAgentMessageRecovery(context.Background(), c, []byte(issue715OpaqueBody), "fixture-session", "gpt-6-astra")
-	require.False(t, openAIAgentRecoveryBound(next), "simulated expiry cannot manufacture compatibility")
+	require.Nil(t, openAIAgentRecoveryFromContext(next).owner, "simulated expiry cannot manufacture compatibility")
 }
 
 func TestIssue715RecoveryRetainsNativeOwnerAgainstBPSPreference(t *testing.T) {
@@ -231,7 +230,7 @@ func TestIssue715SharedOwnershipIsAuthoritativeAndMixedTasksRemainIntact(t *test
 	cache.readErr = nil
 	cache.values = make(map[string]string)
 	ctx = producer.WithOpenAIAgentMessageRecovery(context.Background(), c, []byte(issue715OpaqueBody), "fixture-session", "gpt-6-astra")
-	require.False(t, openAIAgentRecoveryBound(ctx), "shared miss cannot resurrect process-local ownership")
+	require.Nil(t, openAIAgentRecoveryFromContext(ctx).owner, "shared miss cannot resurrect process-local ownership")
 }
 
 func TestIssue715PlainRequestsWithoutSafeCaptureKeepOriginalBehavior(t *testing.T) {

@@ -8,12 +8,13 @@ vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<main><slot /></main>' } }))
 vi.mock('@/components/admin/operations/PriorityAccountBatch.vue', () => ({ default: { template: '<section />' } }))
 vi.mock('@/components/admin/operations/SmartOpsNav.vue', () => ({ default: { template: '<nav />' } }))
+vi.mock('@/components/common/NewFeatureBadge.vue', () => ({ default: { template: '<span />' } }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({
   t: (key: string, params?: Record<string, unknown>) => [key, ...Object.values(params ?? {})].join(' '),
 }) }))
 vi.mock('@/api/admin/priorityScheduling', () => ({ getPriorityAnalysis: vi.fn(), getPriorityModels: async () => ['gpt-test','other-model'], getPriorityConfig: vi.fn(), getPrioritySnapshot: vi.fn(), savePriorityConfig: vi.fn(), getPriorityLatency: vi.fn(), recomputePriorityScheduling: vi.fn(), getPriorityStickyBindings: vi.fn(), clearPriorityStickyBindings: vi.fn(), defaultPriorityTeamsConfig: () => ({ enabled: false, cost_cny: 50, window_hours: 4, cny_per_billing_unit: 1, window_source: 'explicit' as const }) }))
 const config: PrioritySchedulingConfig = { teams: { enabled: false, cost_cny: 50, window_hours: 4, cny_per_billing_unit: 1, window_source: 'explicit' as const }, error_rate_weight: 25, error_rate_window_minutes: 10, error_rate_prior_samples: 5, latency_percentile: 90, latency_measurement: 'legacy_forward', recovery_exploration_percent: 0, oauth_quota_priority: false, oauth_quota_threshold: 90, balance_protocols: true, enabled: false, mode: 'balanced', group_ids: [], models: [], window_minutes: 60, min_samples: 5, target_ttft_ms: 3000, latency_penalty_mode: 'deprioritize', latency_penalty_minutes: 10, max_load_percent: 80, min_quality_percent: 90, quality_max_age_hours: 24, quality_weight: 30, latency_weight: 25, load_weight: 25, cost_weight: 20 }
-const savedDefaults = { latency_percentile: 90 as const, latency_measurement: 'legacy_forward' as const, recovery_exploration_percent: 0, latency_penalty_mode: 'deprioritize' as const, latency_penalty_minutes: 10 }
+const savedDefaults = { cache_weight: 0, latency_percentile: 90 as const, latency_measurement: 'legacy_forward' as const, recovery_exploration_percent: 0, latency_penalty_mode: 'deprioritize' as const, latency_penalty_minutes: 10 }
 vi.mock('@/api/admin/groups', () => ({ getAll: async () => ([{ id: 11, name: 'Fixture group' }, { id: 12, name: 'Other group' }]), getModelAllowlistCandidates: async () => (['gpt-test']) }))
 beforeEach(() => {
   vi.resetAllMocks()
@@ -35,6 +36,18 @@ beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 describe('priority scheduling', () => {
+  it('defaults legacy cache weight to zero and saves an explicit weight or zero', async () => {
+    const wrapper = mount(PrioritySchedulingView); await flushPromises()
+    const input = wrapper.get('[data-testid="cache-weight"]')
+    expect((input.element as HTMLInputElement).value).toBe('0')
+    await input.setValue(25)
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(savePriorityConfig).toHaveBeenLastCalledWith({ ...config, ...savedDefaults, cache_weight: 25 })
+    await input.setValue(0)
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(savePriorityConfig).toHaveBeenLastCalledWith({ ...config, ...savedDefaults, cache_weight: 0 })
+    wrapper.unmount()
+  })
   it('shows scoped error evidence and unknown samples, and saves an explicit zero weight', async () => {
     const candidate: PriorityCandidate = { teams_recovery: null, account_id: 1, account_name: 'Mock attempt evidence', score: 72, tier: 'eligible', reasons: [], priority: 1, concurrency: 10, load_factor: 10, load_percent: 0, waiting: 0, rate: 0.1, revenue: 0, theoretical_cost: 0, profit: null, margin: null, economics_source: 'rate', profit_samples: 0, samples: 0, p90_ttft_ms: 0, quality_passed: 1, quality_samples: 1, error_rate: 0.25, error_successes: 3, error_failures: 1, error_window_minutes: 10, error_prior_samples: 5, error_observed_at: '2026-10-22T01:02:03Z', error_endpoint: '/v1/responses', error_penalty: 0.9, base_score: 80 }
     vi.mocked(getPrioritySnapshot).mockResolvedValue({ at: '2026-10-22T01:00:00Z', model: 'mock-model', group_id: 1, mode: 'balanced', history_ready: true, candidates: [candidate, { ...candidate, account_id: 2, error_rate: null, error_successes: 0, error_failures: 0 }, { ...candidate, account_id: 3, error_rate: 0.1, error_successes: 9, error_failures: 1 }] })

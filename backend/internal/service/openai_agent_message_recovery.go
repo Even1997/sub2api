@@ -175,7 +175,7 @@ func openAIAgentRecoveryInputDigest(body []byte) [32]byte {
 }
 
 func (s *OpenAIGatewayService) preserveOpenAIAgentHistory(body []byte) bool {
-	return s != nil && s.cfg != nil && s.cfg.Gateway.DisableEncryptedAgentOwnerBinding && len(openAIAgentRecoveryItemDigests(body)) > 0
+	return s != nil && len(openAIAgentRecoveryItemDigests(body)) > 0
 }
 
 func openAIAgentRecoveryItemDigests(body []byte) [][32]byte {
@@ -305,6 +305,12 @@ func (s *OpenAIGatewayService) checkOpenAIAgentRecoveryDispatch(ctx context.Cont
 	return nil
 }
 
+func openAIAgentHistoryAccount(account *Account, model string) bool {
+	return account != nil && account.IsOpenAI() && !account.HasManagedOpenAIConnections() && account.AuthConnectionID == "" &&
+		!account.IsOpenAIPassthroughEnabled() && !account.IsCopilotSDKEnabled() && !account.IsSIWCEnabled() &&
+		!account.IsExcelBPSEnabledForModel(model) && !account.IsPrismBrowserEnabledForModel(model)
+}
+
 // This gate is called only at the real native HTTP send, after routing,
 // transformation, account revalidation and final credential/header selection.
 // It captures the exact admitted route; success publication never re-reads a
@@ -368,6 +374,9 @@ func (s *OpenAIGatewayService) prepareOpenAIAgentRecoveryAttempt(ctx context.Con
 		return noop, openAIAgentRecoveryError("wire_changed")
 	}
 	if request.preservesHistory() && openAIAgentRecoveryInputDigest(body) != request.inputDigest {
+		if request.omittedHistory {
+			logger.FromContext(ctx).Warn("openai.encrypted_history_409_refused", zap.String("stage", "input_integrity"))
+		}
 		return noop, openAIAgentRecoveryError("wire_changed")
 	}
 	if request.previousResponseID != "" && gjson.GetBytes(body, "previous_response_id").String() != request.previousResponseID {
@@ -390,7 +399,8 @@ func (s *OpenAIGatewayService) prepareOpenAIAgentRecoveryAttempt(ctx context.Con
 	}
 	wire := openAIAgentRecoveryWireDigest(req.URL.String(), req.Header, gjson.GetBytes(body, "model").String())
 	binding := openAIAgentRecoveryBinding{accountID: account.ID, config: openAIAgentRecoveryConfig(account, request.model), wire: wire, expiresAt: time.Now().Add(s.openAIWSSessionStickyTTL())}
-	if request.ownerBindingRequired() && !sameOpenAIAgentRecoveryRoute(*request.owner, binding) {
+	if request.owner != nil && !sameOpenAIAgentRecoveryRoute(*request.owner, binding) &&
+		(!request.canSwitchAccount() || (request.owner.accountID == binding.accountID && request.owner.config == binding.config)) {
 		return noop, openAIAgentRecoveryError("wire_changed")
 	}
 	if err := s.checkOpenAIAgentRecoveryRecords(ctx, request, binding); err != nil {
@@ -422,7 +432,7 @@ func (s *OpenAIGatewayService) checkOpenAIAgentRecoveryRecords(ctx context.Conte
 			if err != nil {
 				return openAIAgentRecoveryError("store_unavailable")
 			}
-			if found && (old.conflicted || old.failed || old.pending != "" || (!request.disableOwnerBinding && !sameOpenAIAgentRecoveryRoute(old, binding))) {
+			if found && (old.conflicted || old.failed || old.pending != "" || (!request.canSwitchAccount() && !sameOpenAIAgentRecoveryRoute(old, binding))) {
 				return openAIAgentRecoveryError("owner_conflict")
 			}
 			if !found && request.known[key] {
@@ -436,10 +446,10 @@ func (s *OpenAIGatewayService) checkOpenAIAgentRecoveryRecords(ctx context.Conte
 		for _, key := range request.keys {
 			old, exists := state.bindings[key]
 			found := exists && time.Now().Before(old.expiresAt)
-			if found && (old.conflicted || old.failed || old.pending != "" || (!request.disableOwnerBinding && !sameOpenAIAgentRecoveryRoute(old, binding))) {
+			if found && (old.conflicted || old.failed || old.pending != "" || (!request.canSwitchAccount() && !sameOpenAIAgentRecoveryRoute(old, binding))) {
 				return openAIAgentRecoveryError("owner_conflict")
 			}
-			if request.disableOwnerBinding && !found && request.known[key] {
+			if !found && request.known[key] {
 				return openAIAgentRecoveryError("owner_unavailable")
 			}
 		}

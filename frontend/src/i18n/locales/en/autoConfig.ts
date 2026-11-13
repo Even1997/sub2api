@@ -37,7 +37,7 @@ export default {
   },
  degradation: {
   "title": "Degradation actions",
-  "hint": "Independent policy for all OAuth accounts, using the Account performance rolling window. Any selected condition can trigger the selected actions without a performance pause monitor. Probe degradation uses complete, conclusive rounds; the independent 429 condition can trigger even when probes fail or have no results.",
+  "hint": "Independent policy for all OAuth accounts, using the Account performance rolling window. Any selected condition can trigger the selected actions without a performance pause monitor. Degradation rate uses complete, conclusive rounds; the independent 429 condition can trigger even when checks fail or have no results.",
   "conditions": "Conditions (any selected condition)",
   "conditionsRequired": "Select at least one condition before enabling.",
   "upstream429": "Excessive 429 errors",
@@ -60,8 +60,8 @@ export default {
   "groupsRequired": "Select at least one group binding to remove.",
   "unavailableGroup": "Unavailable group; selection retained. Uncheck to remove this ID",
   "scope": "Applies once by updating the account’s concurrency, model mappings or group bindings, which you can view and change in the account editor. Concurrency only decreases; models intersect existing authorization, and no allowed models disables scheduling. Better metrics, disabling the policy or changing its threshold do not restore existing account settings.",
-  "invalid": "Select a condition and an action. Probe threshold: 0–100%; HTTP thresholds: greater than 0 and at most 100%. Check the selected actions’ concurrency (integer 1–10000), exact model IDs (up to 500), or group selections (1–100).",
-  "event": "Probe degradation {percent}% ≥ {threshold}% · {samples} conclusive rounds · {actions} · window {start} — {end}",
+  "invalid": "Select a condition and an action. Degradation threshold: 0–100%; HTTP thresholds: greater than 0 and at most 100%. Check the selected actions’ concurrency (integer 1–10000), exact model IDs (up to 500), or group selections (1–100).",
+  "event": "Degradation rate {percent}% ≥ {threshold}% · {samples} conclusive rounds · {actions} · window {start} — {end}",
   "concurrencyEvent": "concurrency {before} → {after}",
   "modelsEvent": "models: {models}",
   "groupsEvent": "selected groups: {groups}; removed: {removed}"
@@ -293,5 +293,6 @@ export default {
       "concurrency_upgraded": "Concurrency upgraded",
       "failure_cooldown": "Failure cooldown"
     }
+
   }
 }

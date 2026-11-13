@@ -68,7 +68,7 @@ func fixture(t *testing.T) (*Service, *fakeMail) {
 	})
 	m := &fakeMail{}
 	s := &Service{DB: db, Mail: m}
-	exec(t, s, `CREATE TABLE users(id bigint PRIMARY KEY,email text,username text DEFAULT '',status text DEFAULT 'active',deleted_at timestamptz);CREATE TABLE api_keys(id bigint PRIMARY KEY,user_id bigint,name text,status text DEFAULT 'active',created_at timestamptz DEFAULT now(),deleted_at timestamptz,expires_at timestamptz,ip_whitelist jsonb,ip_blacklist jsonb);CREATE TABLE usage_logs(id bigserial PRIMARY KEY,ip_address text,user_id bigint,api_key_id bigint,created_at timestamptz DEFAULT now());`)
+	exec(t, s, `CREATE TABLE users(id bigint PRIMARY KEY,email text,username text DEFAULT '',status text DEFAULT 'active',deleted_at timestamptz);CREATE TABLE api_keys(id bigint PRIMARY KEY,user_id bigint,key text DEFAULT 'sk-keyrisk-fixture',name text,status text DEFAULT 'active',created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now(),deleted_at timestamptz,expires_at timestamptz,ip_whitelist jsonb,ip_blacklist jsonb);CREATE TABLE usage_logs(id bigserial PRIMARY KEY,ip_address text,user_id bigint,api_key_id bigint,created_at timestamptz DEFAULT now());`)
 	raw, e := os.ReadFile("../../migrations/340_key_risk.sql")
 	if e != nil {
 		t.Fatal(e)
@@ -84,7 +84,7 @@ func fixture(t *testing.T) (*Service, *fakeMail) {
 		t.Fatal(e)
 	}
 	exec(t, s, string(ack))
-	exec(t, s, `INSERT INTO users(id,email) VALUES(1,'one@example.invalid'),(2,'two@example.invalid'),(3,'three@example.invalid');INSERT INTO api_keys(id,user_id,name,created_at) VALUES(11,1,'<owner one>',now()-interval '100 days'),(22,2,'OWNER TWO',now()-interval '100 days'),(33,3,'OWNER THREE',now()-interval '100 days');INSERT INTO usage_logs(ip_address,user_id,api_key_id) VALUES('192.0.2.1',1,11),('192.0.2.2',1,11),('192.0.2.1',2,22),('192.0.2.1',3,33)`)
+	exec(t, s, `INSERT INTO users(id,email) VALUES(1,'one@example.invalid'),(2,'two@example.invalid'),(3,'three@example.invalid');INSERT INTO api_keys(id,user_id,name,created_at) VALUES(11,1,'<owner one>',now()-interval '100 days'),(22,2,'OWNER TWO',now()-interval '100 days'),(33,3,'OWNER THREE',now()-interval '100 days');INSERT INTO usage_logs(ip_address,user_id,api_key_id,created_at) VALUES('192.0.2.1',1,11,now()-interval '1 second'),('192.0.2.2',1,11,now()-interval '1 second'),('192.0.2.1',2,22,now()-interval '1 second'),('192.0.2.1',3,33,now()-interval '1 second')`)
 	return s, m
 }
 func exec(t *testing.T, s *Service, q string, args ...any) {

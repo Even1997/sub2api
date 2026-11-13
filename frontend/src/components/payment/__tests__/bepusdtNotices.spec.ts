@@ -7,7 +7,7 @@ import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
 import PaymentProviderDialog from '../PaymentProviderDialog.vue'
 import ProviderCard from '../ProviderCard.vue'
 
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', async (importOriginal) => ({ ...(await importOriginal<typeof import('vue-i18n')>()), useI18n: () => ({ t: (key: string) => key }) }))
 
 enableAutoUnmount(afterEach)
 beforeEach(() => localStorage.clear())

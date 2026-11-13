@@ -50,6 +50,7 @@ type PrioritySchedulingConfig struct {
 	LatencyWeight              float64             `json:"latency_weight"`
 	LoadWeight                 float64             `json:"load_weight"`
 	CostWeight                 float64             `json:"cost_weight"`
+	CacheWeight                float64             `json:"cache_weight"`
 }
 
 func DefaultPrioritySchedulingConfig() PrioritySchedulingConfig {
@@ -100,7 +101,7 @@ func ValidatePrioritySchedulingConfig(c PrioritySchedulingConfig) error {
 		}
 	}
 	sum := 0.0
-	for _, w := range []float64{c.QualityWeight, c.LatencyWeight, c.LoadWeight, c.CostWeight} {
+	for _, w := range []float64{c.QualityWeight, c.LatencyWeight, c.LoadWeight, c.CostWeight, c.CacheWeight} {
 		if math.IsNaN(w) || math.IsInf(w, 0) || w < 0 || w > 100 {
 			return errors.New("weights must be between 0 and 100")
 		}
@@ -223,6 +224,8 @@ func (s *OpenAIGatewayService) prioritySchedulingRuntimeConfig() PrioritySchedul
 }
 
 type PrioritySchedulingSignal struct {
+	AvgCachePercent        *float64   `json:"avg_cache_percent"`
+	CacheSamples           int        `json:"cache_samples"`
 	TeamsRevenue           float64    `json:"-"`
 	TeamsWindowStart       *time.Time `json:"-"`
 	TeamsWindowEnd         *time.Time `json:"-"`
@@ -482,14 +485,23 @@ func scorePriorityCandidateWithOAuthRate(c PrioritySchedulingConfig, item openAI
 		out.EconomicsSource = "unknown"
 		out.Reasons = append(out.Reasons, "profit_insufficient")
 	}
+	cache := 0.5
+	if c.CacheWeight > 0 {
+		if signal.CacheSamples >= c.MinSamples && validPerformanceMetric(signal.AvgCachePercent) && *signal.AvgCachePercent <= 100 {
+			cache = *signal.AvgCachePercent / 100
+		} else {
+			unknown = true
+			out.Reasons = append(out.Reasons, "cache_insufficient")
+		}
+	}
 	// Realtime failures are an additional penalty, never inferred from zero-cost logs.
 	if c.ErrorRateWeight == 0 && item.errorRate > 0.2 {
 		degraded = true
 		out.Reasons = append(out.Reasons, "recent_errors")
 	}
 	w := c.weights()
-	sum := w[0] + w[1] + w[2] + w[3]
-	out.BaseScore = 100 * (w[0]*quality + w[1]*latency + w[2]*load + w[3]*cost) / sum
+	sum := w[0] + w[1] + w[2] + w[3] + c.CacheWeight
+	out.BaseScore = 100 * (w[0]*quality + w[1]*latency + w[2]*load + w[3]*cost + c.CacheWeight*cache) / sum
 	out.PriorityErrorEvidence = item.priorityErrors
 	out.ErrorPenalty = 1 - clamp01(item.errorRate)
 	if c.ErrorRateWeight > 0 {

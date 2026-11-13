@@ -446,7 +446,7 @@ func (f *unionFixture) pinnedService(u *unionUpstream) *service.OpenAIGatewaySer
 		f.accounts.groups[id] = accounts
 		f.groups.groups[id].CodexModelsManifestConfig = service.GroupCodexModelsManifestConfig{Enabled: true, AccountIDs: []int64{accounts[0].ID}}
 	}
-	return service.NewOpenAIGatewayService(f.accounts, nil, nil, nil, nil, nil, nil, nil, &config.Config{}, nil, nil, nil, nil, nil, u, nil, nil, nil, nil, nil, nil, nil, nil)
+	return service.NewOpenAIGatewayService(f.accounts, nil, nil, nil, nil, nil, nil, &config.Config{}, nil, nil, nil, nil, nil, u, nil, nil, nil, nil, nil, nil, nil, nil)
 }
 func TestMultiGroupModelsUnionPinnedMappingAndDeterministicMetadata(t *testing.T) {
 	f := newUnionFixture()

@@ -408,7 +408,7 @@ func TestPelicanGroupTestRepo_CostsSurviveRetentionAndPlanDeletion(t *testing.T)
 	require.True(t, deleted)
 	check()
 	// Replaying the migration must neither fabricate legacy costs nor reset totals.
-	migration, err := dbmigrations.FS.ReadFile("261_pelican_group_test_costs.sql")
+	migration, err := dbmigrations.FS.ReadFile("282_pelican_group_tests.sql")
 	require.NoError(t, err)
 	_, err = integrationDB.ExecContext(ctx, string(migration))
 	require.NoError(t, err)

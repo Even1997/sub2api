@@ -354,7 +354,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
 	}
 
-	if account.IsOpenAIApiKey() {
+	if account.IsOpenAIApiKey() && !openAIAgentRecoveryPreservesHistory(ctx) {
 		if normalized, changed, normalizeErr := normalizeOpenAIParallelToolCallsWithoutTools(body, responsesLite); normalizeErr != nil {
 			return nil, normalizeErr
 		} else if changed {
@@ -393,7 +393,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, startTime)
 	}
 	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)
-	if account.IsOpenAI() && (account.IsOpenAIApiKey() || account.IsOpenAIOAuthLike()) {
+	if account.IsOpenAI() && (account.IsOpenAIApiKey() || account.IsOpenAIOAuthLike()) && !openAIAgentRecoveryPreservesHistory(ctx) {
 		normalizedReasoningBody, reasoningChanged, reasoningErr := normalizeOpenAIResponsesReasoningContentReplay(body)
 		if reasoningErr != nil {
 			return nil, fmt.Errorf("normalize OpenAI Responses reasoning content replay: %w", reasoningErr)
@@ -1474,9 +1474,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			respBody = s.redactAgentIdentitySensitiveBody(ctx, account, respBody)
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
-			if openAIAgentRecoveryPreservesHistory(ctx) {
-				// The administrator allowed one intact cross-account attempt. An
-				// actual rejection is not permission to rewrite or resubmit it.
+			if openAIAgentRecoveryPreservesHistory(ctx) &&
+				(OpenAIAgentOmittedHistory(ctx) || (resp.StatusCode != http.StatusUnauthorized &&
+					resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusTooManyRequests)) {
+				// Preserve opaque input. Only explicit pre-generation rejection can
+				// follow the existing intact failover path; omitted history cannot.
 				return s.handleErrorResponse(ctx, resp, c, account, body, resolveOpenAIErrorSchedulingModel(billingModel, upstreamModel))
 			}
 			if resp.StatusCode == http.StatusBadRequest && isOpenAIInvalidEncryptedContentError(upstreamCode, extractUpstreamErrorMessage(respBody)) {

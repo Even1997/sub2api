@@ -1,4 +1,6 @@
 export default {
+  cache_weight: '缓存命中率权重',
+  cacheWeightHint: '所有调度模式均可设置，默认 0（不参与评分）。平均缓存按请求等权计算；样本达到最小样本数后，缓存率越高得分越高。样本不足或无效时使用中性分 0.5，并标记缓存样本不足。各项权重按总和归一化；缓存不能绕过账号资格、容量或会话绑定。',
   analysis: {
     notice: '状态仅反映历史指标，不代表当前可调度。实时并发和 HTTP 尝试未采集；得分采用中性并发估算，未应用实时错误惩罚。',
     eligible: '历史指标达标',
@@ -87,7 +89,7 @@ export default {
   quality_weight: '质量', latency_weight: '延迟', load_weight: '并发余量', cost_weight: '利润 / 成本',
   thresholds: '体验目标与统计窗口',
   target_ttft_ms: '选定首 token 目标（毫秒）', max_load_percent: '并发占用上限（%）', min_quality_percent: '质量通过率目标（%）',
-  window_minutes: '使用记录窗口（分钟）', min_samples: '延迟 / 利润最少样本数', quality_max_age_hours: '质量结果有效期（小时）',
+  window_minutes: '使用记录窗口（分钟）', min_samples: '延迟 / 利润 / 缓存最少样本数', quality_max_age_hours: '质量结果有效期（小时）',
   groupIds: '生效分组 ID', groupHint: '逗号分隔；留空表示所有分组。',
   models: '生效模型', modelHint: '每行一个请求模型名，精确匹配；留空表示所有模型。',
   rule: '先避开已知质量、错误与亏损风险，再按真实并发及 RPM 的预计占用分档。容量和体验接近时，Teams 固定成本回本账号优先，再比较显式账号优先级与分流权重；利润略高不能让繁忙账号长期覆盖更空闲的安全候选。未知安全新号可获得少量探索流量，但不会越过回本账号。',
@@ -101,7 +103,7 @@ export default {
   snapshotHint: '展示当前实例最近一次候选池，最多 100 个账号。刷新会异步读取历史并重算评分；候选、配置与并发占用仍取自该次选号，顶部时间不会改变，重算结果不代表当时实际选路。表格按账号 ID 稳定展示，新增追加、删除移除，实时指标不会重排；调度仍按风险、恢复/惩罚状态、预计占用档位及分流偏好评估。恢复期与惩罚期账号排在正常候选之后，只有正常候选都拿不到槽位时才兜底，显式恢复探索按配置比例另计。占用接近的候选会加权抽样，分流权重不是全局概率，表格不是固定选取顺序或流量比例。历史未就绪也会展示实时容量候选。',
   model: '模型', group: '分组', account: '账号', score: '得分', tier: '状态', latency: '选定首 token', load: '并发占用', rate: '成本倍率', quality: '质量通过', samples: '条样本', unknown: '未知',
   tiers: { eligible: '体验达标', insufficient: '数据不足', degraded: '体验未达标' },
-  reasons: { latency_recovery: '延迟惩罚到期，P90 仍超目标（恢复期仅兜底/探索）', quality_below_target: '质量低于目标', quality_unknown: '无有效质量结果', latency_above_target: '延迟超过目标', latency_insufficient: '延迟样本不足', busy: '并发偏高或有排队', load_unknown: '并发数据未知', cost_unknown: '成本未知', recent_errors: '近期错误偏多', historical_loss: '近期用户扣费低于理论成本', profit_insufficient: '利润样本不足', teams_recovery: '本窗口收入尚未超过单号成本', teams_window_unavailable: 'Teams 成本窗口未设置或已失效' },
+  reasons: { cache_insufficient: '缓存样本不足', latency_recovery: '延迟惩罚到期，P90 仍超目标（恢复期仅兜底/探索）', quality_below_target: '质量低于目标', quality_unknown: '无有效质量结果', latency_above_target: '延迟超过目标', latency_insufficient: '延迟样本不足', busy: '并发偏高或有排队', load_unknown: '并发数据未知', cost_unknown: '成本未知', recent_errors: '近期错误偏多', historical_loss: '近期用户扣费低于理论成本', profit_insufficient: '利润样本不足', teams_recovery: '本窗口收入尚未超过单号成本', teams_window_unavailable: 'Teams 成本窗口未设置或已失效' },
   latencyPanel: {
     title: '延迟分析', refresh: '刷新', hint: '按所选模型、分组与时间窗口统计。汇总与每 5 分钟时间桶使用同一截止时间；首字延迟单位为毫秒，错误为去重上游错误事件，慢请求为超过已保存阈值的样本。',
     account: '账号', samples: '样本', p50: 'P50 首字', p90: 'P90 首字', p99: 'P99 首字', errors: '错误', slow: '慢请求', errorRate: '错误率',

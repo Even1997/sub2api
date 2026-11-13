@@ -480,12 +480,14 @@ func (r *apiKeyRepository) update(ctx context.Context, key *service.APIKey, fiel
 	}
 
 	// IP 限制字段
-	if fields.IPRules {
+	if fields.IPRules || fields.IPWhitelist {
 		if len(key.IPWhitelist) > 0 {
 			builder.SetIPWhitelist(key.IPWhitelist)
 		} else {
 			builder.ClearIPWhitelist()
 		}
+	}
+	if fields.IPRules || fields.IPBlacklist {
 		if len(key.IPBlacklist) > 0 {
 			builder.SetIPBlacklist(key.IPBlacklist)
 		} else {
@@ -1083,36 +1085,36 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:               m.ID,
-		UserID:           m.UserID,
-		PackageID:        m.PackageID,
-		Key:              m.Key,
-		Name:             m.Name,
-		Status:           m.Status,
-		GroupID:          m.GroupID,
-		MixedMode:        m.MixedModeEnabled,
-		MixedGroupIDs:    append([]int64(nil), m.MixedGroupIds...),
-		ModelMapping:     m.ModelMapping,
-		ReasoningEffort:  m.ReasoningEffort,
-		AllowLongContext: m.AllowLongContext,
-		IPWhitelist:      m.IPWhitelist,
-		IPBlacklist:      m.IPBlacklist,
-		LastUsedAt:       m.LastUsedAt,
-		CreatedAt:        m.CreatedAt,
-		UpdatedAt:        m.UpdatedAt,
-		Quota:            m.Quota,
-		QuotaUsed:        m.QuotaUsed,
-		ExpiresAt:        m.ExpiresAt,
-		RateLimit5h:      m.RateLimit5h,
-		ConcurrencyLimit: m.ConcurrencyLimit,
-		RateLimit1d:      m.RateLimit1d,
-		RateLimit7d:      m.RateLimit7d,
-		Usage5h:          m.Usage5h,
-		Usage1d:          m.Usage1d,
-		Usage7d:          m.Usage7d,
-		Window5hStart:    m.Window5hStart,
-		Window1dStart:    m.Window1dStart,
-		Window7dStart:    m.Window7dStart,
+		ID:                m.ID,
+		UserID:            m.UserID,
+		PackageID:         m.PackageID,
+		Key:               m.Key,
+		Name:              m.Name,
+		Status:            m.Status,
+		GroupID:           m.GroupID,
+		MixedMode:         m.MixedModeEnabled,
+		MixedGroupIDs:     append([]int64(nil), m.MixedGroupIds...),
+		ModelMapping:      m.ModelMapping,
+		ReasoningEffort:   m.ReasoningEffort,
+		AllowLongContext:  m.AllowLongContext,
+		IPWhitelist:       m.IPWhitelist,
+		IPBlacklist:       m.IPBlacklist,
+		LastUsedAt:        m.LastUsedAt,
+		CreatedAt:         m.CreatedAt,
+		UpdatedAt:         m.UpdatedAt,
+		Quota:             m.Quota,
+		QuotaUsed:         m.QuotaUsed,
+		ExpiresAt:         m.ExpiresAt,
+		RateLimit5h:       m.RateLimit5h,
+		ConcurrencyLimit:  m.ConcurrencyLimit,
+		RateLimit1d:       m.RateLimit1d,
+		RateLimit7d:       m.RateLimit7d,
+		Usage5h:           m.Usage5h,
+		Usage1d:           m.Usage1d,
+		Usage7d:           m.Usage7d,
+		Window5hStart:     m.Window5hStart,
+		Window1dStart:     m.Window1dStart,
+		Window7dStart:     m.Window7dStart,
 		ContextTokenLimit: m.ContextTokenLimit,
 	}
 	if m.Edges.User != nil {

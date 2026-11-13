@@ -1170,9 +1170,9 @@ func (c CodexWSAnchorConfig) Validate() error {
 }
 
 type GatewayConfig struct {
-	// DisableEncryptedAgentOwnerBinding permits completed opaque agent history
-	// on another normally eligible native Responses account. Delivery fences,
-	// response pointers, authorization and no-replay protections still apply.
+	// DisableEncryptedAgentOwnerBinding accepts the upstream compatibility key.
+	// This fork keeps full-history portability under either value; response
+	// pointers, delivery fences, authorization and no-replay rules still apply.
 	DisableEncryptedAgentOwnerBinding bool                 `mapstructure:"disable_encrypted_agent_owner_binding"`
 	UpstreamRouting                   upstreamroute.Config `mapstructure:"upstream_routing"`
 	// PrismBrowser is the server-managed browser-session adapter for prism.openai.com.

@@ -15,7 +15,7 @@ import (
 func issue758WaitFixture(t *testing.T, cache GatewayCache) (*OpenAIGatewayService, *defaultOpenAIAccountScheduler, context.Context, OpenAIAccountScheduleRequest, *Account) {
 	t.Helper()
 	accounts := []Account{{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, GroupIDs: []int64{715}, Credentials: map[string]any{"api_key": "fixture"}}}
-	service := &OpenAIGatewayService{cfg: &config.Config{}, cache: cache, accountRepo: schedulerTestOpenAIAccountRepo{accounts: accounts}}
+	service := &OpenAIGatewayService{cfg: &config.Config{}, cache: cache, openaiWSStateStore: NewOpenAIWSStateStore(nil), accountRepo: schedulerTestOpenAIAccountRepo{accounts: accounts}}
 	issue715LearnRoute(t, service, &accounts[0], issue715OpaqueBody)
 	c, _ := newTurnStateTestContext(t, 715, "fixture-session")
 	c.Set("api_key", &APIKey{ID: 715, GroupID: int64Ptr(715)})
@@ -24,7 +24,8 @@ func issue758WaitFixture(t *testing.T, cache GatewayCache) (*OpenAIGatewayServic
 	request := OpenAIAccountScheduleRequest{Platform: PlatformOpenAI, GroupID: int64Ptr(715), SessionHash: "fixture-session", RequestedModel: "gpt-6-astra"}
 	// These tests exercise retained stateful ownership. Full client history
 	// now falls back through ordinary scheduling instead of waiting here.
-	openAIAgentRecoveryFromContext(ctx).previousResponse = "resp_fixture758"
+	openAIAgentRecoveryFromContext(ctx).previousResponseID = "resp_fixture758"
+	require.NoError(t, service.getOpenAIWSStateStore().BindResponseAccount(ctx, 715, "resp_fixture758", 1, time.Hour))
 	return service, &defaultOpenAIAccountScheduler{service: service}, ctx, request, &accounts[0]
 }
 

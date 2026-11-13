@@ -2960,7 +2960,11 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		stickyAccountID, stickyReadErr = s.getStickySessionAccountID(ctx, groupID, sessionHash)
 	}
 	ctx = withOpenAIStickyBindingSnapshot(ctx, groupID, sessionHash, stickyAccountID, stickyReadErr == nil || errors.Is(stickyReadErr, ErrStickySessionNotFound))
-	scheduler := s.getOpenAIAccountScheduler(ctx, platform == PlatformQwen || s.strictOpenAISessionAffinity(groupID, platform, requiredImageCapability) || openAIAgentRecoveryBound(ctx) || (platform == PlatformOpenAI && requiredImageCapability == "" && useUpstreamTokenCost && priorityApplies(priority, OpenAIAccountScheduleRequest{GroupID: groupID, RequestedModel: requestedModel, HistoryModel: observation.model})))
+	// Integrity protection also covers first-seen history; only recorded
+	// ownership or a response pointer needs to force the affinity scheduler.
+	recovery := openAIAgentRecoveryFromContext(ctx)
+	recoveryRouting := recovery != nil && (recovery.owner != nil || recovery.conflict || recovery.lookupErr != nil || recovery.previousResponseID != "")
+	scheduler := s.getOpenAIAccountScheduler(ctx, platform == PlatformQwen || s.strictOpenAISessionAffinity(groupID, platform, requiredImageCapability) || recoveryRouting || (platform == PlatformOpenAI && requiredImageCapability == "" && useUpstreamTokenCost && priorityApplies(priority, OpenAIAccountScheduleRequest{GroupID: groupID, RequestedModel: requestedModel, HistoryModel: observation.model})))
 	if scheduler == nil {
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
 		if guardianParentAccountID > 0 {

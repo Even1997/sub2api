@@ -49,7 +49,8 @@ func (r *usageLogRepository) ReadPrioritySchedulingSignals(ctx context.Context, 
 	querySQL := `
  WITH base_usage AS (
   SELECT id, account_id, created_at, stream, first_token_ms, actual_cost,
-   COALESCE(account_stats_cost,total_cost) AS base_cost
+   COALESCE(account_stats_cost,total_cost) AS base_cost,
+   input_tokens,cache_read_tokens,cache_creation_tokens,image_count,image_output_tokens,billing_mode
   FROM usage_logs
   WHERE account_id=ANY($1) AND created_at >= $3 AND created_at <= $9
    AND COALESCE(NULLIF(requested_model,''),model)=$2
@@ -109,6 +110,20 @@ func (r *usageLogRepository) ReadPrioritySchedulingSignals(ctx context.Context, 
    CASE WHEN detail->>'version'='1' AND detail->>'truncated'='false'
     THEN visible_ms END AS experience_ms
   FROM timings
+ ), cache_usage AS (
+  SELECT account_id,
+   AVG(100.0*cache_read_tokens/NULLIF(input_tokens::numeric+cache_read_tokens+cache_creation_tokens,0)) AS cache_percent,
+   COUNT(*) AS cache_samples
+  FROM traces
+  WHERE detail->>'version'='1' AND detail->>'outcome'='success' AND detail->>'status'='200'
+   AND detail->>'body_complete'='true' AND detail->>'canceled'='false' AND detail->>'truncated'='false'
+   AND detail->>'client_disconnect'='false' AND detail->>'downstream_error'='false'
+   AND (NOT stream OR detail->>'terminal'='completed')
+   AND COALESCE(image_count,0)=0 AND COALESCE(image_output_tokens,0)=0
+   AND COALESCE(billing_mode,'token') NOT IN ('image','video')
+   AND input_tokens>=0 AND cache_read_tokens>=0 AND cache_creation_tokens>=0
+   AND input_tokens::numeric+cache_read_tokens+cache_creation_tokens>0
+  GROUP BY account_id
  ), usage AS (
   SELECT account_id,
    COUNT(*) FILTER (WHERE stream AND latency_ms>0) AS samples,
@@ -189,9 +204,10 @@ func (r *usageLogRepository) ReadPrioritySchedulingSignals(ctx context.Context, 
  u.quantiles[CASE $6::int WHEN 50 THEN 1 WHEN 70 THEN 2 WHEN 90 THEN 3 WHEN 95 THEN 4 WHEN 99 THEN 5 END],
  u.latest_bad_latency_at, COALESCE(u.unknown_samples,0), COALESCE(u.experience_samples,0), COALESCE(u.experience_p90,0),
  COALESCE(u.slow_samples,0), COALESCE(e.error_samples,0),
- COALESCE(t.revenue,0),t.start_at,t.end_at
+ COALESCE(t.revenue,0),t.start_at,t.end_at,cache.cache_percent,COALESCE(cache.cache_samples,0)
  FROM unnest($1::bigint[]) ids(id)
  LEFT JOIN usage u ON u.account_id=ids.id
+ LEFT JOIN cache_usage cache ON cache.account_id=ids.id
  LEFT JOIN errors e ON e.account_id=ids.id
  LEFT JOIN quality q ON q.account_id=ids.id
  LEFT JOIN latest_quality lq ON lq.account_id=ids.id
@@ -213,7 +229,7 @@ func (r *usageLogRepository) ReadPrioritySchedulingSignals(ctx context.Context, 
 	for rows.Next() {
 		var id int64
 		var signal service.PrioritySchedulingSignal
-		if err := rows.Scan(&id, &signal.Samples, &signal.P90TTFTMs, &signal.QualityPassed, &signal.QualitySamples, &signal.ProfitSamples, &signal.Revenue, &signal.BaseCost, &signal.LatestQualityPassed, &signal.LatestLatencyAt, &signal.P50TTFTMs, &signal.P70TTFTMs, &signal.P95TTFTMs, &signal.P99TTFTMs, &signal.SelectedTTFTMs, &signal.LatestBadLatencyAt, &signal.LatencyUnknownSamples, &signal.ExperienceSamples, &signal.ExperienceP90Ms, &signal.SlowSamples, &signal.ErrorSamples, &signal.TeamsRevenue, &signal.TeamsWindowStart, &signal.TeamsWindowEnd); err != nil {
+		if err := rows.Scan(&id, &signal.Samples, &signal.P90TTFTMs, &signal.QualityPassed, &signal.QualitySamples, &signal.ProfitSamples, &signal.Revenue, &signal.BaseCost, &signal.LatestQualityPassed, &signal.LatestLatencyAt, &signal.P50TTFTMs, &signal.P70TTFTMs, &signal.P95TTFTMs, &signal.P99TTFTMs, &signal.SelectedTTFTMs, &signal.LatestBadLatencyAt, &signal.LatencyUnknownSamples, &signal.ExperienceSamples, &signal.ExperienceP90Ms, &signal.SlowSamples, &signal.ErrorSamples, &signal.TeamsRevenue, &signal.TeamsWindowStart, &signal.TeamsWindowEnd, &signal.AvgCachePercent, &signal.CacheSamples); err != nil {
 			return nil, err
 		}
 		signal.LatencyPercentile, signal.LatencyMeasurement, signal.LatencyEvidenceVersion = query.LatencyPercentile, query.LatencyMeasurement, 1

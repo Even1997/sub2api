@@ -35,10 +35,8 @@ func TestIssue805PolicySeparatesRoutingFromReplaySafety(t *testing.T) {
 				req, err := http.NewRequest(http.MethodPost, "https://other.example/responses", bytes.NewBufferString(body))
 				require.NoError(t, err)
 				finish, err := svc.prepareOpenAIAgentRecoveryAttempt(ctx, b, req)
-				if known && !disabled {
-					require.Error(t, err)
-					return
-				}
+				// This fork permits intact full-history routing under both flag values.
+				require.False(t, openAIAgentRecoveryFromContext(ctx).ownerBindingRequired())
 				require.NoError(t, err)
 				finish(true)
 				if known && disabled {
@@ -113,10 +111,10 @@ func TestIssue805FinalAdmissionStillRechecksGroup(t *testing.T) {
 	svc := &OpenAIGatewayService{cfg: &config.Config{}, accountRepo: repo, requireLatestTurnAdmission: true}
 	svc.cfg.Gateway.DisableEncryptedAgentOwnerBinding = true
 	selected := accounts[0]
-	_, err := svc.admitOpenAITurnForGroup(context.Background(), 715, true, &selected, "gpt-6-astra")
+	_, err := svc.admitOpenAITurnForGroup(context.Background(), 715, &selected, "gpt-6-astra")
 	require.NoError(t, err, "the originally selected account must qualify before revocation")
 	accounts[0].GroupIDs = []int64{716}
-	_, err = svc.admitOpenAITurnForGroup(context.Background(), 715, true, &selected, "gpt-6-astra")
+	_, err = svc.admitOpenAITurnForGroup(context.Background(), 715, &selected, "gpt-6-astra")
 	var denied *OpenAITurnAdmissionError
 	require.ErrorAs(t, err, &denied)
 	require.Equal(t, "group_membership_changed", denied.Reason, "opt-out cannot bypass final fresh admission")
@@ -219,18 +217,18 @@ func TestIssue805WSPointerAndRecordLossStayConservative(t *testing.T) {
 	}
 }
 
-func TestIssue805WSFirstSeenHistoryDoesNotInventOwner(t *testing.T) {
+func TestIssue805WSFirstSeenHistoryLearnsOnlyCompletedConsumption(t *testing.T) {
 	svc := &OpenAIGatewayService{cfg: &config.Config{}}
 	svc.cfg.Gateway.DisableEncryptedAgentOwnerBinding = true
 	manager, _, account := issue715WSManager(t, svc, context.Background())
 	defer manager.abort()
 	require.NoError(t, issue715WSBegin(t, manager, account, issue715OpaqueBody, "ctx_pool"))
 	require.NoError(t, manager.write([]byte(`{"type":"response.completed","response":{"id":"resp_805_first_seen","status":"completed","output":[]}}`), func() error { return nil }))
-	require.Empty(t, svc.agentMessageRecovery.bindings, "consumption of unknown history is not a producer observation")
-	require.Empty(t, manager.known, "later explicit turns must not confuse an unpublished input with lost records")
+	require.Len(t, svc.agentMessageRecovery.bindings, 1, "completed native consumption records route compatibility")
+	require.Len(t, manager.known, 1, "later turns must detect loss of the completed observation")
 	require.False(t, OpenAIWSAgentRecoveryCanRetry(manager.ctx), "lack of an owner is never permission to automatically replay opaque work")
 	account.ID = 2
-	require.NoError(t, issue715WSBegin(t, manager, account, issue715OpaqueBody, "ctx_pool"), "fresh first-seen history follows ordinary admission without inferring a forgotten owner")
+	require.NoError(t, issue715WSBegin(t, manager, account, issue715OpaqueBody, "ctx_pool"), "full history remains portable after completed consumption")
 }
 
 func TestIssue805WSRefusedCurrentPointerCannotReplayWarmup(t *testing.T) {

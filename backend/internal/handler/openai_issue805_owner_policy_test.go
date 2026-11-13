@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -35,7 +36,7 @@ func issue805Policy(t *testing.T, cfg *config.Config, disabled bool) {
 }
 
 // Never use miniredis for ownership lifecycle evidence. Each fixture has its
-// own real Redis process/socket, with persistence disabled and no TCP listener.
+// own real Redis process, using a Unix socket or Windows loopback TCP.
 func issue805Redis(t *testing.T) func() *redis.Client {
 	t.Helper()
 	binary, err := exec.LookPath("redis-server")
@@ -49,13 +50,23 @@ func issue805Redis(t *testing.T) func() *redis.Client {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	socket := filepath.Join(dir, "r.sock")
+	options := redis.Options{Network: "unix", Addr: socket, MaxRetries: -1}
+	args := []string{"--port", "0", "--unixsocket", socket, "--unixsocketperm", "700", "--save", "", "--appendonly", "no"}
+	if runtime.GOOS == "windows" {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		require.NoError(t, listener.Close())
+		options.Network, options.Addr = "tcp", fmt.Sprintf("127.0.0.1:%d", port)
+		args = []string{"--bind", "127.0.0.1", "--port", fmt.Sprint(port), "--save", "", "--appendonly", "no"}
+	}
 	//nolint:gosec // Fixed executable, isolated fixture arguments only.
-	process := exec.Command(binary, "--port", "0", "--unixsocket", socket, "--unixsocketperm", "700", "--save", "", "--appendonly", "no")
+	process := exec.Command(binary, args...)
 	process.Stdout, process.Stderr = io.Discard, io.Discard
 	require.NoError(t, process.Start())
 	t.Cleanup(func() { _ = process.Process.Kill(); _ = process.Wait() })
 	newClient := func() *redis.Client {
-		client := redis.NewClient(&redis.Options{Network: "unix", Addr: socket, MaxRetries: -1})
+		client := redis.NewClient(&options)
 		t.Cleanup(func() { _ = client.Close() })
 		return client
 	}
@@ -136,9 +147,7 @@ func TestIssue805HTTPCompletedHistorySelectsAlternative(t *testing.T) {
 			require.Len(t, original, 1, "A must complete downstream delivery before the policy changes")
 			reset := time.Now().Add(time.Hour)
 			accounts[0].RateLimitResetAt = &reset
-			strict := issue758Request(t, newNode(false), issue715Body(true, stream))
-			require.Equal(t, http.StatusTooManyRequests, strict.Code, strict.Body.String())
-			require.Contains(t, strict.Body.String(), "encrypted_agent_recovery_owner_rate_limited")
+			// Full-history portability is already the fork default; both flag values use B.
 			followup := issue715Body(true, stream)
 			answer := issue758Request(t, newNode(true), followup)
 			require.Equal(t, http.StatusOK, answer.Code, "opt-out must dispatch complete A history to eligible B without clearing Redis: %s", answer.Body.String())

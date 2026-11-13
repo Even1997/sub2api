@@ -34,6 +34,7 @@ export interface PrioritySchedulingConfig {
   latency_weight: number
   load_weight: number
   cost_weight: number
+  cache_weight?: number
 }
 export interface PriorityCandidate {
   teams_recovery: null | {

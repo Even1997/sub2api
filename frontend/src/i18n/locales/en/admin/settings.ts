@@ -592,7 +592,7 @@ export default {
       },
       gatewayForwarding: {
         omitEncryptedHistory409: 'Omit encrypted content on 409',
-        omitEncryptedHistory409Hint: 'Off by default. For HTTP Responses rejected before dispatch because the encrypted history owner is unavailable or its route changed, omit historical ciphertext and select an eligible account once. Readable text and tool relationships remain, but omitted context is lost and upstream acceptance is not guaranteed. Excludes current encrypted tasks, server-side conversation pointers, WebSockets, uncertain delivery and store failures. Already-sent requests are not replayed.',
+        omitEncryptedHistory409Hint: 'Off by default. Complete history normally continues intact across eligible accounts. Only a pre-dispatch HTTP Responses compatibility 409 from a history owner or route check can trigger one omission and reselection. Readable text and tool relationships remain; omitted context is lost and upstream acceptance is not guaranteed. Excludes current encrypted tasks, server-side pointers, WebSockets, uncertain delivery and store failures. Already-sent requests are never replayed.',
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',
         grokDefaultTextModel: 'Default Grok text model',

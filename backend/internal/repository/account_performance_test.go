@@ -152,7 +152,7 @@ func TestAccountPerformanceMigrationSequenceAndSchema(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, notx)
 	require.NotContains(t, strings.ToUpper(string(data)), "UPDATE ACCOUNTS")
-	for file, fields := range map[string][]string{"066_add_scheduled_test_tables.sql": {"started_at", "finished_at", "updated_at"}, "243_pelican_scheduled_tests.sql": {"pelican_config"}, "247_account_quality_ops.sql": {"quality_action"}, "248_account_quality_judgment.sql": {"quality_judgment", "quality_round_id"}, "010_add_usage_logs_aggregated_indexes.sql": {"account_id, created_at"}} {
+	for file, fields := range map[string][]string{"066_add_scheduled_test_tables.sql": {"started_at", "finished_at", "updated_at"}, "242_pelican_scheduled_tests.sql": {"pelican_config"}, "245_account_quality_ops.sql": {"quality_action"}, "246_account_quality_judgment.sql": {"quality_judgment", "quality_round_id"}, "010_add_usage_logs_aggregated_indexes.sql": {"account_id, created_at"}} {
 		source, err := fs.ReadFile(migrations.FS, file)
 		require.NoError(t, err)
 		for _, field := range fields {

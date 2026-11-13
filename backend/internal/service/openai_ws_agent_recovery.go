@@ -28,8 +28,7 @@ func (s *OpenAIGatewayService) WithOpenAIWSAgentRecovery(ctx context.Context, c 
 
 func OpenAIWSAgentRecoveryCanRetry(ctx context.Context) bool {
 	blocked, _ := ctx.Value(openAIWSAgentRecoveryRetryKey{}).(*atomic.Bool)
-	r := openAIAgentRecoveryFromContext(ctx)
-	return (!openAIAgentRecoveryBound(ctx) || (r != nil && r.canSwitchAccount() && !r.conflict && r.lookupErr == nil)) && (blocked == nil || !blocked.Load())
+	return !openAIAgentRecoveryBound(ctx) && (blocked == nil || !blocked.Load())
 }
 
 func OpenAIWSAgentRecoveryBound(ctx context.Context) bool { return openAIAgentRecoveryBound(ctx) }
@@ -152,7 +151,7 @@ func (r *openAIWSAgentRecovery) begin(account *Account, source, payload []byte, 
 	}
 	ctx := r.service.WithOpenAIAgentMessageRecovery(r.ctx, r.c, source, r.session, model)
 	r.request = openAIAgentRecoveryFromContext(ctx)
-	if r.request.disableOwnerBinding && (openAIAgentRecoveryBound(ctx) || len(r.request.items) > 0) {
+	if openAIAgentRecoveryBound(ctx) {
 		// Record current-turn replay safety even when a later delivery/pointer
 		// check refuses the send. The initial warmup context cannot replace it.
 		r.preventReplay()
@@ -262,12 +261,9 @@ func (r *openAIWSAgentRecovery) write(payload []byte, write func() error) error 
 		r.finish(completed)
 		if completed {
 			for _, key := range request.keys {
-				// Opt-out consumption does not publish new input ownership. Only
-				// remember inputs that already had completed records; otherwise a
-				// later turn would mistake an ordinary miss for record loss.
-				if !request.disableOwnerBinding || request.known[key] {
-					r.known[key] = true
-				}
+				// Successful native consumption publishes compatibility for unknown
+				// inputs; later loss of that observation must fail closed.
+				r.known[key] = true
 			}
 			for _, item := range request.outputs {
 				r.known[request.itemKey(item)] = true

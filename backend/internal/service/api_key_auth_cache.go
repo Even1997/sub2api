@@ -4,25 +4,25 @@ import "time"
 
 // APIKeyAuthSnapshot API Key 认证缓存快照（仅包含认证所需字段）
 type APIKeyAuthSnapshot struct {
-	ConcurrencyLimit int                       `json:"concurrency_limit"`
-	Version          int                       `json:"version"`
-	APIKeyID         int64                     `json:"api_key_id"`
-	UserID           int64                     `json:"user_id"`
-	GroupIDs         []int64                   `json:"group_ids,omitempty"`
-	GroupID          *int64                    `json:"group_id,omitempty"`
-	MixedMode        bool                      `json:"mixed_mode_enabled"`
-	MixedGroupIDs    []int64                   `json:"mixed_group_ids,omitempty"`
-	Name             string                    `json:"name"`
-	Status           string                   `json:"status"`
-	ModelMapping     map[string]string         `json:"model_mapping,omitempty"`
-	ReasoningEffort  string                    `json:"reasoning_effort,omitempty"`
-	AllowLongContext bool                      `json:"allow_long_context"`
-	IPWhitelist      []string                  `json:"ip_whitelist,omitempty"`
-	IPBlacklist      []string                 `json:"ip_blacklist,omitempty"`
-	User             APIKeyAuthUserSnapshot    `json:"user"`
-	Group            *APIKeyAuthGroupSnapshot  `json:"group,omitempty"`
-	MixedGroups      []APIKeyAuthGroupSnapshot `json:"mixed_groups,omitempty"`
-	ContextTokenLimit int                      `json:"context_token_limit"`
+	ConcurrencyLimit  int                       `json:"concurrency_limit"`
+	Version           int                       `json:"version"`
+	APIKeyID          int64                     `json:"api_key_id"`
+	UserID            int64                     `json:"user_id"`
+	GroupIDs          []int64                   `json:"group_ids,omitempty"`
+	GroupID           *int64                    `json:"group_id,omitempty"`
+	MixedMode         bool                      `json:"mixed_mode_enabled"`
+	MixedGroupIDs     []int64                   `json:"mixed_group_ids,omitempty"`
+	Name              string                    `json:"name"`
+	Status            string                    `json:"status"`
+	ModelMapping      map[string]string         `json:"model_mapping,omitempty"`
+	ReasoningEffort   string                    `json:"reasoning_effort,omitempty"`
+	AllowLongContext  bool                      `json:"allow_long_context"`
+	IPWhitelist       []string                  `json:"ip_whitelist,omitempty"`
+	IPBlacklist       []string                  `json:"ip_blacklist,omitempty"`
+	User              APIKeyAuthUserSnapshot    `json:"user"`
+	Group             *APIKeyAuthGroupSnapshot  `json:"group,omitempty"`
+	MixedGroups       []APIKeyAuthGroupSnapshot `json:"mixed_groups,omitempty"`
+	ContextTokenLimit int                       `json:"context_token_limit"`
 
 	// Quota fields for API Key independent quota feature
 	Quota     float64 `json:"quota"`      // Quota limit in USD (0 = unlimited)

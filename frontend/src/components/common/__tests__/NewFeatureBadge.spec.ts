@@ -30,6 +30,7 @@ describe('NewFeatureBadge', () => {
     ['payment provider fees', NEW_FEATURE_NOTICES.paymentProviderFees],
     ['settings save dock', NEW_FEATURE_NOTICES.settingsSaveDock],
     ['VIP automatic credit email', NEW_FEATURE_NOTICES.vipAutoCreditEmail],
+    ['priority cache weight', NEW_FEATURE_NOTICES.priorityCacheWeight],
     ['dashboard account concurrency', NEW_FEATURE_NOTICES.dashboardAccountConcurrency],
     ['key risk', NEW_FEATURE_NOTICES.keyRisk],
     ['key source restrictions', NEW_FEATURE_NOTICES.keyRiskSources],

@@ -143,6 +143,7 @@ func TestIssue805WSCompletedHistoryAcrossNodesAndTurns(t *testing.T) {
 			first := issue715WSRead(t, producer.clientConn)
 			require.Contains(t, string(first), "fixture-task-reference-715")
 			probe := clients()
+
 			require.Eventually(t, func() bool {
 				owners := issue805Owners(t, probe)
 				if len(owners) != 1 {
@@ -178,8 +179,7 @@ func TestIssue805WSCompletedHistoryAcrossNodesAndTurns(t *testing.T) {
 				}
 				return true
 			}, time.Second, 5*time.Millisecond, "A must survive and the newly delivered output must commit real B")
-			previous := gjson.GetBytes(answer, "response.id").String()
-			mixed := strings.Replace(issue715WSCreate(previous, true), issue715Agent, issue715Agent+","+issue805AgentB, 1)
+			mixed := strings.Replace(issue715WSCreate("", true), issue715Agent, issue715Agent+","+issue805AgentB, 1)
 			issue715WSSend(t, consumer.clientConn, mixed)
 			require.Equal(t, "response.completed", gjson.GetBytes(issue715WSRead(t, consumer.clientConn), "type").String())
 			u.mu.Lock()
@@ -196,10 +196,12 @@ func TestIssue805WSCompletedHistoryAcrossNodesAndTurns(t *testing.T) {
 				require.Equal(t, 3, wsCount)
 				require.Zero(t, httpCount)
 			}
-			// Normal restart back to strict can reject mixed producers, but must
-			// neither erase evidence nor pretend that A's history was made by B.
+			// A response pointer keeps mixed-producer history pinned and must not
+			// erase evidence or pretend that A's history was made by B.
 			strict := issue805WSNode(t, mode, srv.URL, newCache(), false, false)
-			issue715WSSend(t, strict.clientConn, strings.Replace(mixed, fmt.Sprintf(`,"previous_response_id":%q`, previous), "", 1))
+			previous := gjson.GetBytes(answer, "response.id").String()
+			anchored := strings.Replace(mixed, `"input":`, fmt.Sprintf(`"previous_response_id":%q,"input":`, previous), 1)
+			issue715WSSend(t, strict.clientConn, anchored)
 			issue805WSRefusal(t, strict.clientConn, "encrypted_agent_recovery_owner_conflict")
 			u.mu.Lock()
 			require.Len(t, u.ids, 3)

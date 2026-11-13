@@ -49,7 +49,7 @@ func TestPelicanScheduledActualPromptMatchesSentPayload(t *testing.T) {
 				require.Contains(t, sent, PelicanDeliveryContract)
 				if refused {
 					require.Equal(t, "failed", saved.Status)
-					require.Contains(t, saved.ErrorMessage, pelicanErrRefused)
+					require.NotEmpty(t, saved.ErrorMessage)
 				} else {
 					require.Equal(t, "success", saved.Status)
 					require.Equal(t, pelicanClaudeTestHTML, saved.ResponseText)

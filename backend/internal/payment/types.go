@@ -108,16 +108,16 @@ func GetBasePaymentType(t string) string {
 
 // CreatePaymentRequest holds the parameters for creating a new payment.
 type CreatePaymentRequest struct {
-	OrderID     string // Internal order ID
-	Amount      string // 支付金额，按服务商实例配置的币种解释
-	PaymentType string // e.g. "alipay", "wxpay", "stripe"
-	Subject     string // Product description
-	NotifyURL   string // Webhook callback URL
-	ReturnURL   string // Browser redirect URL after payment
-	OpenID      string // WeChat JSAPI payer OpenID when available
-	ClientIP    string // Payer's IP address
-	PayerEmail  string // Trusted account email used by hosted checkout providers
-	IsMobile    bool   // Whether the request comes from a mobile device
+	OrderID        string // Internal order ID
+	Amount         string // 支付金额，按服务商实例配置的币种解释
+	PaymentType    string // e.g. "alipay", "wxpay", "stripe"
+	Subject        string // Product description
+	NotifyURL      string // Webhook callback URL
+	ReturnURL      string // Browser redirect URL after payment
+	OpenID         string // WeChat JSAPI payer OpenID when available
+	ClientIP       string // Payer's IP address
+	PayerEmail     string // Trusted account email used by hosted checkout providers
+	IsMobile       bool   // Whether the request comes from a mobile device
 	PaymentSubtype string // Selected Stripe sub-method, fixed before the intent amount is calculated.
 	// AlipayMobilePrecreate routes a mobile Alipay request through
 	// alipay.trade.precreate instead of alipay.trade.wap.pay.

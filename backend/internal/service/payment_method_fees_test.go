@@ -82,6 +82,33 @@ func TestCreateOrderUsesProviderMethodFeeAndPreservesSnapshot(t *testing.T) {
 	}
 }
 
+func TestCreateOrderFeeQuoteUsesDiscountedSelectionAmount(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	settings := &paymentFulfillmentSettingRepoStub{values: map[string]string{
+		SettingPaymentEnabled: "true", SettingRechargeBonusMode: RechargeBonusModeDiscount,
+		SettingRechargeBonusTiers: `[{"min_amount":100,"bonus_percent":20}]`,
+	}}
+	configSvc := NewPaymentConfigService(client, settings, nil)
+	_, err := client.PaymentProviderInstance.Create().SetProviderKey(payment.TypeEasyPay).SetName("discount").
+		SetConfig(`{"pid":"test","pkey":"test-key","apiBase":"https://gateway.example","notifyUrl":"https://merchant.example/notify","returnUrl":"https://merchant.example/payment/result"}`).
+		SetSupportedTypes("alipay").SetPaymentMode("popup").SetFeeRate(5).SetLimits(`{"alipay":{"singleMax":90}}`).Save(ctx)
+	require.NoError(t, err)
+	user, err := client.User.Create().SetEmail("discount-fee@example.com").SetUsername("discount-fee").SetPasswordHash("hash").Save(ctx)
+	require.NoError(t, err)
+	svc := &PaymentService{entClient: client, configService: configSvc, loadBalancer: payment.NewDefaultLoadBalancer(client, nil), registry: payment.NewRegistry(), userRepo: &mockUserRepo{getByIDUser: &User{ID: user.ID, Email: user.Email, Username: user.Username, Status: StatusActive}}}
+	result, err := svc.CreateOrder(ctx, CreateOrderRequest{UserID: user.ID, Amount: 100, PaymentType: "alipay", ReturnURL: "https://merchant.example/payment/result", SrcHost: "merchant.example"})
+	require.NoError(t, err, "the candidate limit applies to discounted base 80 plus fee 4, not nominal amount 100")
+	require.Equal(t, 84.0, result.PayAmount)
+	require.Equal(t, 5.0, result.FeeRate)
+	parsed, err := url.Parse(result.PayURL)
+	require.NoError(t, err)
+	require.Equal(t, "84.00", parsed.Query().Get("money"))
+	order, err := client.PaymentOrder.Get(ctx, result.OrderID)
+	require.NoError(t, err)
+	require.Equal(t, result.PayAmount, order.PayAmount)
+}
+
 func TestPaymentOrderSubtypeComesFromSnapshot(t *testing.T) {
 	req := CreateOrderRequest{PaymentType: "stripe", PaymentSubtype: "card"}
 	sel := &payment.InstanceSelection{ProviderKey: "stripe", InstanceID: "7", Quote: &payment.InstanceQuote{FeeSource: "method"}}
