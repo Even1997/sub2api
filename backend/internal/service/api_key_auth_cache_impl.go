@@ -15,7 +15,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 35 // v35: per-key long context permission plus local mixed groups
+const apiKeyAuthSnapshotVersion = 36 // v36: per-key context ceiling plus local mixed groups
 
 // Local-only generation wrapper. Old entries remain bounded by existing TTL
 // and capacity, but cannot authorize after a subscription recovery checkpoint.
@@ -392,6 +392,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		ConcurrencyLimit: apiKey.ConcurrencyLimit,
 		RateLimit1d:      apiKey.RateLimit1d,
 		RateLimit7d:      apiKey.RateLimit7d,
+		ContextTokenLimit: apiKey.ContextTokenLimit,
 		User: APIKeyAuthUserSnapshot{
 			ID:                         apiKey.User.ID,
 			Status:                     apiKey.User.Status,
@@ -461,6 +462,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		ConcurrencyLimit: snapshot.ConcurrencyLimit,
 		RateLimit1d:      snapshot.RateLimit1d,
 		RateLimit7d:      snapshot.RateLimit7d,
+		ContextTokenLimit: snapshot.ContextTokenLimit,
 		User: &User{
 			ID:                         snapshot.User.ID,
 			Status:                     snapshot.User.Status,

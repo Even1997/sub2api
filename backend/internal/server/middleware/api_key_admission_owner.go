@@ -121,6 +121,9 @@ func newAPIKeyAuthRevalidator(lookup func(context.Context, string) (*service.API
 		// route and the new authorization mixed; report a retryable configuration
 		// change instead of forwarding under stale premises. The reason code is
 		// kept for existing callers.
+		if identity.contextTokenLimit != latest.ContextTokenLimit || identity.allowLongContext != latest.AllowLongContext {
+			return 0, service.NewAPIKeyQueueAuthRejected(infraerrors.ServiceUnavailable(service.APIKeyContextPolicyChangedReason, service.APIKeyContextPolicyRetryMessage))
+		}
 		if apiKeyQueueCoreIdentityChanged(identity, latest) {
 			return 0, service.NewAPIKeyQueueAuthRejected(infraerrors.ServiceUnavailable("API_KEY_GROUP_CHANGED", "API key configuration changed; please retry"))
 		}
@@ -159,6 +162,7 @@ type apiKeyQueueInitialIdentity struct {
 	reasoningMappings  []service.ReasoningEffortMapping
 	modelMapping       map[string]string
 	forcedReasoning    string
+	contextTokenLimit  int
 	allowLongContext   bool
 }
 
@@ -172,6 +176,7 @@ func captureAPIKeyQueueIdentity(initial *service.APIKey) apiKeyQueueInitialIdent
 	identity.modelMapping = maps.Clone(initial.ModelMapping)
 	identity.forcedReasoning = initial.ReasoningEffort
 	identity.allowLongContext = initial.AllowLongContext
+	identity.contextTokenLimit = initial.ContextTokenLimit
 	if initial.GroupID != nil {
 		groupID := *initial.GroupID
 		identity.groupID = &groupID
@@ -199,7 +204,7 @@ func apiKeyQueueCoreIdentityChanged(initial apiKeyQueueInitialIdentity, latest *
 	// A queued request or persistent socket has already resolved its route
 	// and request policy. Re-enter authentication after an administrator changes
 	// any setting rather than forwarding an old policy under a fresh key.
-	if initial.forcedReasoning != latest.ReasoningEffort || initial.allowLongContext != latest.AllowLongContext || !maps.Equal(initial.modelMapping, latest.ModelMapping) {
+	if initial.contextTokenLimit != latest.ContextTokenLimit || initial.forcedReasoning != latest.ReasoningEffort || initial.allowLongContext != latest.AllowLongContext || !maps.Equal(initial.modelMapping, latest.ModelMapping) {
 		return true
 	}
 	if initial.userID != 0 && latest.UserID != initial.userID {

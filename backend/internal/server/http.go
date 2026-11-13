@@ -102,6 +102,7 @@ func ProvideRouter(
 		lifecycle.onDrain = append(lifecycle.onDrain, settingService.IPRisk.Stop)
 	}
 	if cfg.Runtime.Role != config.RuntimeRoleGateway && handlers.Admin != nil && handlers.Admin.Setting != nil {
+		handlers.Admin.Setting.SetKeyRiskAPIKeys(apiKeyService)
 		stop, err := handlers.Admin.Setting.StartKeyRisk(cfg.Database.DSN())
 		if err != nil {
 			slog.Warn("key risk initialization failed")

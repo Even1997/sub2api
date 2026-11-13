@@ -126,61 +126,63 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                    Op
-	typ                   string
-	id                    *int64
-	created_at            *time.Time
-	updated_at            *time.Time
-	deleted_at            *time.Time
-	concurrency_limit     *int
-	addconcurrency_limit  *int
-	key                   *string
-	name                  *string
-	mixed_mode_enabled    *bool
-	mixed_group_ids       *[]int64
-	appendmixed_group_ids []int64
-	status                *string
-	model_mapping         *map[string]string
-	reasoning_effort      *string
-	allow_long_context    *bool
-	last_used_at          *time.Time
-	ip_whitelist          *[]string
-	appendip_whitelist    []string
-	ip_blacklist          *[]string
-	appendip_blacklist    []string
-	quota                 *float64
-	addquota              *float64
-	quota_used            *float64
-	addquota_used         *float64
-	expires_at            *time.Time
-	rate_limit_5h         *float64
-	addrate_limit_5h      *float64
-	rate_limit_1d         *float64
-	addrate_limit_1d      *float64
-	rate_limit_7d         *float64
-	addrate_limit_7d      *float64
-	usage_5h              *float64
-	addusage_5h           *float64
-	usage_1d              *float64
-	addusage_1d           *float64
-	usage_7d              *float64
-	addusage_7d           *float64
-	window_5h_start       *time.Time
-	window_1d_start       *time.Time
-	window_7d_start       *time.Time
-	clearedFields         map[string]struct{}
-	user                  *int64
-	cleareduser           bool
-	group                 *int64
-	clearedgroup          bool
-	_package              *int64
-	cleared_package       bool
-	usage_logs            map[int64]struct{}
-	removedusage_logs     map[int64]struct{}
-	clearedusage_logs     bool
-	done                  bool
-	oldValue              func(context.Context) (*APIKey, error)
-	predicates            []predicate.APIKey
+	op                     Op
+	typ                    string
+	id                     *int64
+	created_at             *time.Time
+	updated_at             *time.Time
+	deleted_at             *time.Time
+	concurrency_limit      *int
+	addconcurrency_limit   *int
+	key                    *string
+	name                   *string
+	mixed_mode_enabled     *bool
+	mixed_group_ids        *[]int64
+	appendmixed_group_ids  []int64
+	status                 *string
+	model_mapping          *map[string]string
+	reasoning_effort       *string
+	allow_long_context     *bool
+	context_token_limit    *int
+	addcontext_token_limit *int
+	last_used_at           *time.Time
+	ip_whitelist           *[]string
+	appendip_whitelist     []string
+	ip_blacklist           *[]string
+	appendip_blacklist     []string
+	quota                  *float64
+	addquota               *float64
+	quota_used             *float64
+	addquota_used          *float64
+	expires_at             *time.Time
+	rate_limit_5h          *float64
+	addrate_limit_5h       *float64
+	rate_limit_1d          *float64
+	addrate_limit_1d       *float64
+	rate_limit_7d          *float64
+	addrate_limit_7d       *float64
+	usage_5h               *float64
+	addusage_5h            *float64
+	usage_1d               *float64
+	addusage_1d            *float64
+	usage_7d               *float64
+	addusage_7d            *float64
+	window_5h_start        *time.Time
+	window_1d_start        *time.Time
+	window_7d_start        *time.Time
+	clearedFields          map[string]struct{}
+	user                   *int64
+	cleareduser            bool
+	group                  *int64
+	clearedgroup           bool
+	_package               *int64
+	cleared_package        bool
+	usage_logs             map[int64]struct{}
+	removedusage_logs      map[int64]struct{}
+	clearedusage_logs      bool
+	done                   bool
+	oldValue               func(context.Context) (*APIKey, error)
+	predicates             []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -907,6 +909,62 @@ func (m *APIKeyMutation) OldAllowLongContext(ctx context.Context) (v bool, err e
 // ResetAllowLongContext resets all changes to the "allow_long_context" field.
 func (m *APIKeyMutation) ResetAllowLongContext() {
 	m.allow_long_context = nil
+}
+
+// SetContextTokenLimit sets the "context_token_limit" field.
+func (m *APIKeyMutation) SetContextTokenLimit(i int) {
+	m.context_token_limit = &i
+	m.addcontext_token_limit = nil
+}
+
+// ContextTokenLimit returns the value of the "context_token_limit" field in the mutation.
+func (m *APIKeyMutation) ContextTokenLimit() (r int, exists bool) {
+	v := m.context_token_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContextTokenLimit returns the old "context_token_limit" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldContextTokenLimit(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContextTokenLimit is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContextTokenLimit requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContextTokenLimit: %w", err)
+	}
+	return oldValue.ContextTokenLimit, nil
+}
+
+// AddContextTokenLimit adds i to the "context_token_limit" field.
+func (m *APIKeyMutation) AddContextTokenLimit(i int) {
+	if m.addcontext_token_limit != nil {
+		*m.addcontext_token_limit += i
+	} else {
+		m.addcontext_token_limit = &i
+	}
+}
+
+// AddedContextTokenLimit returns the value that was added to the "context_token_limit" field in this mutation.
+func (m *APIKeyMutation) AddedContextTokenLimit() (r int, exists bool) {
+	v := m.addcontext_token_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetContextTokenLimit resets all changes to the "context_token_limit" field.
+func (m *APIKeyMutation) ResetContextTokenLimit() {
+	m.context_token_limit = nil
+	m.addcontext_token_limit = nil
 }
 
 // SetLastUsedAt sets the "last_used_at" field.
@@ -1901,7 +1959,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 30)
+	fields := make([]string, 0, 31)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1946,6 +2004,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.allow_long_context != nil {
 		fields = append(fields, apikey.FieldAllowLongContext)
+	}
+	if m.context_token_limit != nil {
+		fields = append(fields, apikey.FieldContextTokenLimit)
 	}
 	if m.last_used_at != nil {
 		fields = append(fields, apikey.FieldLastUsedAt)
@@ -2030,6 +2091,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.ReasoningEffort()
 	case apikey.FieldAllowLongContext:
 		return m.AllowLongContext()
+	case apikey.FieldContextTokenLimit:
+		return m.ContextTokenLimit()
 	case apikey.FieldLastUsedAt:
 		return m.LastUsedAt()
 	case apikey.FieldIPWhitelist:
@@ -2099,6 +2162,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldReasoningEffort(ctx)
 	case apikey.FieldAllowLongContext:
 		return m.OldAllowLongContext(ctx)
+	case apikey.FieldContextTokenLimit:
+		return m.OldContextTokenLimit(ctx)
 	case apikey.FieldLastUsedAt:
 		return m.OldLastUsedAt(ctx)
 	case apikey.FieldIPWhitelist:
@@ -2243,6 +2308,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetAllowLongContext(v)
 		return nil
+	case apikey.FieldContextTokenLimit:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContextTokenLimit(v)
+		return nil
 	case apikey.FieldLastUsedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -2359,6 +2431,9 @@ func (m *APIKeyMutation) AddedFields() []string {
 	if m.addconcurrency_limit != nil {
 		fields = append(fields, apikey.FieldConcurrencyLimit)
 	}
+	if m.addcontext_token_limit != nil {
+		fields = append(fields, apikey.FieldContextTokenLimit)
+	}
 	if m.addquota != nil {
 		fields = append(fields, apikey.FieldQuota)
 	}
@@ -2393,6 +2468,8 @@ func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case apikey.FieldConcurrencyLimit:
 		return m.AddedConcurrencyLimit()
+	case apikey.FieldContextTokenLimit:
+		return m.AddedContextTokenLimit()
 	case apikey.FieldQuota:
 		return m.AddedQuota()
 	case apikey.FieldQuotaUsed:
@@ -2424,6 +2501,13 @@ func (m *APIKeyMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddConcurrencyLimit(v)
+		return nil
+	case apikey.FieldContextTokenLimit:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddContextTokenLimit(v)
 		return nil
 	case apikey.FieldQuota:
 		v, ok := value.(float64)
@@ -2621,6 +2705,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldAllowLongContext:
 		m.ResetAllowLongContext()
+		return nil
+	case apikey.FieldContextTokenLimit:
+		m.ResetContextTokenLimit()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ResetLastUsedAt()
@@ -43017,6 +43104,9 @@ type PaymentProviderInstanceMutation struct {
 	sort_order        *int
 	addsort_order     *int
 	limits            *string
+	fee_rate          *float64
+	addfee_rate       *float64
+	method_fee_rates  *map[string]float64
 	refund_enabled    *bool
 	allow_user_refund *bool
 	created_at        *time.Time
@@ -43433,6 +43523,112 @@ func (m *PaymentProviderInstanceMutation) ResetLimits() {
 	m.limits = nil
 }
 
+// SetFeeRate sets the "fee_rate" field.
+func (m *PaymentProviderInstanceMutation) SetFeeRate(f float64) {
+	m.fee_rate = &f
+	m.addfee_rate = nil
+}
+
+// FeeRate returns the value of the "fee_rate" field in the mutation.
+func (m *PaymentProviderInstanceMutation) FeeRate() (r float64, exists bool) {
+	v := m.fee_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFeeRate returns the old "fee_rate" field's value of the PaymentProviderInstance entity.
+// If the PaymentProviderInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentProviderInstanceMutation) OldFeeRate(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFeeRate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFeeRate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFeeRate: %w", err)
+	}
+	return oldValue.FeeRate, nil
+}
+
+// AddFeeRate adds f to the "fee_rate" field.
+func (m *PaymentProviderInstanceMutation) AddFeeRate(f float64) {
+	if m.addfee_rate != nil {
+		*m.addfee_rate += f
+	} else {
+		m.addfee_rate = &f
+	}
+}
+
+// AddedFeeRate returns the value that was added to the "fee_rate" field in this mutation.
+func (m *PaymentProviderInstanceMutation) AddedFeeRate() (r float64, exists bool) {
+	v := m.addfee_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearFeeRate clears the value of the "fee_rate" field.
+func (m *PaymentProviderInstanceMutation) ClearFeeRate() {
+	m.fee_rate = nil
+	m.addfee_rate = nil
+	m.clearedFields[paymentproviderinstance.FieldFeeRate] = struct{}{}
+}
+
+// FeeRateCleared returns if the "fee_rate" field was cleared in this mutation.
+func (m *PaymentProviderInstanceMutation) FeeRateCleared() bool {
+	_, ok := m.clearedFields[paymentproviderinstance.FieldFeeRate]
+	return ok
+}
+
+// ResetFeeRate resets all changes to the "fee_rate" field.
+func (m *PaymentProviderInstanceMutation) ResetFeeRate() {
+	m.fee_rate = nil
+	m.addfee_rate = nil
+	delete(m.clearedFields, paymentproviderinstance.FieldFeeRate)
+}
+
+// SetMethodFeeRates sets the "method_fee_rates" field.
+func (m *PaymentProviderInstanceMutation) SetMethodFeeRates(value map[string]float64) {
+	m.method_fee_rates = &value
+}
+
+// MethodFeeRates returns the value of the "method_fee_rates" field in the mutation.
+func (m *PaymentProviderInstanceMutation) MethodFeeRates() (r map[string]float64, exists bool) {
+	v := m.method_fee_rates
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMethodFeeRates returns the old "method_fee_rates" field's value of the PaymentProviderInstance entity.
+// If the PaymentProviderInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentProviderInstanceMutation) OldMethodFeeRates(ctx context.Context) (v map[string]float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMethodFeeRates is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMethodFeeRates requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMethodFeeRates: %w", err)
+	}
+	return oldValue.MethodFeeRates, nil
+}
+
+// ResetMethodFeeRates resets all changes to the "method_fee_rates" field.
+func (m *PaymentProviderInstanceMutation) ResetMethodFeeRates() {
+	m.method_fee_rates = nil
+}
+
 // SetRefundEnabled sets the "refund_enabled" field.
 func (m *PaymentProviderInstanceMutation) SetRefundEnabled(b bool) {
 	m.refund_enabled = &b
@@ -43611,7 +43807,7 @@ func (m *PaymentProviderInstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentProviderInstanceMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 14)
 	if m.provider_key != nil {
 		fields = append(fields, paymentproviderinstance.FieldProviderKey)
 	}
@@ -43635,6 +43831,12 @@ func (m *PaymentProviderInstanceMutation) Fields() []string {
 	}
 	if m.limits != nil {
 		fields = append(fields, paymentproviderinstance.FieldLimits)
+	}
+	if m.fee_rate != nil {
+		fields = append(fields, paymentproviderinstance.FieldFeeRate)
+	}
+	if m.method_fee_rates != nil {
+		fields = append(fields, paymentproviderinstance.FieldMethodFeeRates)
 	}
 	if m.refund_enabled != nil {
 		fields = append(fields, paymentproviderinstance.FieldRefundEnabled)
@@ -43672,6 +43874,10 @@ func (m *PaymentProviderInstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.SortOrder()
 	case paymentproviderinstance.FieldLimits:
 		return m.Limits()
+	case paymentproviderinstance.FieldFeeRate:
+		return m.FeeRate()
+	case paymentproviderinstance.FieldMethodFeeRates:
+		return m.MethodFeeRates()
 	case paymentproviderinstance.FieldRefundEnabled:
 		return m.RefundEnabled()
 	case paymentproviderinstance.FieldAllowUserRefund:
@@ -43705,6 +43911,10 @@ func (m *PaymentProviderInstanceMutation) OldField(ctx context.Context, name str
 		return m.OldSortOrder(ctx)
 	case paymentproviderinstance.FieldLimits:
 		return m.OldLimits(ctx)
+	case paymentproviderinstance.FieldFeeRate:
+		return m.OldFeeRate(ctx)
+	case paymentproviderinstance.FieldMethodFeeRates:
+		return m.OldMethodFeeRates(ctx)
 	case paymentproviderinstance.FieldRefundEnabled:
 		return m.OldRefundEnabled(ctx)
 	case paymentproviderinstance.FieldAllowUserRefund:
@@ -43778,6 +43988,20 @@ func (m *PaymentProviderInstanceMutation) SetField(name string, value ent.Value)
 		}
 		m.SetLimits(v)
 		return nil
+	case paymentproviderinstance.FieldFeeRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFeeRate(v)
+		return nil
+	case paymentproviderinstance.FieldMethodFeeRates:
+		v, ok := value.(map[string]float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMethodFeeRates(v)
+		return nil
 	case paymentproviderinstance.FieldRefundEnabled:
 		v, ok := value.(bool)
 		if !ok {
@@ -43817,6 +44041,9 @@ func (m *PaymentProviderInstanceMutation) AddedFields() []string {
 	if m.addsort_order != nil {
 		fields = append(fields, paymentproviderinstance.FieldSortOrder)
 	}
+	if m.addfee_rate != nil {
+		fields = append(fields, paymentproviderinstance.FieldFeeRate)
+	}
 	return fields
 }
 
@@ -43827,6 +44054,8 @@ func (m *PaymentProviderInstanceMutation) AddedField(name string) (ent.Value, bo
 	switch name {
 	case paymentproviderinstance.FieldSortOrder:
 		return m.AddedSortOrder()
+	case paymentproviderinstance.FieldFeeRate:
+		return m.AddedFeeRate()
 	}
 	return nil, false
 }
@@ -43843,6 +44072,13 @@ func (m *PaymentProviderInstanceMutation) AddField(name string, value ent.Value)
 		}
 		m.AddSortOrder(v)
 		return nil
+	case paymentproviderinstance.FieldFeeRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFeeRate(v)
+		return nil
 	}
 	return fmt.Errorf("unknown PaymentProviderInstance numeric field %s", name)
 }
@@ -43850,7 +44086,11 @@ func (m *PaymentProviderInstanceMutation) AddField(name string, value ent.Value)
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *PaymentProviderInstanceMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(paymentproviderinstance.FieldFeeRate) {
+		fields = append(fields, paymentproviderinstance.FieldFeeRate)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -43863,6 +44103,11 @@ func (m *PaymentProviderInstanceMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *PaymentProviderInstanceMutation) ClearField(name string) error {
+	switch name {
+	case paymentproviderinstance.FieldFeeRate:
+		m.ClearFeeRate()
+		return nil
+	}
 	return fmt.Errorf("unknown PaymentProviderInstance nullable field %s", name)
 }
 
@@ -43893,6 +44138,12 @@ func (m *PaymentProviderInstanceMutation) ResetField(name string) error {
 		return nil
 	case paymentproviderinstance.FieldLimits:
 		m.ResetLimits()
+		return nil
+	case paymentproviderinstance.FieldFeeRate:
+		m.ResetFeeRate()
+		return nil
+	case paymentproviderinstance.FieldMethodFeeRates:
+		m.ResetMethodFeeRates()
 		return nil
 	case paymentproviderinstance.FieldRefundEnabled:
 		m.ResetRefundEnabled()

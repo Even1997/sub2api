@@ -14,6 +14,8 @@
 
 `previous_response_id` 与压缩请求继续使用原来的严格归属检查；这里没有迁移供应商保存的状态，也不会自动删除锚点。换号后的完整历史续接应继续提供完整历史；如果另外带上供应商锚点，仍可能因其账号与历史归属不一致而拒绝。明确失败前不要反复手动提交工具结果。
 
+下文描述默认严格策略。管理员可通过默认 `false` 的 `gateway.disable_encrypted_agent_owner_binding` 显式允许完整已交付历史尝试其他合格账号；配置方法、交付安全、统一节点切换与回 strict 的混合 owner 限制见[加密 agent 历史账号策略](encrypted-agent-owner-policy.md)。开关不保证上游密文兼容，也不允许重放不确定交付的任务。
+
 ## 保留任务后再判断故障
 
 `unsupported_encrypted_agent_message` 表示某一层不能消费代理任务的加密格式。它不等同于 reasoning 的 `invalid_encrypted_content`，也不证明故障来自 BPS；先确定同一故障请求的端点、实际通道和部署 SHA。

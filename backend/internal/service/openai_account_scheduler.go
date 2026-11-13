@@ -461,6 +461,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			derefGroupID(req.GroupID) != recovery.groupID || req.RequestedModel != recovery.model {
 			return nil, decision, openAIAgentRecoveryError("owner_unavailable")
 		}
+
 		req.StickyWeighted = false
 		if !recovery.canSwitchAccount() || strings.TrimSpace(req.PreviousResponseID) != "" {
 			req.StickyAccountID = recovery.owner.accountID
@@ -468,6 +469,21 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			req.DisableStickyEscape = true
 			req.PreviousResponseCanMove = false
 		}
+	}
+	// Agent-history opt-out does not migrate provider-side response pointers.
+	// Keep this independent of the presence of an encrypted item owner.
+	pointerOwner := int64(0)
+	if recovery != nil && recovery.previousResponseID != "" {
+		var pointerErr error
+		pointerOwner, pointerErr = s.service.getOpenAIWSStateStore().GetResponseAccount(ctx, recovery.groupID, recovery.previousResponseID)
+		if pointerErr != nil || pointerOwner <= 0 || req.PreviousResponseID != recovery.previousResponseID {
+			return nil, decision, openAIAgentRecoveryError("owner_unavailable")
+		}
+		req.StickyAccountID = pointerOwner
+		req.StickyWeighted = false
+		req.PreserveStickyBinding = true
+		req.DisableStickyEscape = true
+		req.PreviousResponseCanMove = false
 	}
 	if s != nil && s.service != nil && s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
 		req.RequirePrivacySet = true
@@ -636,13 +652,17 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			}
 		}
 	}
-	if recovery != nil && recovery.owner != nil && (!recovery.canSwitchAccount() || previousResponseID != "") {
-		if req.GuardianParentAccountID > 0 && req.GuardianParentAccountID != recovery.owner.accountID {
+	if recovery.ownerBindingRequired() || pointerOwner > 0 {
+		ownerID := pointerOwner
+		if recovery.ownerBindingRequired() {
+			ownerID = recovery.owner.accountID
+		}
+		if req.GuardianParentAccountID > 0 && req.GuardianParentAccountID != ownerID {
 			return nil, decision, openAIAgentRecoveryError("owner_unavailable")
 		}
 		if previousResponseID != "" {
-			ownerID, readErr := s.service.getOpenAIWSStateStore().GetResponseAccount(ctx, derefGroupID(req.GroupID), previousResponseID)
-			if readErr != nil || ownerID != recovery.owner.accountID {
+			previousOwner, readErr := s.service.getOpenAIWSStateStore().GetResponseAccount(ctx, derefGroupID(req.GroupID), previousResponseID)
+			if readErr != nil || previousOwner != ownerID {
 				return nil, decision, openAIAgentRecoveryError("owner_unavailable")
 			}
 		}
@@ -652,6 +672,14 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 		if selection == nil || selection.Account == nil {
 			return nil, decision, openAIAgentRecoveryError("owner_unavailable")
+		}
+		// Reject a changed producer route before entering Forward. This also
+		// gives the explicit history-omission policy a pre-send refusal to handle.
+		if recoveryErr := s.service.checkOpenAIAgentRecoveryAccount(ctx, selection.Account); recoveryErr != nil {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			return nil, decision, recoveryErr
 		}
 		decision.Layer = openAIAccountScheduleLayerSessionSticky
 		decision.StickySessionHit = true

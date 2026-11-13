@@ -76,6 +76,7 @@ type CreateOrderRequest struct {
 	PayerEmail      string
 	Amount          float64
 	PaymentType     string
+	PaymentSubtype  string
 	OpenID          string
 	ClientIP        string
 	IsMobile        bool
@@ -91,6 +92,7 @@ type CreateOrderRequest struct {
 }
 
 type CreateOrderResponse struct {
+	PaymentSubtype                string                          `json:"payment_subtype,omitempty"`
 	OrderID                       int64                           `json:"order_id"`
 	Amount                        float64                         `json:"amount"`
 	PayAmount                     float64                         `json:"pay_amount"`

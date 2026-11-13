@@ -119,7 +119,7 @@ func TestIssue715ToolResultFailoverRequiresExplicitRejection(t *testing.T) {
 	for _, status := range []int{0, 401, 403, 429, 500, 520} {
 		require.False(t, OpenAIAgentToolResultCanFailover(ctx, &UpstreamFailoverError{StatusCode: status}))
 	}
-	r.previousResponse = "resp_stored"
+	r.previousResponseID = "resp_stored"
 	require.False(t, OpenAIAgentToolResultCanFailover(ctx, &UpstreamFailoverError{StatusCode: 429, RequestRejected: true}))
 }
 

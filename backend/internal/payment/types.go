@@ -118,6 +118,7 @@ type CreatePaymentRequest struct {
 	ClientIP    string // Payer's IP address
 	PayerEmail  string // Trusted account email used by hosted checkout providers
 	IsMobile    bool   // Whether the request comes from a mobile device
+	PaymentSubtype string // Selected Stripe sub-method, fixed before the intent amount is calculated.
 	// AlipayMobilePrecreate routes a mobile Alipay request through
 	// alipay.trade.precreate instead of alipay.trade.wap.pay.
 	AlipayMobilePrecreate bool
@@ -215,6 +216,7 @@ type RefundResponse struct {
 
 // InstanceSelection holds the selected provider instance and its decrypted config.
 type InstanceSelection struct {
+	Quote          *InstanceQuote
 	InstanceID     string
 	ProviderKey    string // Provider key of the selected instance (e.g. "alipay", "easypay")
 	Config         map[string]string

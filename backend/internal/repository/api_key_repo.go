@@ -81,6 +81,7 @@ func (r *apiKeyRepository) create(ctx context.Context, key *service.APIKey) erro
 	if err == nil {
 		key.ID = created.ID
 		key.AllowLongContext = created.AllowLongContext
+		key.ContextTokenLimit = created.ContextTokenLimit
 		key.LastUsedAt = created.LastUsedAt
 		key.CreatedAt = created.CreatedAt
 		key.UpdatedAt = created.UpdatedAt
@@ -175,6 +176,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldModelMapping,
 			apikey.FieldReasoningEffort,
 			apikey.FieldAllowLongContext,
+			apikey.FieldContextTokenLimit,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
 			apikey.FieldQuota,
@@ -410,6 +412,9 @@ func (r *apiKeyRepository) update(ctx context.Context, key *service.APIKey, fiel
 	}
 	if fields.ReasoningEffort {
 		builder.SetReasoningEffort(key.ReasoningEffort)
+	}
+	if fields.ContextTokenLimit {
+		builder.SetContextTokenLimit(key.ContextTokenLimit)
 	}
 	if fields.AllowLongContext {
 		builder.SetAllowLongContext(key.AllowLongContext)
@@ -1108,6 +1113,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		Window5hStart:    m.Window5hStart,
 		Window1dStart:    m.Window1dStart,
 		Window7dStart:    m.Window7dStart,
+		ContextTokenLimit: m.ContextTokenLimit,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

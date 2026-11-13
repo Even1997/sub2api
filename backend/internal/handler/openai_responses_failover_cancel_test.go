@@ -125,6 +125,10 @@ func newOpenAIResponsesFailoverTestHandlerWithSettings(t *testing.T, upstream se
 }
 
 func newOpenAIResponsesFailoverTestHandlerWithCache(t *testing.T, upstream service.HTTPUpstream, cache service.GatewayCache, fixtureAccounts ...service.Account) *OpenAIGatewayHandler {
+	return newOpenAIResponsesFailoverTestHandlerWithSettingsAndCache(t, upstream, cache, nil, fixtureAccounts...)
+}
+
+func newOpenAIResponsesFailoverTestHandlerWithSettingsAndCache(t *testing.T, upstream service.HTTPUpstream, cache service.GatewayCache, settings *service.SettingService, fixtureAccounts ...service.Account) *OpenAIGatewayHandler {
 	t.Helper()
 	accounts := []service.Account{
 		{
@@ -146,7 +150,7 @@ func newOpenAIResponsesFailoverTestHandlerWithCache(t *testing.T, upstream servi
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	gatewayService := service.NewOpenAIGatewayService(
 		accountRepo, nil, nil, nil, nil, nil, cache, cfg,
-		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, settings, nil,
 	)
 	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billingService.Stop)

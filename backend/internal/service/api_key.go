@@ -46,6 +46,7 @@ type APIKey struct {
 	ModelMapping     map[string]string
 	ReasoningEffort  string
 	AllowLongContext bool // Administrator-managed; new and migrated keys default to true.
+	ContextTokenLimit int  // Positive overrides the legacy policy; zero inherits it.
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
@@ -74,6 +75,11 @@ type APIKey struct {
 	Window5hStart *time.Time // Start of current 5h window
 	Window1dStart *time.Time // Start of current 1d window
 	Window7dStart *time.Time // Start of current 7d window
+}
+
+// RequiresContextCheck includes explicit ceilings even when long context is allowed.
+func (k *APIKey) RequiresContextCheck() bool {
+	return k != nil && (k.ContextTokenLimit > 0 || !k.AllowLongContext)
 }
 
 func (k *APIKey) IsActive() bool {

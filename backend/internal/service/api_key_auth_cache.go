@@ -22,6 +22,7 @@ type APIKeyAuthSnapshot struct {
 	User             APIKeyAuthUserSnapshot    `json:"user"`
 	Group            *APIKeyAuthGroupSnapshot  `json:"group,omitempty"`
 	MixedGroups      []APIKeyAuthGroupSnapshot `json:"mixed_groups,omitempty"`
+	ContextTokenLimit int                      `json:"context_token_limit"`
 
 	// Quota fields for API Key independent quota feature
 	Quota     float64 `json:"quota"`      // Quota limit in USD (0 = unlimited)

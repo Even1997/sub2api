@@ -74,6 +74,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/operations/__tests__/QualityOwnershipReview.spec.ts \
 	src/utils/__tests__/accountAutoBPS.spec.ts \
 	src/components/admin/operations/__tests__/QualityProbeSchedule.spec.ts \
+	src/components/layout/__tests__/AppHeader.spec.ts \
 	src/components/account/__tests__/CreateAccountModal.autoBPS.spec.ts \
 	src/components/account/__tests__/EditAccountModal.autoBPS.spec.ts \
 	src/stores/__tests__/accountQuality.spec.ts \

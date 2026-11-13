@@ -80,6 +80,7 @@ type APIKeyUpdateFields struct {
 	GroupID          bool
 	ExpiresAt        bool
 	MixedConfig      bool
+	ContextTokenLimit bool
 	// QuotaUsed 仅供"重置配额用量"路径声明；常规计费走 IncrementQuotaUsed。
 	QuotaUsed bool
 	// RateLimits 覆盖 rate_limit_5h / _1d / _7d 三个阈值。

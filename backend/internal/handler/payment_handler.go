@@ -234,6 +234,7 @@ func (h *PaymentHandler) GetLimits(c *gin.Context) {
 
 // CreateOrderRequest is the request body for creating a payment order.
 type CreateOrderRequest struct {
+	PaymentSubtype    string  `json:"payment_subtype,omitempty"`
 	Amount            float64 `json:"amount"`
 	PaymentType       string  `json:"payment_type" binding:"required"`
 	OpenID            string  `json:"openid"`
@@ -282,6 +283,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		UserID:          subject.UserID,
 		Amount:          req.Amount,
 		PaymentType:     req.PaymentType,
+		PaymentSubtype:  req.PaymentSubtype,
 		OpenID:          req.OpenID,
 		ClientIP:        c.ClientIP(),
 		IsMobile:        mobile,
@@ -553,6 +555,7 @@ func (h *PaymentHandler) VerifyOrder(c *gin.Context) {
 // proves possession of the checkout session, so the result keeps the legacy
 // frontend contract needed by payment result pages.
 type PublicOrderResult struct {
+	PaymentSubtype      string     `json:"payment_subtype,omitempty"`
 	ID                  int64      `json:"id"`
 	OutTradeNo          string     `json:"out_trade_no"`
 	Amount              float64    `json:"amount"`
@@ -590,6 +593,7 @@ type PublicOrderVerifyResult struct {
 
 func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
 	return PublicOrderResult{
+		PaymentSubtype:      service.PaymentOrderSubtype(order),
 		ID:                  order.ID,
 		OutTradeNo:          order.OutTradeNo,
 		Amount:              order.Amount,
@@ -701,6 +705,7 @@ func isMobile(c *gin.Context) bool {
 
 type PaymentOrderResult struct {
 	Remark              string     `json:"remark"`
+	PaymentSubtype      string     `json:"payment_subtype,omitempty"`
 	ID                  int64      `json:"id"`
 	UserID              int64      `json:"user_id"`
 	Amount              float64    `json:"amount"`
@@ -743,6 +748,7 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *PaymentOrderRes
 	}
 	return &PaymentOrderResult{
 		Remark:              order.Remark,
+		PaymentSubtype:      service.PaymentOrderSubtype(order),
 		ID:                  order.ID,
 		UserID:              order.UserID,
 		Amount:              order.Amount,

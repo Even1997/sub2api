@@ -371,10 +371,11 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorHideUserRanking        *bool   `json:"channel_monitor_hide_user_ranking"`
 
 	// Grok model mapping policy
-	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
-	GrokCrossClientModelMapEnabled *bool   `json:"grok_cross_client_model_map_enabled"`
-	GrokDefaultBaseURLMode         *string `json:"grok_default_base_url_mode"`
-	GrokVideoSourceURLEnabled      *bool   `json:"grok_video_source_url_enabled"`
+	GrokDefaultTextModel                 *string `json:"grok_default_text_model"`
+	GrokCrossClientModelMapEnabled       *bool   `json:"grok_cross_client_model_map_enabled"`
+	GrokDefaultBaseURLMode               *string `json:"grok_default_base_url_mode"`
+	GrokVideoSourceURLEnabled            *bool   `json:"grok_video_source_url_enabled"`
+	OpenAI409OmitEncryptedHistoryEnabled *bool   `json:"openai_409_omit_encrypted_history_enabled"`
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
@@ -2376,6 +2377,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.GrokVideoSourceURLEnabled
 		}(),
+		OpenAI409OmitEncryptedHistoryEnabled: func() bool {
+			if req.OpenAI409OmitEncryptedHistoryEnabled != nil {
+				return *req.OpenAI409OmitEncryptedHistoryEnabled
+			}
+			return previousSettings.OpenAI409OmitEncryptedHistoryEnabled
+		}(),
 		AvailableChannelsEnabled: func() bool {
 			if req.AvailableChannelsEnabled != nil {
 				return *req.AvailableChannelsEnabled
@@ -2904,10 +2911,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorShowQuota:               updatedSettings.ChannelMonitorShowQuota,
 		ChannelMonitorHideUserRanking:         updatedSettings.ChannelMonitorHideUserRanking,
 
-		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
-		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,
-		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
-		GrokVideoSourceURLEnabled:      updatedSettings.GrokVideoSourceURLEnabled,
+		GrokDefaultTextModel:                 updatedSettings.GrokDefaultTextModel,
+		GrokCrossClientModelMapEnabled:       updatedSettings.GrokCrossClientModelMapEnabled,
+		GrokDefaultBaseURLMode:               updatedSettings.GrokDefaultBaseURLMode,
+		GrokVideoSourceURLEnabled:            updatedSettings.GrokVideoSourceURLEnabled,
+		OpenAI409OmitEncryptedHistoryEnabled: updatedSettings.OpenAI409OmitEncryptedHistoryEnabled,
 
 		AvailableChannelsEnabled:  updatedSettings.AvailableChannelsEnabled,
 		PelicanShowcaseEnabled:    updatedSettings.PelicanShowcaseEnabled,
