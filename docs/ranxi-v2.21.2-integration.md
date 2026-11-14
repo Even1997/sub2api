@@ -51,6 +51,10 @@
 - Apply production migrations only through the normal deployment/backup process. A schema rollback is not implied by reverting the source branch.
 - Completion means two reviewable local commits on an isolated branch, no unmerged paths/conflict markers, scoped validation and this ledger. It does not mean production approval.
 
+## Authorized full deployment follow-up
+
+On 2026-11-14 the user authorized full-image deployment of both server40 instances and worker rebinding, explicitly preserving the locally implemented model-cache feature. Commit 05cecac9c imports the hash-verified live model-cache patch and resolves the combined authentication snapshot at version 37. Both applications were deployed, their worker origins and public assets were verified, and the existing model-rule data remained unchanged. This follow-up supersedes the earlier candidate-only deployment boundary; it does not authorize push or GitHub publication. See server40-v2212-20261114.md for source identity, independent Linux/Windows 509-event regression gates, backup hashes, final verification, rollback and remaining limits.
+
 ## Quality assessment
 
 Scores evaluate the release integration, not every pre-existing product defect. Function 9.4/10, code 9.5/10, UI 9.4/10, UX 9.4/10, performance 9.3/10, security 9.4/10; art N/A (no new artwork). Overall 9.4/10: deliverable, not a claim of high-quality completion. Below-9.5 improvements are the documented baseline failures, full-page/real-provider validation and production-representative load/Linux verification.
