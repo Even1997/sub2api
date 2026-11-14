@@ -36,6 +36,24 @@ func openAIQuotaUsedPercent(extra map[string]any, window string) (float64, bool)
 // Only fields from one upstream observation may be used to build a sample.
 // A 1% rounded reading is too noisy to replace an established capacity.
 func NewOpenAIQuotaCostSample(extra map[string]any, window string) *OpenAIQuotaCostSample {
+	if minutes, exists := extra["codex_"+window+"_window_minutes"]; exists && parseExtraInt(minutes) != int(openAIQuotaWindowDuration(window).Minutes()) {
+		return nil
+	}
+	if raw, versioned := extra[CodexUsageFieldVersionsKey]; versioned {
+		versions, ok := raw.(map[string]any)
+		if !ok {
+			return nil
+		}
+		prefix := "codex_" + window + "_"
+		// A coalesced packet can contain multiple observations. Capacity needs
+		// a percentage and reset from the same observation, not its global time.
+		for _, suffix := range []string{"reset_at", "reset_after_seconds", "window_minutes"} {
+			if _, exists := extra[prefix+suffix]; exists && fmt.Sprint(versions[prefix+suffix]) != fmt.Sprint(versions[prefix+"used_percent"]) {
+				return nil
+			}
+		}
+		extra = qualityQuotaWindowObservation(extra, window, time.Now())
+	}
 	used, ok := openAIQuotaUsedPercent(extra, window)
 	if !ok || used < 5 {
 		return nil
@@ -49,9 +67,6 @@ func NewOpenAIQuotaCostSample(extra map[string]any, window string) *OpenAIQuotaC
 		return nil
 	}
 	duration := openAIQuotaWindowDuration(window)
-	if minutes, exists := extra["codex_"+window+"_window_minutes"]; exists && parseExtraInt(minutes) != int(duration.Minutes()) {
-		return nil
-	}
 	start := progress.ResetsAt.Add(-duration)
 	if !start.Before(observedAt) || !observedAt.Before(*progress.ResetsAt) {
 		return nil
@@ -86,6 +101,9 @@ func openAIQuotaCostSampleForAccount(account *Account, window string, now time.T
 }
 
 func openAIQuotaCurrentUsage(extra map[string]any, window string, now time.Time) (float64, bool) {
+	if _, versioned := extra[CodexUsageFieldVersionsKey]; versioned {
+		extra = qualityQuotaWindowObservation(extra, window, now)
+	}
 	used, ok := openAIQuotaUsedPercent(extra, window)
 	if !ok {
 		return 0, false

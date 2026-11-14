@@ -3,6 +3,7 @@ package repository
 import (
 	"fmt"
 	"maps"
+	"strconv"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -14,13 +15,28 @@ func prepareOpenAIQuotaCostSamples(updates map[string]any) map[string]any {
 	if !ok || err != nil || observedAt.After(time.Now()) {
 		return updates
 	}
+	versions := service.CodexUsageFieldVersions(updates, observedAt)
+	if len(versions) == 0 {
+		return updates
+	}
 	updates = maps.Clone(updates)
+	updates[service.CodexUsageFieldVersionsKey] = versions
 	for _, window := range []string{service.OpenAIQuotaWindow5h, service.OpenAIQuotaWindow7d} {
-		if _, exists := updates["codex_"+window+"_used_percent"]; exists {
-			updates["codex_"+window+"_observed_at"] = stamp
+		prefix := "codex_" + window + "_"
+		if _, exists := updates[prefix+"used_percent"]; !exists {
+			continue
 		}
+		version := versions[prefix+"used_percent"].(string)
+		ns, _ := strconv.ParseInt(version, 10, 64)
+		at := time.Unix(0, ns)
+		if at.After(time.Now()) {
+			continue
+		}
+		updates[prefix+"observed_at"] = at.UTC().Format(time.RFC3339Nano)
+		versions[prefix+"observed_at"] = version
 		if sample := service.NewOpenAIQuotaCostSample(updates, window); sample != nil {
-			updates["codex_"+window+"_cost_sample"] = sample
+			updates[prefix+"cost_sample"] = sample
+			versions[prefix+"cost_sample"] = version
 		}
 	}
 	return updates

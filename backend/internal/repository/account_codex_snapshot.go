@@ -68,6 +68,7 @@ func (r *accountRepository) UpdateCodexUsageSnapshot(ctx context.Context, id int
 	if !hasCodexWindowUpdates(window) {
 		return true, r.UpdateExtra(ctx, id, display)
 	}
+	window = prepareOpenAIQuotaCostSamples(window)
 	stamp, _ := window["codex_usage_updated_at"].(string)
 	observed, err := time.Parse(time.RFC3339Nano, stamp)
 	if err != nil {
@@ -114,8 +115,15 @@ func (r *accountRepository) UpdateCodexUsageSnapshot(ctx context.Context, id int
 	// version. _legacy freezes the pre-field-version fence for existing rows;
 	// advancing another window must not advance this fallback. No pre-read CAS.
 	rows, err := client.QueryContext(ctx, `UPDATE accounts AS a
- SET extra = (COALESCE(a.extra,'{}'::jsonb) || $1::jsonb) || (
- SELECT COALESCE(jsonb_object_agg(incoming.key, incoming.value),'{}'::jsonb) ||
+ SET extra = (COALESCE(a.extra,'{}'::jsonb) || jsonb_build_object(
+ 'codex_5h_observed_at', COALESCE(a.extra->'codex_5h_observed_at', a.extra->'codex_usage_updated_at'),
+ 'codex_7d_observed_at', COALESCE(a.extra->'codex_7d_observed_at', a.extra->'codex_usage_updated_at')) || $1::jsonb) || (
+ SELECT COALESCE(jsonb_object_agg(incoming.key, CASE
+ WHEN incoming.key IN ('codex_5h_cost_sample', 'codex_7d_cost_sample')
+ THEN incoming.value || jsonb_build_object(
+   'plan_type', lower(btrim(COALESCE(a.credentials->>'plan_type', ''))),
+   'rate_multiplier', CASE WHEN a.rate_multiplier < 0 THEN 1 ELSE COALESCE(a.rate_multiplier, 1) END)
+ ELSE incoming.value END),'{}'::jsonb) ||
  jsonb_build_object('codex_usage_field_versions',
    jsonb_build_object('_legacy', COALESCE(a.extra->'codex_usage_field_versions'->'_legacy',
      a.extra->'codex_usage_observed_at_ns', '"0"'::jsonb)) ||
@@ -127,6 +135,8 @@ func (r *accountRepository) UpdateCodexUsageSnapshot(ctx context.Context, id int
  THEN COALESCE(a.extra->'codex_usage_field_versions'->>incoming.key,
    a.extra->'codex_usage_field_versions'->>'_legacy', a.extra->>'codex_usage_observed_at_ns','0')::numeric
  ELSE 0 END) <= ($3::jsonb->>incoming.key)::numeric
+ AND (incoming.key NOT IN ('codex_5h_cost_sample', 'codex_7d_cost_sample')
+      OR (a.platform = 'openai' AND a.type = 'oauth'))
  ) || CASE WHEN (CASE WHEN a.extra->>'codex_usage_observed_at_ns' ~ '^[0-9]{1,19}$'
  THEN (a.extra->>'codex_usage_observed_at_ns')::numeric ELSE 0 END) <= $4::numeric
  THEN $5::jsonb ELSE '{}'::jsonb END,

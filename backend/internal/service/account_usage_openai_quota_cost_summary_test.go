@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"math"
+	"strconv"
 	"testing"
 	"time"
 
@@ -156,6 +157,47 @@ func TestGetOpenAIQuotaCostSummaryRetainsCapacity(t *testing.T) {
 }
 
 func ptrQuotaCost(value float64) *float64 { return &value }
+
+func TestOpenAIQuotaCostUsesFieldObservationTimes(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	fiveAt, sevenAt := now.Add(-time.Minute), now.Add(-6*time.Hour)
+	extra := map[string]any{
+		"codex_usage_updated_at":       now.Format(time.RFC3339),
+		"codex_5h_observed_at":         now.Add(-24 * time.Hour).Format(time.RFC3339),
+		"codex_5h_used_percent":        50.0,
+		"codex_5h_reset_after_seconds": 3600,
+		"codex_7d_used_percent":        25.0,
+		"codex_7d_reset_after_seconds": 86400,
+		CodexUsageFieldVersionsKey: map[string]any{
+			"codex_5h_used_percent":        strconv.FormatInt(fiveAt.UnixNano(), 10),
+			"codex_5h_reset_after_seconds": strconv.FormatInt(fiveAt.UnixNano(), 10),
+			"codex_7d_used_percent":        strconv.FormatInt(sevenAt.UnixNano(), 10),
+			"codex_7d_reset_after_seconds": strconv.FormatInt(sevenAt.UnixNano(), 10),
+		},
+	}
+	for _, tt := range []struct {
+		window          string
+		at              time.Time
+		used            float64
+		duration, reset time.Duration
+	}{
+		{OpenAIQuotaWindow5h, fiveAt, 50, 5 * time.Hour, time.Hour},
+		{OpenAIQuotaWindow7d, sevenAt, 25, 7 * 24 * time.Hour, 24 * time.Hour},
+	} {
+		t.Run(tt.window, func(t *testing.T) {
+			used, known := openAIQuotaCurrentUsage(extra, tt.window, now)
+			require.True(t, known, "current field versions supersede stale legacy observation times")
+			require.Equal(t, tt.used, used)
+			sample := NewOpenAIQuotaCostSample(extra, tt.window)
+			require.NotNil(t, sample)
+			require.Equal(t, tt.at.Unix(), sample.SampledAt)
+			require.Equal(t, tt.at.Add(tt.reset-tt.duration).Unix(), sample.StartAt)
+		})
+	}
+	versions := extra[CodexUsageFieldVersionsKey].(map[string]any)
+	versions["codex_5h_reset_after_seconds"] = strconv.FormatInt(sevenAt.UnixNano(), 10)
+	require.Nil(t, NewOpenAIQuotaCostSample(extra, OpenAIQuotaWindow5h), "mixed-generation fields cannot calibrate capacity")
+}
 
 func TestNewOpenAIQuotaCostSampleRejectsUnreliableSnapshots(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)

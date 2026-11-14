@@ -6,6 +6,10 @@ import AccountsView from '../AccountsView.vue'
 
 enableAutoUnmount(afterEach)
 
+vi.mock('@/api/admin/accountTokenGuardV2', () => ({
+  listTokenGuardV2Accounts: vi.fn().mockResolvedValue({ accounts: [] })
+}))
+
 const { listAccounts, getOpenAIAccountSummary } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   getOpenAIAccountSummary: vi.fn()
@@ -62,6 +66,8 @@ const mountView = () => mount(AccountsView, {
       OpenAIAccountSummaryCards: OpenAIAccountSummaryCardsStub,
       AccountBulkActionsBar: true,
       AccountActionMenu: true,
+      CredentialOpsDrawer: true,
+      NewFeatureBadge: true,
       ImportDataModal: true,
       ReAuthAccountModal: true,
       AccountTestModal: true,
