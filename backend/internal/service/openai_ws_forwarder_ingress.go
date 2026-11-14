@@ -1168,6 +1168,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
 		message = restoreCodexToolNamesFromContext(c, message)
+		message = reduceCacheReadUsagePayloadWithPolicy(message, downstreamCacheReadReductionPolicyForModel(c, ingressSessionOriginalModel))
 		return agentRecovery.write(message, func() error {
 			return WriteCapturedWSClient(writeCtx, clientConn, coderws.MessageText, message)
 		})

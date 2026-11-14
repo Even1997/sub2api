@@ -23983,6 +23983,8 @@ type GroupMutation struct {
 	addrate_multiplier                      *float64
 	cache_read_reduction_percent            *float64
 	addcache_read_reduction_percent         *float64
+	cache_read_reduction_rules              *[]domain.CacheReadReductionRule
+	appendcache_read_reduction_rules        []domain.CacheReadReductionRule
 	peak_rate_enabled                       *bool
 	peak_start                              *string
 	peak_end                                *string
@@ -24553,6 +24555,57 @@ func (m *GroupMutation) AddedCacheReadReductionPercent() (r float64, exists bool
 func (m *GroupMutation) ResetCacheReadReductionPercent() {
 	m.cache_read_reduction_percent = nil
 	m.addcache_read_reduction_percent = nil
+}
+
+// SetCacheReadReductionRules sets the "cache_read_reduction_rules" field.
+func (m *GroupMutation) SetCacheReadReductionRules(drrr []domain.CacheReadReductionRule) {
+	m.cache_read_reduction_rules = &drrr
+	m.appendcache_read_reduction_rules = nil
+}
+
+// CacheReadReductionRules returns the value of the "cache_read_reduction_rules" field in the mutation.
+func (m *GroupMutation) CacheReadReductionRules() (r []domain.CacheReadReductionRule, exists bool) {
+	v := m.cache_read_reduction_rules
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheReadReductionRules returns the old "cache_read_reduction_rules" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldCacheReadReductionRules(ctx context.Context) (v []domain.CacheReadReductionRule, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheReadReductionRules is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheReadReductionRules requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheReadReductionRules: %w", err)
+	}
+	return oldValue.CacheReadReductionRules, nil
+}
+
+// AppendCacheReadReductionRules adds drrr to the "cache_read_reduction_rules" field.
+func (m *GroupMutation) AppendCacheReadReductionRules(drrr []domain.CacheReadReductionRule) {
+	m.appendcache_read_reduction_rules = append(m.appendcache_read_reduction_rules, drrr...)
+}
+
+// AppendedCacheReadReductionRules returns the list of values that were appended to the "cache_read_reduction_rules" field in this mutation.
+func (m *GroupMutation) AppendedCacheReadReductionRules() ([]domain.CacheReadReductionRule, bool) {
+	if len(m.appendcache_read_reduction_rules) == 0 {
+		return nil, false
+	}
+	return m.appendcache_read_reduction_rules, true
+}
+
+// ResetCacheReadReductionRules resets all changes to the "cache_read_reduction_rules" field.
+func (m *GroupMutation) ResetCacheReadReductionRules() {
+	m.cache_read_reduction_rules = nil
+	m.appendcache_read_reduction_rules = nil
 }
 
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
@@ -28171,7 +28224,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 74)
+	fields := make([]string, 0, 75)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -28195,6 +28248,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.cache_read_reduction_percent != nil {
 		fields = append(fields, group.FieldCacheReadReductionPercent)
+	}
+	if m.cache_read_reduction_rules != nil {
+		fields = append(fields, group.FieldCacheReadReductionRules)
 	}
 	if m.peak_rate_enabled != nil {
 		fields = append(fields, group.FieldPeakRateEnabled)
@@ -28418,6 +28474,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.RateMultiplier()
 	case group.FieldCacheReadReductionPercent:
 		return m.CacheReadReductionPercent()
+	case group.FieldCacheReadReductionRules:
+		return m.CacheReadReductionRules()
 	case group.FieldPeakRateEnabled:
 		return m.PeakRateEnabled()
 	case group.FieldPeakStart:
@@ -28575,6 +28633,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldRateMultiplier(ctx)
 	case group.FieldCacheReadReductionPercent:
 		return m.OldCacheReadReductionPercent(ctx)
+	case group.FieldCacheReadReductionRules:
+		return m.OldCacheReadReductionRules(ctx)
 	case group.FieldPeakRateEnabled:
 		return m.OldPeakRateEnabled(ctx)
 	case group.FieldPeakStart:
@@ -28771,6 +28831,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCacheReadReductionPercent(v)
+		return nil
+	case group.FieldCacheReadReductionRules:
+		v, ok := value.([]domain.CacheReadReductionRule)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheReadReductionRules(v)
 		return nil
 	case group.FieldPeakRateEnabled:
 		v, ok := value.(bool)
@@ -29786,6 +29853,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldCacheReadReductionPercent:
 		m.ResetCacheReadReductionPercent()
+		return nil
+	case group.FieldCacheReadReductionRules:
+		m.ResetCacheReadReductionRules()
 		return nil
 	case group.FieldPeakRateEnabled:
 		m.ResetPeakRateEnabled()

@@ -126,6 +126,12 @@ func (_c *GroupCreate) SetNillableCacheReadReductionPercent(v *float64) *GroupCr
 	return _c
 }
 
+// SetCacheReadReductionRules sets the "cache_read_reduction_rules" field.
+func (_c *GroupCreate) SetCacheReadReductionRules(v []domain.CacheReadReductionRule) *GroupCreate {
+	_c.mutation.SetCacheReadReductionRules(v)
+	return _c
+}
+
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
 func (_c *GroupCreate) SetPeakRateEnabled(v bool) *GroupCreate {
 	_c.mutation.SetPeakRateEnabled(v)
@@ -1168,6 +1174,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultCacheReadReductionPercent
 		_c.mutation.SetCacheReadReductionPercent(v)
 	}
+	if _, ok := _c.mutation.CacheReadReductionRules(); !ok {
+		v := group.DefaultCacheReadReductionRules
+		_c.mutation.SetCacheReadReductionRules(v)
+	}
 	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
 		v := group.DefaultPeakRateEnabled
 		_c.mutation.SetPeakRateEnabled(v)
@@ -1375,6 +1385,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheReadReductionPercent(); !ok {
 		return &ValidationError{Name: "cache_read_reduction_percent", err: errors.New(`ent: missing required field "Group.cache_read_reduction_percent"`)}
+	}
+	if _, ok := _c.mutation.CacheReadReductionRules(); !ok {
+		return &ValidationError{Name: "cache_read_reduction_rules", err: errors.New(`ent: missing required field "Group.cache_read_reduction_rules"`)}
 	}
 	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
 		return &ValidationError{Name: "peak_rate_enabled", err: errors.New(`ent: missing required field "Group.peak_rate_enabled"`)}
@@ -1639,6 +1652,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheReadReductionPercent(); ok {
 		_spec.SetField(group.FieldCacheReadReductionPercent, field.TypeFloat64, value)
 		_node.CacheReadReductionPercent = value
+	}
+	if value, ok := _c.mutation.CacheReadReductionRules(); ok {
+		_spec.SetField(group.FieldCacheReadReductionRules, field.TypeJSON, value)
+		_node.CacheReadReductionRules = value
 	}
 	if value, ok := _c.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
@@ -2178,6 +2195,18 @@ func (u *GroupUpsert) UpdateCacheReadReductionPercent() *GroupUpsert {
 // AddCacheReadReductionPercent adds v to the "cache_read_reduction_percent" field.
 func (u *GroupUpsert) AddCacheReadReductionPercent(v float64) *GroupUpsert {
 	u.Add(group.FieldCacheReadReductionPercent, v)
+	return u
+}
+
+// SetCacheReadReductionRules sets the "cache_read_reduction_rules" field.
+func (u *GroupUpsert) SetCacheReadReductionRules(v []domain.CacheReadReductionRule) *GroupUpsert {
+	u.Set(group.FieldCacheReadReductionRules, v)
+	return u
+}
+
+// UpdateCacheReadReductionRules sets the "cache_read_reduction_rules" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCacheReadReductionRules() *GroupUpsert {
+	u.SetExcluded(group.FieldCacheReadReductionRules)
 	return u
 }
 
@@ -3408,6 +3437,20 @@ func (u *GroupUpsertOne) AddCacheReadReductionPercent(v float64) *GroupUpsertOne
 func (u *GroupUpsertOne) UpdateCacheReadReductionPercent() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCacheReadReductionPercent()
+	})
+}
+
+// SetCacheReadReductionRules sets the "cache_read_reduction_rules" field.
+func (u *GroupUpsertOne) SetCacheReadReductionRules(v []domain.CacheReadReductionRule) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheReadReductionRules(v)
+	})
+}
+
+// UpdateCacheReadReductionRules sets the "cache_read_reduction_rules" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCacheReadReductionRules() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheReadReductionRules()
 	})
 }
 
@@ -4980,6 +5023,20 @@ func (u *GroupUpsertBulk) AddCacheReadReductionPercent(v float64) *GroupUpsertBu
 func (u *GroupUpsertBulk) UpdateCacheReadReductionPercent() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCacheReadReductionPercent()
+	})
+}
+
+// SetCacheReadReductionRules sets the "cache_read_reduction_rules" field.
+func (u *GroupUpsertBulk) SetCacheReadReductionRules(v []domain.CacheReadReductionRule) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheReadReductionRules(v)
+	})
+}
+
+// UpdateCacheReadReductionRules sets the "cache_read_reduction_rules" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCacheReadReductionRules() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheReadReductionRules()
 	})
 }
 

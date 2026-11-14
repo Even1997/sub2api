@@ -2085,7 +2085,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 	}
 
 	w := c.Writer
-	downstreamPercent := downstreamCacheReadReductionPercent(c)
+	downstreamPercent := downstreamCacheReadReductionPolicy(c)
 	_, ok := w.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
@@ -2202,7 +2202,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 	}()
 	writePendingLines := func() bool {
 		for _, pending := range pendingLines {
-			if _, err := fmt.Fprintln(w, reduceClientVisibleSSELine(pending, downstreamPercent)); err != nil {
+			if _, err := fmt.Fprintln(w, reduceClientVisibleSSELineWithPolicy(pending, downstreamPercent)); err != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				return false
@@ -2551,7 +2551,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughWithImage(
 					continue
 				}
 			}
-			if _, err := fmt.Fprintln(w, reduceClientVisibleSSELine(line, downstreamPercent)); err != nil {
+			if _, err := fmt.Fprintln(w, reduceClientVisibleSSELineWithPolicy(line, downstreamPercent)); err != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 			} else {
@@ -2744,7 +2744,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
 	}
-	body = reduceCacheReadUsagePayload(body, downstreamCacheReadReductionPercent(c))
+	body = reduceCacheReadUsagePayloadWithPolicy(body, downstreamCacheReadReductionPolicy(c))
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -2830,7 +2830,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			contentType = "text/event-stream"
 		}
 	}
-	body = reduceCacheReadUsagePayload(body, downstreamCacheReadReductionPercent(c))
+	body = reduceCacheReadUsagePayloadWithPolicy(body, downstreamCacheReadReductionPolicy(c))
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		// 上游的 Content-Type（text/event-stream）已复制到响应头，而 c.Data
 		// 不会覆盖已存在的 Content-Type，这里需显式设置为聚合后的类型。

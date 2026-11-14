@@ -32,6 +32,8 @@ const (
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldCacheReadReductionPercent holds the string denoting the cache_read_reduction_percent field in the database.
 	FieldCacheReadReductionPercent = "cache_read_reduction_percent"
+	// FieldCacheReadReductionRules holds the string denoting the cache_read_reduction_rules field in the database.
+	FieldCacheReadReductionRules = "cache_read_reduction_rules"
 	// FieldPeakRateEnabled holds the string denoting the peak_rate_enabled field in the database.
 	FieldPeakRateEnabled = "peak_rate_enabled"
 	// FieldPeakStart holds the string denoting the peak_start field in the database.
@@ -256,6 +258,7 @@ var Columns = []string{
 	FieldI18n,
 	FieldRateMultiplier,
 	FieldCacheReadReductionPercent,
+	FieldCacheReadReductionRules,
 	FieldPeakRateEnabled,
 	FieldPeakStart,
 	FieldPeakEnd,
@@ -365,6 +368,8 @@ var (
 	DefaultRateMultiplier float64
 	// DefaultCacheReadReductionPercent holds the default value on creation for the "cache_read_reduction_percent" field.
 	DefaultCacheReadReductionPercent float64
+	// DefaultCacheReadReductionRules holds the default value on creation for the "cache_read_reduction_rules" field.
+	DefaultCacheReadReductionRules []domain.CacheReadReductionRule
 	// DefaultPeakRateEnabled holds the default value on creation for the "peak_rate_enabled" field.
 	DefaultPeakRateEnabled bool
 	// DefaultPeakStart holds the default value on creation for the "peak_start" field.

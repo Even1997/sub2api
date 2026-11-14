@@ -416,6 +416,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if err := ValidateCacheReadReductionPercent(input.CacheReadReductionPercent); err != nil {
 		return nil, err
 	}
+	cacheRules, err := normalizeCacheReadReductionRules(input.CacheReadReductionRules)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_CACHE_READ_REDUCTION_RULES", err.Error())
+	}
+	input.CacheReadReductionRules = cacheRules
 	accountTypePreference, err := normalizeAccountTypePreference(input.AccountTypePreference)
 	if err != nil {
 		return nil, infraerrors.BadRequest("INVALID_ACCOUNT_TYPE_PREFERENCE", err.Error())
@@ -604,6 +609,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
 		CacheReadReductionPercent:       input.CacheReadReductionPercent,
+		CacheReadReductionRules:         input.CacheReadReductionRules,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
@@ -839,6 +845,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, err
 		}
 		group.CacheReadReductionPercent = *input.CacheReadReductionPercent
+	}
+	if input.CacheReadReductionRules != nil {
+		rules, err := normalizeCacheReadReductionRules(*input.CacheReadReductionRules)
+		if err != nil {
+			return nil, infraerrors.BadRequest("INVALID_CACHE_READ_REDUCTION_RULES", err.Error())
+		}
+		group.CacheReadReductionRules = rules
 	}
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive

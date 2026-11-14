@@ -34,6 +34,7 @@ type openAIWSClientFrameConn struct {
 	// model identifier they supplied for the current turn.
 	restoreResponseModel func([]byte) []byte
 	restoreToolNames     func([]byte) []byte
+	reduceCacheUsage     func([]byte) []byte
 	agentRecovery        *openAIWSAgentRecovery
 }
 
@@ -697,6 +698,9 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		if c.restoreToolNames != nil {
 			payload = c.restoreToolNames(payload)
 		}
+		if c.reduceCacheUsage != nil {
+			payload = c.reduceCacheUsage(payload)
+		}
 	}
 	return c.agentRecovery.write(payload, func() error {
 		return WriteCapturedWSClient(ctx, c.conn, msgType, payload)
@@ -1076,6 +1080,10 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		},
 		restoreToolNames: func(payload []byte) []byte {
 			return restoreCodexToolNamesFromContext(c, payload)
+		},
+		reduceCacheUsage: func(payload []byte) []byte {
+			model, _ := usageMeta.turnModels("")
+			return reduceCacheReadUsagePayloadWithPolicy(payload, downstreamCacheReadReductionPolicyForModel(c, model))
 		},
 	}
 	// Read/filter and the subsequent upstream write share one relay goroutine.

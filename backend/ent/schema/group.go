@@ -57,6 +57,9 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(0).
 			Comment("将指定比例的缓存读取 token 重新计为普通输入，仅影响本地计费与用量分类"),
+		field.JSON("cache_read_reduction_rules", []domain.CacheReadReductionRule{}).
+			Default([]domain.CacheReadReductionRule{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		// 高峰时段倍率（added by migration 158）
 		field.Bool("peak_rate_enabled").
 			Default(false).

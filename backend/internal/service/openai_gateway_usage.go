@@ -187,7 +187,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	logServiceTierBillingDowngrade("service.openai_gateway", account, result.RequestID, ApplyOpenAIServiceTierBillingResolution(billingAccount, result))
 	if apiKey != nil && apiKey.Group != nil {
-		applyOpenAICacheReadReduction(&result.Usage, apiKey.Group.CacheReadReductionPercent)
+		policy := apiKey.Group.cacheReadReductionPolicy(cacheReadReductionModel(input.OriginalModel, result.Model))
+		applyOpenAICacheReadReduction(&result.Usage, cacheReadReductionPercent(policy, result.Usage.InputTokens, result.Usage.CacheReadInputTokens))
 	}
 
 	// OpenAI input_tokens 是总输入，包含缓存读取和缓存写入明细。

@@ -160,6 +160,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
 		CacheReadReductionPercent:   g.CacheReadReductionPercent,
+		CacheReadReductionRules:     g.CacheReadReductionRules,
 		ForceOpenAIFast:             g.ForceOpenAIFast,
 		DisableNonStreaming:         g.DisableNonStreaming,
 		FreeOpenAIFast:              g.FreeOpenAIFast,

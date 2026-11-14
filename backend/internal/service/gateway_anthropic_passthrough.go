@@ -449,7 +449,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	clientDisconnected := false
 	firstResponseEnabled := s.settingService.IsStreamFirstResponseEnabled(ctx)
 	sawTerminalEvent := false
-	downstreamPercent := downstreamCacheReadReductionPercent(c)
+	downstreamPercent := downstreamCacheReadReductionPolicy(c)
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -588,9 +588,9 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			}
 
 			// 计费已在上面按原始 data 行解析，这里只改写给下游的副本。
-			if downstreamPercent > 0 {
+			if downstreamPercent.Percent > 0 {
 				if data, ok := extractAnthropicSSEDataLine(line); ok {
-					if reduced := reduceCacheReadUsagePayload([]byte(data), downstreamPercent); string(reduced) != data {
+					if reduced := reduceAnthropicStreamUsagePayload([]byte(data), downstreamPercent, usage); string(reduced) != data {
 						line = "data: " + string(reduced)
 					}
 				}
@@ -925,7 +925,7 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 		}
 	}
 	// 与 RecordUsage 同序：先强制缓存归类，再按分组比例把部分缓存读取挪回普通输入。
-	body = reduceCacheReadUsagePayload(body, downstreamCacheReadReductionPercent(c))
+	body = reduceCacheReadUsagePayloadWithPolicy(body, downstreamCacheReadReductionPolicy(c))
 
 	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))

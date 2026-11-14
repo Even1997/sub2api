@@ -949,7 +949,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Cont
 
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, errType, errMsg)
 	}
-	c.Data(http.StatusOK, "application/json", reduceCacheReadUsagePayload(claudeResp, downstreamCacheReadReductionPercent(c)))
+	c.Data(http.StatusOK, "application/json", reduceCacheReadUsagePayloadWithPolicy(claudeResp, downstreamCacheReadReductionPolicy(c)))
 	return streamRes, nil
 }
 
@@ -1079,7 +1079,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 				// 上游完成，发送结束事件
 				finalEvents, agUsage := processor.Finish()
 				if len(finalEvents) > 0 {
-					cw.Write(finalEvents)
+					cw.Write([]byte(reduceClientVisibleSSEBlockWithPolicy(string(finalEvents), downstreamCacheReadReductionPolicy(c))))
 				} else if !processor.MessageStartSent() && !cw.Disconnected() {
 					// 整个流未收到任何可解析的上游数据（全部 SSE 行均无法被 JSON 解析），
 					// 触发 failover 在同账号重试，避免向客户端发出缺少 message_start 的残缺流
@@ -1120,7 +1120,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
-				cw.Write(claudeEvents)
+				cw.Write([]byte(reduceClientVisibleSSEBlockWithPolicy(string(claudeEvents), downstreamCacheReadReductionPolicy(c))))
 			}
 
 		case <-intervalCh:

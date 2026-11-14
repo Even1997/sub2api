@@ -77,6 +77,7 @@ type APIKeyAuthGroupSnapshot struct {
 	SubscriptionType                string                        `json:"subscription_type"`
 	RateMultiplier                  float64                       `json:"rate_multiplier"`
 	CacheReadReductionPercent       float64                       `json:"cache_read_reduction_percent"`
+	CacheReadReductionRules         []CacheReadReductionRule      `json:"cache_read_reduction_rules"`
 	DailyLimitUSD                   *float64                      `json:"daily_limit_usd,omitempty"`
 	WeeklyLimitUSD                  *float64                      `json:"weekly_limit_usd,omitempty"`
 	MonthlyLimitUSD                 *float64                      `json:"monthly_limit_usd,omitempty"`

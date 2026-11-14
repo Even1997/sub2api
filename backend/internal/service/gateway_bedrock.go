@@ -405,7 +405,7 @@ func (s *GatewayService) handleBedrockNonStreamingResponse(
 	if v := resp.Header.Get("x-amzn-requestid"); v != "" {
 		c.Header("x-request-id", v)
 	}
-	body = reduceCacheReadUsagePayload(body, downstreamCacheReadReductionPercent(c))
+	body = reduceCacheReadUsagePayloadWithPolicy(body, downstreamCacheReadReductionPolicy(c))
 	c.Data(resp.StatusCode, "application/json", body)
 	return usage, nil
 }

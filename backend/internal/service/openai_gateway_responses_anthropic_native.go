@@ -284,7 +284,7 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 		if err != nil {
 			return nil, fmt.Errorf("restore responses client tools: %w", err)
 		}
-		respBytes = reduceCacheReadUsagePayload(respBytes, downstreamCacheReadReductionPercent(c))
+		respBytes = reduceCacheReadUsagePayloadWithPolicy(respBytes, downstreamCacheReadReductionPolicy(c))
 		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
 	} else {
 		c.JSON(http.StatusOK, responsesResp)
@@ -423,7 +423,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 			}
 			for _, restored := range payloads {
 				eventType := gjson.GetBytes(restored, "type").String()
-				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, reduceCacheReadUsagePayload(restored, downstreamCacheReadReductionPercent(c))); err != nil {
+				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, reduceCacheReadUsagePayloadWithPolicy(restored, downstreamCacheReadReductionPolicy(c))); err != nil {
 					clientDisconnected = true
 					return
 				}
@@ -486,7 +486,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 			}
 			for _, restored := range payloads {
 				eventType := gjson.GetBytes(restored, "type").String()
-				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, reduceCacheReadUsagePayload(restored, downstreamCacheReadReductionPercent(c))); err != nil {
+				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, reduceCacheReadUsagePayloadWithPolicy(restored, downstreamCacheReadReductionPolicy(c))); err != nil {
 					clientDisconnected = true
 					break
 				}

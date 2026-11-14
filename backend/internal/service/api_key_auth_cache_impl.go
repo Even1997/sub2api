@@ -15,7 +15,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 36 // v36: per-key context ceiling plus local mixed groups
+const apiKeyAuthSnapshotVersion = 37 // v37: context ceiling and model cache-read rules
 
 // Local-only generation wrapper. Old entries remain bounded by existing TTL
 // and capacity, but cannot authorize after a subscription recovery checkpoint.
@@ -510,6 +510,7 @@ func apiKeyAuthGroupSnapshotFromGroup(group *Group) *APIKeyAuthGroupSnapshot {
 		SubscriptionType:                group.SubscriptionType,
 		RateMultiplier:                  group.RateMultiplier,
 		CacheReadReductionPercent:       group.CacheReadReductionPercent,
+		CacheReadReductionRules:         group.CacheReadReductionRules,
 		DailyLimitUSD:                   group.DailyLimitUSD,
 		WeeklyLimitUSD:                  group.WeeklyLimitUSD,
 		MonthlyLimitUSD:                 group.MonthlyLimitUSD,
@@ -585,6 +586,7 @@ func apiKeyAuthGroupSnapshotToGroup(snapshot *APIKeyAuthGroupSnapshot) *Group {
 		SubscriptionType:                snapshot.SubscriptionType,
 		RateMultiplier:                  snapshot.RateMultiplier,
 		CacheReadReductionPercent:       snapshot.CacheReadReductionPercent,
+		CacheReadReductionRules:         snapshot.CacheReadReductionRules,
 		DailyLimitUSD:                   snapshot.DailyLimitUSD,
 		WeeklyLimitUSD:                  snapshot.WeeklyLimitUSD,
 		MonthlyLimitUSD:                 snapshot.MonthlyLimitUSD,

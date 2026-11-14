@@ -668,6 +668,7 @@
             t("admin.groups.form.cacheReadReductionPercentHint")
           }}</p>
         </div>
+        <CacheReadReductionRulesEditor v-model="createForm.cache_read_reduction_rules" />
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
           <input
@@ -2410,6 +2411,7 @@
             t("admin.groups.form.cacheReadReductionPercentHint")
           }}</p>
         </div>
+        <CacheReadReductionRulesEditor v-model="editForm.cache_read_reduction_rules" />
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
           <input
@@ -4500,6 +4502,8 @@
 </template>
 
 <script setup lang="ts">
+import CacheReadReductionRulesEditor from "@/components/admin/group/CacheReadReductionRulesEditor.vue";
+import type { CacheReadReductionRule } from "@/types";
 import QwenPlatformNotice from '@/components/common/QwenPlatformNotice.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -5191,6 +5195,7 @@ const createForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   cache_read_reduction_percent: 0,
+  cache_read_reduction_rules: [] as CacheReadReductionRule[],
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5562,6 +5567,7 @@ const editForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   cache_read_reduction_percent: 0,
+  cache_read_reduction_rules: [] as CacheReadReductionRule[],
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -6053,6 +6059,7 @@ const closeCreateModal = () => {
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.cache_read_reduction_percent = 0;
+  createForm.cache_read_reduction_rules = [];
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
@@ -6336,6 +6343,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.cache_read_reduction_percent =
     group.cache_read_reduction_percent ?? 0;
+  editForm.cache_read_reduction_rules = (group.cache_read_reduction_rules ?? []).map(rule => ({ ...rule }));
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
@@ -6475,6 +6483,7 @@ const closeEditModal = () => {
   editForm.peak_end = "";
   editForm.peak_rate_multiplier = 1.0;
   editForm.cache_read_reduction_percent = 0;
+  editForm.cache_read_reduction_rules = [];
   editForm.profit_control_enabled = false;
   editForm.profit_min_margin_percent = 0;
   editForm.profit_safety_buffer_percent = 0;

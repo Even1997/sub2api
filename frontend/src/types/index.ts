@@ -662,9 +662,16 @@ export interface Group {
   updated_at: string
 }
 
+export interface CacheReadReductionRule {
+  model: string
+  percent: number
+  start_hit_rate_percent?: number | null
+}
+
 export interface AdminGroup extends Group {
   disable_non_streaming?: boolean
   cache_read_reduction_percent?: number
+  cache_read_reduction_rules?: CacheReadReductionRule[]
   force_openai_fast: boolean
   free_openai_fast: boolean
   // 仅允许流式请求（管理端请求策略，用户侧分组不返回）
@@ -905,6 +912,8 @@ export interface UpgradePackageApiKeyRequest {
 }
 
 export interface CreateGroupRequest {
+  cache_read_reduction_percent?: number
+  cache_read_reduction_rules?: CacheReadReductionRule[]
   disable_non_streaming?: boolean
   name: string
   description?: string | null
@@ -977,6 +986,8 @@ export interface CreateGroupRequest {
 }
 
 export interface UpdateGroupRequest {
+  cache_read_reduction_percent?: number
+  cache_read_reduction_rules?: CacheReadReductionRule[]
   disable_non_streaming?: boolean
   name?: string
   description?: string | null

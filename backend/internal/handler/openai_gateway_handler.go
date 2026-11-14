@@ -3761,6 +3761,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					return newOpenAIWSLocalAdmissionCloseError(cyberSessionBlockedClientMsg)
 				}
 				turnBillingCtx := turnBillingAPIKeys.begin(ctx, h.apiKeyService, turn, apiKey)
+				service.SetDownstreamCacheReadReductionGroup(c, turnBillingAPIKeys.forTurn(turn, apiKey).Group)
 				// MapRequestModel 已在当前 turn 的 payload 解析阶段完成。这里
 				// 再用最终出站模型做一次权威资格终检，确保账号被禁用、移组、
 				// 到期或该模型票据失效后，不会先抢槽再把请求交给旧账号。

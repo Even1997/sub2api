@@ -806,7 +806,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 	if apiKey != nil && apiKey.Group != nil {
-		applyClaudeCacheReadReduction(&result.Usage, apiKey.Group.CacheReadReductionPercent)
+		policy := apiKey.Group.cacheReadReductionPolicy(cacheReadReductionModel(input.OriginalModel, result.Model))
+		totalInput := result.Usage.InputTokens + result.Usage.CacheReadInputTokens + result.Usage.CacheCreationInputTokens
+		applyClaudeCacheReadReduction(&result.Usage, cacheReadReductionPercent(policy, totalInput, result.Usage.CacheReadInputTokens))
 	}
 
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）

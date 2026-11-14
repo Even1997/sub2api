@@ -374,7 +374,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	// (parity with Parrot non-stream flow that marshals → restore → emit).
 	if respBytes, err := json.Marshal(ccResp); err == nil {
 		respBytes = reverseToolNamesIfPresent(c, respBytes)
-		respBytes = reduceCacheReadUsagePayload(respBytes, downstreamCacheReadReductionPercent(c))
+		respBytes = reduceCacheReadUsagePayloadWithPolicy(respBytes, downstreamCacheReadReductionPolicy(c))
 		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
 	} else {
 		c.JSON(http.StatusOK, ccResp)
@@ -470,7 +470,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		return result
 	}
 
-	downstreamPercent := downstreamCacheReadReductionPercent(c)
+	downstreamPercent := downstreamCacheReadReductionPolicy(c)
 	writeChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
 		sse, err := apicompat.ChatChunkToSSE(chunk)
 		if err != nil {
@@ -479,7 +479,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		// Reverse tool name mapping: fake → real, per-chunk bytes.Replace.
 		// c 可能持有请求侧注入的 ToolNameRewrite；无则仅做静态前缀还原。
 		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
-		out = reduceClientVisibleSSELine(out, downstreamPercent)
+		out = reduceClientVisibleSSELineWithPolicy(out, downstreamPercent)
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
 			return true // client disconnected
 		}

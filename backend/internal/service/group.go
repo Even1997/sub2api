@@ -32,6 +32,7 @@ type Group struct {
 	// CacheReadReductionPercent 将该比例的缓存读取 token 重新计为普通输入。
 	// 仅影响本地计费与用量分类，不改变上游真实缓存。
 	CacheReadReductionPercent float64
+	CacheReadReductionRules   []CacheReadReductionRule
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
 	PeakRateEnabled    bool

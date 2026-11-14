@@ -1060,8 +1060,10 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 		usagePatch := s.extractSSEUsagePatch(event)
 		// 计费 patch 已从原始事件抽取，之后的下发改写不会影响本地记账。
-		if percent := downstreamCacheReadReductionPercent(c); percent > 0 {
-			eventChanged = reduceCacheReadUsageEvent(event, percent) || eventChanged
+		if percent := downstreamCacheReadReductionPolicy(c); percent.Percent > 0 {
+			snapshot := *usage
+			mergeSSEUsagePatch(&snapshot, usagePatch)
+			eventChanged = reduceAnthropicStreamUsageEvent(event, percent, &snapshot) || eventChanged
 		}
 		if anthropicStreamEventIsTerminal(eventName, dataLine) {
 			sawTerminalEvent = true
@@ -1559,7 +1561,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 
 	body = reverseToolNamesIfPresent(c, body)
 	// 与本地计费同口径下发：解析 usage 已完成，这里只改客户端可见的分类。
-	body = reduceCacheReadUsagePayload(body, downstreamCacheReadReductionPercent(c))
+	body = reduceCacheReadUsagePayloadWithPolicy(body, downstreamCacheReadReductionPolicy(c))
 
 	// 写入响应
 	c.Data(resp.StatusCode, contentType, body)

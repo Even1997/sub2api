@@ -101,6 +101,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		Platform:                        source.Platform,
 		RateMultiplier:                  source.RateMultiplier,
 		CacheReadReductionPercent:       source.CacheReadReductionPercent,
+		CacheReadReductionRules:         append([]CacheReadReductionRule(nil), source.CacheReadReductionRules...),
 		PeakRateEnabled:                 source.PeakRateEnabled,
 		PeakStart:                       source.PeakStart,
 		PeakEnd:                         source.PeakEnd,

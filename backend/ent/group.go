@@ -37,6 +37,8 @@ type Group struct {
 	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
 	// 将指定比例的缓存读取 token 重新计为普通输入，仅影响本地计费与用量分类
 	CacheReadReductionPercent float64 `json:"cache_read_reduction_percent,omitempty"`
+	// CacheReadReductionRules holds the value of the "cache_read_reduction_rules" field.
+	CacheReadReductionRules []domain.CacheReadReductionRule `json:"cache_read_reduction_rules,omitempty"`
 	// 是否启用高峰时段倍率
 	PeakRateEnabled bool `json:"peak_rate_enabled,omitempty"`
 	// 高峰开始时间 HH:MM（含），如 14:00；空表示未配置；不支持跨天
@@ -288,7 +290,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldI18n, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
+		case group.FieldI18n, group.FieldCacheReadReductionRules, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldDisableNonStreaming, group.FieldCodexCliOnly, group.FieldBlockSubagents, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageCountBilling, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
@@ -372,6 +374,14 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field cache_read_reduction_percent", values[i])
 			} else if value.Valid {
 				_m.CacheReadReductionPercent = value.Float64
+			}
+		case group.FieldCacheReadReductionRules:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_read_reduction_rules", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.CacheReadReductionRules); err != nil {
+					return fmt.Errorf("unmarshal field cache_read_reduction_rules: %w", err)
+				}
 			}
 		case group.FieldPeakRateEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -911,6 +921,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("cache_read_reduction_percent=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CacheReadReductionPercent))
+	builder.WriteString(", ")
+	builder.WriteString("cache_read_reduction_rules=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheReadReductionRules))
 	builder.WriteString(", ")
 	builder.WriteString("peak_rate_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PeakRateEnabled))

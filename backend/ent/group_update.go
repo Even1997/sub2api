@@ -145,6 +145,18 @@ func (_u *GroupUpdate) AddCacheReadReductionPercent(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetCacheReadReductionRules sets the "cache_read_reduction_rules" field.
+func (_u *GroupUpdate) SetCacheReadReductionRules(v []domain.CacheReadReductionRule) *GroupUpdate {
+	_u.mutation.SetCacheReadReductionRules(v)
+	return _u
+}
+
+// AppendCacheReadReductionRules appends value to the "cache_read_reduction_rules" field.
+func (_u *GroupUpdate) AppendCacheReadReductionRules(v []domain.CacheReadReductionRule) *GroupUpdate {
+	_u.mutation.AppendCacheReadReductionRules(v)
+	return _u
+}
+
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
 func (_u *GroupUpdate) SetPeakRateEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetPeakRateEnabled(v)
@@ -1729,6 +1741,14 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedCacheReadReductionPercent(); ok {
 		_spec.AddField(group.FieldCacheReadReductionPercent, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.CacheReadReductionRules(); ok {
+		_spec.SetField(group.FieldCacheReadReductionRules, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedCacheReadReductionRules(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldCacheReadReductionRules, value)
+		})
+	}
 	if value, ok := _u.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
 	}
@@ -2522,6 +2542,18 @@ func (_u *GroupUpdateOne) SetNillableCacheReadReductionPercent(v *float64) *Grou
 // AddCacheReadReductionPercent adds value to the "cache_read_reduction_percent" field.
 func (_u *GroupUpdateOne) AddCacheReadReductionPercent(v float64) *GroupUpdateOne {
 	_u.mutation.AddCacheReadReductionPercent(v)
+	return _u
+}
+
+// SetCacheReadReductionRules sets the "cache_read_reduction_rules" field.
+func (_u *GroupUpdateOne) SetCacheReadReductionRules(v []domain.CacheReadReductionRule) *GroupUpdateOne {
+	_u.mutation.SetCacheReadReductionRules(v)
+	return _u
+}
+
+// AppendCacheReadReductionRules appends value to the "cache_read_reduction_rules" field.
+func (_u *GroupUpdateOne) AppendCacheReadReductionRules(v []domain.CacheReadReductionRule) *GroupUpdateOne {
+	_u.mutation.AppendCacheReadReductionRules(v)
 	return _u
 }
 
@@ -4138,6 +4170,14 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedCacheReadReductionPercent(); ok {
 		_spec.AddField(group.FieldCacheReadReductionPercent, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CacheReadReductionRules(); ok {
+		_spec.SetField(group.FieldCacheReadReductionRules, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedCacheReadReductionRules(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldCacheReadReductionRules, value)
+		})
 	}
 	if value, ok := _u.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)

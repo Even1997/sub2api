@@ -2040,6 +2040,7 @@ func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject
 }
 
 type openAIResponsesWSUsageLogCase struct {
+	upstreamUsage          string
 	timing                 *pr610TimingScenario
 	authSetup              func(*service.APIKey, *config.Config) *service.APIKeyService
 	afterAccountSlot       func()
@@ -3171,6 +3172,9 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 				frame,
 				gjson.GetBytes(payload, "model").String(),
 			)
+			if tc.upstreamUsage != "" {
+				response = strings.Replace(response, `"usage":{"input_tokens":2,"output_tokens":1}`, `"usage":`+tc.upstreamUsage, 1)
+			}
 			if gjson.GetBytes(payload, "type").String() == "session.update" {
 				// Session configuration is acknowledged without creating a billable turn.
 				response = `{"type":"session.updated"}`

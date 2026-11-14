@@ -238,7 +238,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 				continue
 			}
 			writeStreamHeaders()
-			if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlock(sse, downstreamCacheReadReductionPercent(c))); err != nil {
+			if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlockWithPolicy(sse, downstreamCacheReadReductionPolicy(c))); err != nil {
 				clientDisconnected = true
 				break
 			}
@@ -283,7 +283,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 				continue
 			}
 			writeStreamHeaders()
-			if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlock(sse, downstreamCacheReadReductionPercent(c))); err != nil {
+			if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlockWithPolicy(sse, downstreamCacheReadReductionPolicy(c))); err != nil {
 				clientDisconnected = true
 				break
 			}

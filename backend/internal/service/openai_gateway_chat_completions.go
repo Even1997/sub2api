@@ -1105,7 +1105,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				if !clientOutputStarted {
 					writeStreamHeaders()
 					for _, pending := range pendingSSE {
-						if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlock(pending, downstreamCacheReadReductionPercent(c))); err != nil {
+						if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlockWithPolicy(pending, downstreamCacheReadReductionPolicy(c))); err != nil {
 							clientDisconnected = true
 							logger.L().Info("openai chat_completions stream: client disconnected while flushing pending chunks",
 								zap.String("request_id", requestID),
@@ -1119,7 +1119,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 						break
 					}
 				}
-				if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlock(sse, downstreamCacheReadReductionPercent(c))); err != nil {
+				if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlockWithPolicy(sse, downstreamCacheReadReductionPolicy(c))); err != nil {
 					clientDisconnected = true
 					logger.L().Info("openai chat_completions stream: client disconnected, continuing to drain upstream for billing",
 						zap.String("request_id", requestID),
@@ -1158,7 +1158,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				if !clientOutputStarted {
 					writeStreamHeaders()
 					for _, pending := range pendingSSE {
-						if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlock(pending, downstreamCacheReadReductionPercent(c))); err != nil {
+						if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlockWithPolicy(pending, downstreamCacheReadReductionPolicy(c))); err != nil {
 							clientDisconnected = true
 							logger.L().Info("openai chat_completions stream: client disconnected during pending final flush",
 								zap.String("request_id", requestID),
@@ -1172,7 +1172,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 						break
 					}
 				}
-				if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlock(sse, downstreamCacheReadReductionPercent(c))); err != nil {
+				if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlockWithPolicy(sse, downstreamCacheReadReductionPolicy(c))); err != nil {
 					clientDisconnected = true
 					logger.L().Info("openai chat_completions stream: client disconnected during final flush",
 						zap.String("request_id", requestID),

@@ -694,8 +694,9 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
 	// 与本地计费同口径：把该比例的缓存读取挪回普通输入后再下发。
-	if percent := downstreamCacheReadReductionPercent(c); percent > 0 {
-		remaining, moved := reduceCacheReadTokens(anthropicResp.Usage.CacheReadInputTokens, percent)
+	if percent := downstreamCacheReadReductionPolicy(c); percent.Percent > 0 {
+		totalInput := anthropicResp.Usage.InputTokens + anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens
+		remaining, moved := reduceCacheReadTokens(anthropicResp.Usage.CacheReadInputTokens, cacheReadReductionPercent(percent, totalInput, anthropicResp.Usage.CacheReadInputTokens))
 		anthropicResp.Usage.CacheReadInputTokens = remaining
 		anthropicResp.Usage.InputTokens += moved
 	}
@@ -1209,7 +1210,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					continue
 				}
 				writeStreamHeaders()
-				if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlock(sse, downstreamCacheReadReductionPercent(c))); err != nil {
+				if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlockWithPolicy(sse, downstreamCacheReadReductionPolicy(c))); err != nil {
 					clientDisconnected = true
 					logger.L().Info("openai messages stream: client disconnected, continuing to drain upstream for billing",
 						zap.String("request_id", requestID),
@@ -1240,7 +1241,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					continue
 				}
 				writeStreamHeaders()
-				if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlock(sse, downstreamCacheReadReductionPercent(c))); err != nil {
+				if _, err := fmt.Fprint(c.Writer, reduceClientVisibleSSEBlockWithPolicy(sse, downstreamCacheReadReductionPolicy(c))); err != nil {
 					clientDisconnected = true
 					logger.L().Info("openai messages stream: client disconnected during final flush",
 						zap.String("request_id", requestID),

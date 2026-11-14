@@ -38,7 +38,7 @@ func (w *antigravityFailingWriter) Write(p []byte) (int, error) {
 // newAntigravityTestService 创建用于流式测试的 AntigravityGatewayService
 func newAntigravityTestService(cfg *config.Config) *AntigravityGatewayService {
 	return &AntigravityGatewayService{
-		settingService: &SettingService{cfg: cfg},
+		settingService: &SettingService{cfg: cfg, settingRepo: &antigravitySettingRepoStub{}},
 	}
 }
 
