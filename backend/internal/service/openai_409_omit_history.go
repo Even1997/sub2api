@@ -28,8 +28,8 @@ func (s *SettingService) IsOpenAI409OmitEncryptedHistoryEnabled(ctx context.Cont
 	return err == nil && strings.TrimSpace(value) == "true"
 }
 
-// TryOmitOpenAI409History is called only after initial account selection fails,
-// before any upstream attempt. It never handles provider responses or retries.
+// TryOmitOpenAI409History is called after initial selection fails or a confirmed
+// unsent first HTTP wire refusal. It never handles provider responses or retries.
 func (s *OpenAIGatewayService) TryOmitOpenAI409History(ctx context.Context, c *gin.Context, body []byte, session, model string, cause error) (context.Context, []byte, bool) {
 	var refusal *OpenAIAgentRecoveryError
 	if !errors.As(cause, &refusal) || (refusal.Reason != "owner_unavailable" && refusal.Reason != "route_changed" && refusal.Reason != "wire_changed") {

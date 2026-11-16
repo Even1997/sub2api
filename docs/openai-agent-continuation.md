@@ -76,3 +76,10 @@
 不为补证据发送付费请求、切号探测旧密文、清记录或重启服务。拿到真实失败路径后，在隔离 CI 添加该路径的最小合成业务链：首次生成 → 实际消费完整任务与工具结果 → 同节点/跨节点两轮续接；覆盖 pending、交付失败、取消、route/wire 变化及存储丢失，断言不丢任务、不空发、不重复执行。未知旧密文、压缩及 managed 路径须分别建立契约和回归，不能靠放宽现有校验合并验收。
 
 既有测试入口为 `openai_issue715_recovery_test.go`、`openai_issue715_delivery_race_test.go`、`openai_issue715_ws_test.go`、service recovery/delivery tests 和 Redis adapter tests；远程工作流为 `.github/workflows/issue715-agent-recovery.yml`。新增改动默认交 CI，不在生产构建或通过真实任务试错。
+
+
+## 409 历史密文省略开关的发送前补偿
+
+开启 `openai_409_omit_encrypted_history_enabled` 时，首次原生 HTTP 转发在最终路由指纹检查中被拒绝、且确认从未提交上游或写出响应，可返回处理器执行一次既有历史密文省略流程。该路径先释放账号并发，再重新选号，沿用模型映射和正常准入；会丢失被省略的历史密文内容，保留可读内容与工具调用/结果关系。
+
+此入口不处理输入完整性校验失败，也不处理 WS、WS 回退、后续重试、上游错误或已提交响应。原有的当前任务密文、previous_response_id、压缩、冲突和交付屏障限制不变；原归属记录不清理。`openai.encrypted_history_409_omitted` 日志的 `stage=before_send` 标记此次补偿。开关关闭时维持原 409 行为。

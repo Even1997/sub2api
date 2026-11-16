@@ -284,3 +284,27 @@ func TestIssue715ToolResultContinuationCoversCodexOutputTypes(t *testing.T) {
 		require.True(t, OpenAIAgentToolResultContinuation(ctx), typ+" must stop ambiguous automatic replay")
 	}
 }
+
+func TestAgentWireOmissionRequiresHTTPConfirmation(t *testing.T) {
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	issue715LearnRoute(t, svc, account, issue715OpaqueBody)
+	for _, tamper := range []bool{false, true} {
+		c, _ := newTurnStateTestContext(t, 715, "fixture-session")
+		c.Set("api_key", &APIKey{ID: 715, GroupID: int64Ptr(715)})
+		ctx := svc.WithOpenAIAgentMessageRecovery(context.Background(), c, []byte(issue715OpaqueBody), "fixture-session", "gpt-6-astra")
+		body := issue715OpaqueBody
+		if tamper {
+			body = `{"model":"gpt-6-astra","input":[]}`
+		}
+		req, err := http.NewRequest(http.MethodPost, "https://native.example/v1/responses", bytes.NewBufferString(body))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer fixture")
+		req.Header.Set("OpenAI-Organization", "different-org")
+		_, err = svc.prepareOpenAIAgentRecoveryAttempt(ctx, account, req)
+		require.Error(t, err)
+		require.False(t, OpenAIAgentUnsentWireRefusal(err), "shared HTTP/WS gate alone does not prove an unsent HTTP request")
+		var candidate *openAIAgentUnsentWireError
+		require.Equal(t, !tamper, errors.As(err, &candidate), "input integrity failures are never omission candidates")
+	}
+}

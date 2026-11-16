@@ -1005,7 +1005,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	// Native WS keeps its retry policy. HTTP SSE acceleration may fall back
 	// only after a local pre-send rejection or an eligible handshake failure.
+	upstreamSubmitted := false
 	if wsDecision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 {
+		// Conservatively exclude WS attempts and their HTTP fallback from omission.
+		upstreamSubmitted = true
 		// WS 分支需要结构化 payload 与重连恢复，命中后再触发 full-map decode。
 		wsReqBody, err := ensureReqBody()
 		if err != nil {
@@ -1404,9 +1407,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if headerGuard != nil {
 				headerGuard.close()
 			}
+			var wireRefusal *openAIAgentUnsentWireError
+			if !upstreamSubmitted && errors.As(recoveryErr, &wireRefusal) {
+				return nil, &openAIAgentUnsentWireError{error: wireRefusal.error, confirmedHTTP: true}
+			}
 			return nil, recoveryErr
 		}
 		defer completeAgentRecovery(false) // revoke pending exposure on every early return
+		upstreamSubmitted = true
 		upstreamStart := time.Now()
 		resp, err := func() (*http.Response, error) {
 			stop := s.startOpenAIHeaderWaitKeepalive(c, reqStream)

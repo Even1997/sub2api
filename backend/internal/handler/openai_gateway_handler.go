@@ -1150,8 +1150,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			return
 		}
 
-		// Omission is only allowed before this request has attempted any forward.
+		// Only an explicitly unsent first forward may enter omission below.
+		firstForward := !upstreamAttempted
 		upstreamAttempted = true
+		forwardCalls := 0
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
@@ -1176,10 +1178,25 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				reqStream,
 				reqLog,
 				func(body []byte) (*service.OpenAIForwardResult, error) {
+					forwardCalls++
 					return h.gatewayService.Forward(c.Request.Context(), c, account, body)
 				},
 			)
 		}()
+		if firstForward && forwardCalls == 1 && result == nil && !omittedEncryptedHistory &&
+			!streamStarted && !c.Writer.Written() && requestPlatform == service.PlatformOpenAI &&
+			service.OpenAIAgentUnsentWireRefusal(err) {
+			if next, clean, changed := h.gatewayService.TryOmitOpenAI409History(c.Request.Context(), c, body, sessionHash, forwardModel, err); changed {
+				mapped, mapErr := sjson.SetRawBytes(forwardBody, "input", []byte(gjson.GetBytes(clean, "input").Raw))
+				if mapErr == nil {
+					body, forwardBody = clean, mapped
+					omittedEncryptedHistory = true
+					c.Request = c.Request.WithContext(next)
+					reqLog.Info("openai.encrypted_history_409_omitted", zap.Bool("context_loss", true), zap.String("stage", "before_send"))
+					continue
+				}
+			}
+		}
 		if service.CodexQuotaOverdraftSilentResponseCommitted(c) {
 			streamStarted = true
 		}
