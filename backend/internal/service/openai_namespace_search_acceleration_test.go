@@ -25,7 +25,8 @@ func TestOpenAIWSSSENamespaceSearchRouting(t *testing.T) {
 		{name: "escaped_search", path: "input.0.type", value: `"web_search_\u0063all"`, wantBypass: true},
 		{name: "astra", path: "model", value: `"gpt-6-astra"`, wantBypass: true},
 		{name: "mapped_in", path: "model", value: `"client-alias"`, mapping: "gpt-6.1-sol", wantBypass: true},
-		{name: "mapped_out", mapping: "gpt-5.1"},
+		{name: "mapped_other_model", mapping: "gpt-5.1", wantBypass: true},
+		{name: "new_model", path: "model", value: `"gpt-6.2-astra"`, wantBypass: true},
 		{name: "native_ws", nativeWS: true},
 		{name: "already_has_search", path: "tools.-1", value: `{"type":"web_search"}`},
 		{name: "unfinished", path: "input.0.status", value: `"in_progress"`},
@@ -60,7 +61,7 @@ func TestOpenAIWSSSENamespaceSearchRouting(t *testing.T) {
 }
 
 func TestOpenAIWSSSENamespaceSearchBypassesDialAndContinues(t *testing.T) {
-	for _, model := range []string{"gpt-6.1-sol", "gpt-6-astra", "client-alias"} {
+	for _, model := range []string{"gpt-6.1-sol", "gpt-6-astra", "gpt-6.2-astra", "future-model", "client-alias"} {
 		for _, lite := range []bool{false, true} {
 			for _, choice := range []string{"auto", "required"} {
 				t.Run(fmt.Sprintf("%s/lite=%v/%s", model, lite, choice), func(t *testing.T) {
@@ -72,7 +73,7 @@ func TestOpenAIWSSSENamespaceSearchBypassesDialAndContinues(t *testing.T) {
 					require.NoError(t, err)
 					a := wsSSETestAccount()
 					if model == "client-alias" {
-						a.Credentials["model_mapping"] = map[string]any{model: "gpt-6.1-sol"}
+						a.Credentials["model_mapping"] = map[string]any{model: "gpt-6.2-astra"}
 					}
 					d := &wsSSETestDialer{} // Any dial is a test failure; no WS connection is available.
 					h := &httpUpstreamRecorder{}

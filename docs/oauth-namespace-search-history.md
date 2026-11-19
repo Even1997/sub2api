@@ -5,7 +5,7 @@ namespace entries in `tool_choice.allowed_tools` (the actual JSON path is
 `tool_choice.tools`). Automatically adding a search tool for old search history
 and constructing that allowlist caused HTTP 400 on otherwise valid requests.
 
-For `gpt-6.1-sol` and `gpt-6-astra`, native OAuth HTTP and HTTP passthrough now
+Native OAuth HTTP and HTTP passthrough, independent of model name, now
 preserve the caller's search history, namespace declarations and tool choice
 when all of these hold:
 
@@ -18,10 +18,10 @@ when all of these hold:
 This only skips automatic search injection and its derived allowlist. It does
 not flatten namespaces, turn historical output into text, permit new tools, or
 change account availability. API-key accounts, BPS, actual WebSocket forwarding,
-other models, explicit tool choices, and incomplete histories keep their prior
+explicit tool choices, and incomplete histories keep their prior
 policy. Optional HTTP-to-WebSocket acceleration is bypassed before dialing for
-the matching request shape, using the resolved upstream model (including model
-aliases). The routing reason is `oauth_namespace_search_history_requires_http`.
+the matching request shape, regardless of model aliases or account mappings.
+The routing reason is `oauth_namespace_search_history_requires_http`.
 Both HTTP compatibility and acceleration routing inspect decoded JSON field
 values, so equivalent Unicode escapes in keys or type names do not bypass the
 policy. Requests without search history avoid full-object decoding here.
@@ -41,3 +41,11 @@ Prior direct provider diagnostics on 2026-11-17 verified 14 valid HTTP/Lite
 requests through one existing OAuth account's proxy with native search history
 and no search declaration, across both models. This is bounded evidence, not a
 provider guarantee for all accounts, models, transports or long contexts.
+
+On 2026-11-19, eight direct provider requests on one OAuth account verified
+`gpt-6.2-astra`: HTTP/Lite with auto/required selection, four correctly addressed
+namespace tool calls and four successful result continuations. Synthetic test
+tools did not perform external actions. The model allowlist was removed so new
+model names and aliases inherit the HTTP policy. This does not claim every
+future provider model has been tested. No automatic fallback to an invalid
+namespace allowlist or additional post-send replay is introduced.

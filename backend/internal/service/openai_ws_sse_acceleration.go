@@ -48,8 +48,7 @@ func (s *OpenAIGatewayService) resolveOpenAIHTTPWSSSEDecision(
 		if openAIRequestHasWebSearchHistory(body) {
 			var request map[string]any
 			if decodeOpenAIJSONUseNumber(body, &request) == nil {
-				_, upstreamModel := resolveOpenAIForwardMappedModels(account, firstNonEmptyString(request["model"]), false)
-				if preserveOpenAIHTTPNamespaceSearchHistoryForModel(request, upstreamModel) {
+				if preserveOpenAIHTTPNamespaceSearchHistory(request) {
 					return openAIWSHTTPDecision(openAINamespaceSearchHTTPReason)
 				}
 			}

@@ -21,8 +21,9 @@ func TestOAuthNamespaceSearchHistoryPolicy(t *testing.T) {
 		{"astra", "model", `"gpt-6-astra"`, true},
 		{"escaped_namespace", "tools.0.type", `"name\u0073pace"`, true},
 		{"escaped_search", "input.0.type", `"web_search_\u0063all"`, true},
-		{"other_model", "model", `"gpt-5.5"`, false},
-		{"model_suffix", "model", `"gpt-6.1-sol-other"`, false},
+		{"other_model", "model", `"gpt-5.5"`, true},
+		{"model_suffix", "model", `"gpt-6.1-sol-other"`, true},
+		{"new_model", "model", `"gpt-6.2-astra"`, true},
 		{"required", "tool_choice", `"required"`, true},
 		{"none", "tool_choice", `"none"`, false},
 		{"explicit", "tool_choice", `{"type":"function","name":"record"}`, false},
@@ -87,7 +88,7 @@ func TestOAuthNamespaceSearchHistoryEscapedHTTP(t *testing.T) {
 }
 
 func TestOAuthNamespaceSearchHistoryHTTPAndWS(t *testing.T) {
-	for _, model := range []string{"gpt-6.1-sol", "gpt-6-astra"} {
+	for _, model := range []string{"gpt-6.1-sol", "gpt-6-astra", "gpt-6.2-astra", "future-model"} {
 		for _, lite := range []bool{false, true} {
 			for _, http := range []bool{false, true} {
 				for _, raw := range []bool{false, true} {

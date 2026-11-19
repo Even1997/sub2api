@@ -33,21 +33,12 @@ var openAIWebSearchHistoryTool = map[string]any{
 	"type": "web_search",
 }
 
-// Only opt in at an OAuth HTTP call site. Current sol/astra HTTP endpoints
-// accept completed search history without re-declaring search, including Lite.
+// Only opt in at an OAuth HTTP call site, including Lite. This is a request
+// shape compatibility policy, independent of model names and account mappings.
 // Keeping the caller's namespace and choice avoids an unsupported allowed_tools
-// namespace entry without granting a new hosted capability. WS/compact and
-// unverified models retain their existing compatibility policy.
+// namespace entry without granting a new hosted capability. WS/compact retain
+// their existing compatibility policy; this does not grant replay permission.
 func preserveOpenAIHTTPNamespaceSearchHistory(body map[string]any) bool {
-	return preserveOpenAIHTTPNamespaceSearchHistoryForModel(body, firstNonEmptyString(body["model"]))
-}
-
-func preserveOpenAIHTTPNamespaceSearchHistoryForModel(body map[string]any, model string) bool {
-	switch model {
-	case "gpt-6.1-sol", "gpt-6-astra":
-	default:
-		return false
-	}
 	if choice, exists := body["tool_choice"]; exists && choice != nil {
 		value, ok := choice.(string)
 		if !ok || (value != "" && value != "auto" && value != "required") {
