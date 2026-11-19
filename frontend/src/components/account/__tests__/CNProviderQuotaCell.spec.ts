@@ -170,6 +170,21 @@ describe('CNProviderQuotaCell', () => {
     expect(wrapper.findAllComponents(UsageProgressBar).map(bar => bar.props('utilization'))).toEqual([0, 27])
   })
 
+  it('keeps a refreshed snapshot when an earlier probe for the same account finishes late', async () => {
+    let resolveProbe!: (value: unknown) => void
+    queryQuota.mockReturnValue(new Promise(resolve => { resolveProbe = resolve }))
+    const wrapper = mount(CNProviderQuotaCell, { props: { account } })
+    await wrapper.get('[data-test="cn-provider-quota-probe"]').trigger('click')
+    await wrapper.setProps({ account: {
+      ...account, extra: { ...account.extra, zhipu_5h_used_percent: 91 }
+    } })
+    resolveProbe({ success: true, tiers: [{ window: '5h', used_percent: 44 }] })
+    await flushPromises()
+    expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(91)
+    expect(wrapper.emitted('probed')).toBeUndefined()
+    expect(wrapper.get('[data-test="cn-provider-quota-probe"]').attributes('disabled')).toBeUndefined()
+  })
+
   it('keeps the new account snapshot when the previous account probe finishes late', async () => {
     let resolveProbe!: (value: unknown) => void
     queryQuota.mockReturnValue(new Promise(resolve => { resolveProbe = resolve }))

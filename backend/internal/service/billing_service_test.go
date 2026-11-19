@@ -1494,6 +1494,13 @@ func TestNormalizeCacheCreationBreakdown_BillingSafetyInvariant(t *testing.T) {
 	}
 }
 
+func TestComputeCacheCreationCost_PartialDetailsUseShortPriceForRemainder(t *testing.T) {
+	pricing := &ModelPricing{SupportsCacheBreakdown: true, CacheCreationPricePerToken: 2, CacheCreation5mPrice: 2, CacheCreation1hPrice: 5}
+	tokens := UsageTokens{CacheCreationTokens: 19, CacheCreation5mTokens: 3, CacheCreation1hTokens: 12}
+	got := (&BillingService{}).computeCacheCreationCost(pricing, tokens, 4, 1.5)
+	require.Equal(t, float64((7*2+12*5)*3), got)
+}
+
 func TestComputeCacheCreationCost_PreservesZeroDetailFallback(t *testing.T) {
 	svc := &BillingService{}
 	pricing := &ModelPricing{

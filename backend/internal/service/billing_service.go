@@ -1645,7 +1645,7 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 			input.RateMultiplier,
 			input.ServiceTier,
 			nil,
-			applyLongContextBilling,
+			applyLongContextBilling && !input.DisableModelLongContextPricing,
 		)
 		if err == nil {
 			applyCostBreakdownMultiplier(breakdown, maxReasoningEffortBillingMultiplier(input.Model, input.ReasoningEffort, nil))
@@ -1883,9 +1883,9 @@ func (s *BillingService) computeCacheCreationCost(pricing *ModelPricing, tokens 
 			multiplier *= price / pricing.CacheCreationPricePerToken
 		}
 		cacheCreation5mTokens, cacheCreation1hTokens := normalizeCacheCreationBreakdown(tokens)
-		if cacheCreation5mTokens == 0 && cacheCreation1hTokens == 0 && tokens.CacheCreationTokens > 0 {
-			// API 未返回 ephemeral 明细，回退到全部按 5m 单价计费
-			return float64(tokens.CacheCreationTokens) * pricing.CacheCreation5mPrice * multiplier
+		if tokens.CacheCreationTokens > 0 {
+			// Charge writes without a reported TTL at the existing short-window rate.
+			cacheCreation5mTokens = tokens.CacheCreationTokens - cacheCreation1hTokens
 		}
 		return float64(cacheCreation5mTokens)*pricing.CacheCreation5mPrice*multiplier +
 			float64(cacheCreation1hTokens)*pricing.CacheCreation1hPrice*multiplier

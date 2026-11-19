@@ -351,7 +351,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	}
 
 	// Update usage from accumulated delta
-	if usage.InputTokens > 0 || usage.OutputTokens > 0 {
+	if usage.InputTokens > 0 || usage.OutputTokens > 0 || usage.CacheCreationInputTokens > 0 || usage.CacheReadInputTokens > 0 {
 		finalResp.Usage = apicompat.AnthropicUsage{
 			InputTokens:              usage.InputTokens,
 			OutputTokens:             usage.OutputTokens,

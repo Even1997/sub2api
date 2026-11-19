@@ -9,6 +9,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestMergeAnthropicUsageSplitCacheDetails(t *testing.T) {
+	var usage ClaudeUsage
+	apply := func(raw string) {
+		t.Helper()
+		var event apicompat.AnthropicUsage
+		require.NoError(t, json.Unmarshal([]byte(raw), &event))
+		mergeAnthropicUsage(&usage, event)
+	}
+	apply(`{"prompt_tokens":100,"cached_tokens":20}`)
+	apply(`{"cache_creation":{"ephemeral_1h_input_tokens":12}}`)
+	apply(`{"cache_creation":{"ephemeral_5m_input_tokens":3}}`)
+	require.Equal(t, 12, usage.CacheCreation1hTokens)
+	require.Equal(t, 3, usage.CacheCreation5mTokens)
+	require.Equal(t, 15, usage.CacheCreationInputTokens)
+	require.Equal(t, 65, usage.InputTokens)
+	apply(`{"cache_creation_input_tokens":19}`)
+	apply(`{"prompt_tokens":100}`)
+	require.Equal(t, 20, usage.CacheReadInputTokens)
+	require.Equal(t, 19, usage.CacheCreationInputTokens)
+	require.Equal(t, 61, usage.InputTokens)
+}
+
 func TestParseSSEUsagePassthroughNormalizesKimiPromptUsage(t *testing.T) {
 	usage := &ClaudeUsage{}
 

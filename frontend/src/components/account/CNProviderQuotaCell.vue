@@ -131,7 +131,11 @@ const data = computed(() => probeData.value ?? snapshotData.value)
 watch(
   [snapshotData, () => readExtraString(`${props.account.platform}_usage_updated_at`)],
   (next, previous) => {
-    if (JSON.stringify(next) !== JSON.stringify(previous)) probeData.value = null
+    if (JSON.stringify(next) === JSON.stringify(previous)) return
+    probeGeneration++
+    probeData.value = null
+    loading.value = false
+    error.value = null
   }
 )
 
