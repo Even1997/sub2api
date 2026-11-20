@@ -116,11 +116,18 @@ func (s *ScheduledTestService) ListResults(ctx context.Context, planID int64, li
 
 // SaveResult inserts a result and prunes old entries beyond maxResults.
 func (s *ScheduledTestService) SaveResult(ctx context.Context, planID int64, maxResults int, result *ScheduledTestResult) error {
+	_, err := s.saveResult(ctx, planID, maxResults, result)
+	return err
+}
+
+// saveResult separates durable insertion from best-effort history retention.
+// A prune failure must not cause an already executed test to be replayed.
+func (s *ScheduledTestService) saveResult(ctx context.Context, planID int64, maxResults int, result *ScheduledTestResult) (saved bool, err error) {
 	result.PlanID = planID
 	if _, err := s.resultRepo.Create(ctx, result); err != nil {
-		return err
+		return false, err
 	}
-	return s.resultRepo.PruneOldResults(ctx, planID, maxResults)
+	return true, s.resultRepo.PruneOldResults(ctx, planID, maxResults)
 }
 
 func computeNextRun(cronExpr string, from time.Time) (time.Time, error) {
@@ -141,6 +148,15 @@ func nextPlanRun(plan *ScheduledTestPlan, now time.Time) (time.Time, error) {
 		cfg.QualityModelOutcomes = nil
 		cfg.QualityModelActions = nil
 		cfg.RandomQuestion = nil
+		cfg.Ciallo = nil
+		if cfg.QuestionKind == QualityCialloQuestionKind {
+			if cfg.Quality == nil {
+				return time.Time{}, fmt.Errorf("ciallo requires a quality rule")
+			}
+			cfg.Prompt = QualityCialloQuestionKind
+			cfg.Quality.ExpectedAnswer = ""
+			cfg.Quality.Judge = nil
+		}
 		cfg.QualityBatch = nil
 		cfg.PelicanQuestion = nil
 		cfg.ActualPrompt = ""

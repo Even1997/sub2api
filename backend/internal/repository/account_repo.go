@@ -28,6 +28,7 @@ import (
 	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbproxy "github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/internal/accounttimer"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -639,6 +640,10 @@ func (r *accountRepository) updateAccount(
 	account.Schedulable = updated.Schedulable
 	account.Status = updated.Status
 	account.ErrorMessage = derefString(updated.ErrorMessage)
+	if account.IsGrokOAuth() {
+		account.RateLimitedAt = updated.RateLimitedAt
+		account.RateLimitResetAt = updated.RateLimitResetAt
+	}
 	// 普通账号编辑（如 model_mapping / credentials）也需要立即刷新单账号快照，
 	// 否则网关在 outbox worker 延迟或异常时仍可能读到旧配置。
 	if contextTx == nil {
@@ -719,15 +724,21 @@ func (r *accountRepository) updateLockedAccount(
 	} else {
 		builder.ClearExpiresAt()
 	}
-	if account.RateLimitedAt != nil {
-		builder.SetRateLimitedAt(*account.RateLimitedAt)
-	} else {
-		builder.ClearRateLimitedAt()
-	}
-	if account.RateLimitResetAt != nil {
-		builder.SetRateLimitResetAt(*account.RateLimitResetAt)
-	} else {
-		builder.ClearRateLimitResetAt()
+	// Ordinary Grok OAuth configuration edits do not own runtime generations.
+	// The row is locked and its history was merged above; leave the matching
+	// timestamps in that row intact. Explicit runtime setters/clears and platform
+	// transitions retain their separate write paths.
+	if !account.IsGrokOAuth() {
+		if account.RateLimitedAt != nil {
+			builder.SetRateLimitedAt(*account.RateLimitedAt)
+		} else {
+			builder.ClearRateLimitedAt()
+		}
+		if account.RateLimitResetAt != nil {
+			builder.SetRateLimitResetAt(*account.RateLimitResetAt)
+		} else {
+			builder.ClearRateLimitResetAt()
+		}
 	}
 	if account.OverloadUntil != nil {
 		builder.SetOverloadUntil(*account.OverloadUntil)
@@ -1075,7 +1086,7 @@ func lockAndMergeAccountProbeExtra(
 	// The fork already reads the complete extra object under this row lock for
 	// ticket, quality and admission ownership. Use that same snapshot for Grok
 	// managed state, preserving the other owners and the query contract.
-	for _, key := range []string{"grok_observed_models", service.UpstreamModelMetadataExtraKey, service.UpstreamModelSyncExtraKey} {
+	for _, key := range []string{"grok_observed_models", service.GrokRateLimitHistoryExtraKey, service.UpstreamModelMetadataExtraKey, service.UpstreamModelSyncExtraKey} {
 		delete(extra, key)
 		if value, ok := currentExtra[key]; ok && value != nil {
 			if extra == nil {
@@ -1650,10 +1661,17 @@ func upstreamBillingRateSortExpression(extra string) string {
 	dynamicRate := "CASE WHEN " + peakEnabled + " = 'false' THEN (" + resolved + ")::numeric WHEN " + peakEnabled + " = 'true' AND " + validPeakConfig +
 		" THEN (" + resolved + ")::numeric * CASE WHEN " + localMinute + " >= " + startMinute + " AND " + localMinute + " < " + endMinute +
 		" THEN " + peakMultiplierValue + " ELSE 1 END ELSE NULL END"
+	// The list shows a converted rate only for fixed New API group declarations.
+	foreignPlatforms := domain.PlatformIDsWhere(func(p domain.PlatformSpec) bool { return !p.CNProvider })
+	for i, id := range foreignPlatforms {
+		foreignPlatforms[i] = pq.QuoteLiteral(id)
+	}
+	conversion := "CASE WHEN " + newAPIGroup + " AND " + dbaccount.Table + "." + dbaccount.FieldPlatform + " IN (" + strings.Join(foreignPlatforms, ",") + ")" +
+		" AND (" + extra + " -> 'new_api_apply_usd_rate') IS DISTINCT FROM 'false'::jsonb THEN 7 ELSE 1 END"
 	legacySnapshot := "jsonb_typeof(" + resolvedJSON + ") IS NULL AND jsonb_typeof(" + peakEnabledJSON + ") IS NULL"
 
 	return "CASE WHEN " + status + " IN ('ok', 'failed') AND (jsonb_typeof(" + resolvedJSON + ") = 'number' OR jsonb_typeof(" + effectiveJSON + ") = 'number') THEN CASE WHEN jsonb_typeof(" +
-		resolvedJSON + ") = 'number' AND jsonb_typeof(" + peakEnabledJSON + ") = 'boolean' THEN CASE WHEN " + billingScope + " = 'token' OR " + newAPIGroup + " THEN " + dynamicRate + " ELSE NULL END WHEN " + legacySnapshot +
+		resolvedJSON + ") = 'number' AND jsonb_typeof(" + peakEnabledJSON + ") = 'boolean' THEN CASE WHEN " + billingScope + " = 'token' OR " + newAPIGroup + " THEN (" + dynamicRate + ") * (" + conversion + ") ELSE NULL END WHEN " + legacySnapshot +
 		" AND jsonb_typeof(" + effectiveJSON + ") = 'number' THEN (" + effective + ")::numeric END END"
 }
 
@@ -2875,20 +2893,44 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 
 // SetRateLimitedIfLater atomically extends an account-level rate limit. Grok
 // requests may finish concurrently, so an older response must not overwrite a
-// later reset boundary observed by another request or instance.
+// later reset boundary observed by another request or instance. Every Grok OAuth
+// negative also advances the recovery generation, even without extending reset.
 func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.SetRateLimitedIfLater(ctx, id, resetAt)
+	}
 	now := time.Now()
-	updated, err := r.client.Account.Update().
-		Where(
-			dbaccount.IDEQ(id),
-			dbaccount.Or(
-				dbaccount.RateLimitResetAtIsNil(),
-				dbaccount.RateLimitResetAtLT(resetAt),
-			),
-		).
-		SetRateLimitedAt(now).
-		SetRateLimitResetAt(resetAt).
-		Save(ctx)
+	// One row update serializes observations across replicas. Using only a Go
+	// clock could repeat a timestamp; advance at least one PostgreSQL microsecond
+	// beyond the locked generation so a deferred positive can never match it.
+	// Keep adaptive cooldown duration separate from the recovery generation.
+	// Lock before deriving either value, and bind history to the exact new pair
+	// so an external clear/re-arm cannot inherit another cooldown's evidence.
+	result, err := r.client.ExecContext(ctx, `WITH observed AS MATERIALIZED (
+ SELECT id,platform,type,rate_limited_at,rate_limit_reset_at,extra FROM accounts
+ WHERE id=$1 AND deleted_at IS NULL AND
+ (rate_limit_reset_at IS NULL OR rate_limit_reset_at<$2 OR (platform='grok' AND type='oauth')) FOR UPDATE
+ ), next AS MATERIALIZED (
+ SELECT *,CASE WHEN platform='grok' AND type='oauth'
+ THEN GREATEST(clock_timestamp(),rate_limited_at+interval '1 microsecond') ELSE $3 END AS generation,
+ GREATEST(rate_limit_reset_at,$2::timestamptz) AS boundary FROM observed
+ ) UPDATE accounts a SET rate_limited_at=n.generation,rate_limit_reset_at=n.boundary,updated_at=$3,
+ extra=CASE WHEN n.platform='grok' AND n.type='oauth' THEN
+ jsonb_set(COALESCE(n.extra,'{}'::jsonb),ARRAY[$4]::text[],jsonb_build_object(
+ 'generation_us',((extract(epoch FROM n.generation)*1000000)::bigint)::text,
+ 'reset_us',((extract(epoch FROM n.boundary)*1000000)::bigint)::text,
+ 'cooldown_us',CASE WHEN n.rate_limited_at IS NOT NULL AND n.rate_limit_reset_at>=$2 THEN
+ CASE WHEN n.extra->$4->>'generation_us'=((extract(epoch FROM n.rate_limited_at)*1000000)::bigint)::text
+ AND n.extra->$4->>'reset_us'=((extract(epoch FROM n.rate_limit_reset_at)*1000000)::bigint)::text
+ AND n.extra->$4->>'cooldown_us' ~ '^[1-9][0-9]{0,15}$'
+ THEN n.extra->$4->>'cooldown_us'
+ ELSE ((extract(epoch FROM (n.rate_limit_reset_at-n.rate_limited_at))*1000000)::bigint)::text END
+ ELSE ((extract(epoch FROM (n.boundary-n.generation))*1000000)::bigint)::text END),true)
+ ELSE n.extra END FROM next n WHERE a.id=n.id`, id, resetAt, now, service.GrokRateLimitHistoryExtraKey)
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}

@@ -169,6 +169,7 @@ type AccountTestService struct {
 	bpsProbeAccounts          map[int64]struct{}
 	stateProbeAccounts        sync.Map
 	modelTraceAccounts        sync.Map
+	cialloAccounts            sync.Map
 	agentIdentityTaskMu       sync.Mutex
 	agentIdentityWS           agentIdentityWSConnectionInvalidator
 	// grokWSDialer is optional; realtime account tests use the default OpenAI-style
@@ -1118,7 +1119,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if isOAuth && s.accountRepo != nil && !IsAstraSourceAcquisition(ctx) {
+	if isOAuth && s.accountRepo != nil && !IsAstraSourceAcquisition(ctx) && !isCialloRequest(ctx) {
 		if updates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(updates) > 0 {
 			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
 			mergeAccountExtra(account, updates)
@@ -1126,6 +1127,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if isCialloRequest(ctx) {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d:", resp.StatusCode))
+		}
 		body, _ := io.ReadAll(resp.Body)
 		body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
 		if !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
@@ -1429,6 +1433,9 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 	if resp == nil {
 		return
 	}
+	if recovery, ok := ctx.Value(grokTestRecoveryContextKey{}).(*grokTestRecovery); ok && account.IsGrokOAuth() {
+		recovery.observed = true
+	}
 	now := time.Now()
 	// Error bodies carry Grok's free-usage, billing, and content-policy
 	// classifications when quota headers are absent. Read only non-success
@@ -1453,10 +1460,10 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 		if limited {
 			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
 		} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
-			clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
+			s.recoverGrokTestRateLimit(ctx, account)
 		}
 	} else if s.accountRepo != nil && isSuccessfulGrokRateLimitRecovery(account, &xai.QuotaSnapshot{StatusCode: resp.StatusCode}) {
-		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
+		s.recoverGrokTestRateLimit(ctx, account)
 	}
 	if s.accountRepo == nil || len(responseBody) == 0 {
 		if resp.StatusCode == http.StatusPaymentRequired && s.accountRepo != nil {
@@ -3341,7 +3348,16 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 				accountTestContent(c, delta)
 				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
 			}
+		case "response.incomplete":
+			if isCialloRequest(c.Request.Context()) {
+				return s.sendErrorAndEnd(c, "Ciallo generation incomplete")
+			}
 		case "response.completed", "response.done":
+			if isCialloRequest(c.Request.Context()) {
+				if obj, ok := data["response"].(map[string]any); ok && (obj["incomplete_details"] != nil || (obj["status"] != nil && obj["status"] != "completed")) {
+					return s.sendErrorAndEnd(c, "Ciallo generation incomplete")
+				}
+			}
 			if modelTraceRequested(c.Request.Context()) {
 				if responseData, ok := data["response"].(map[string]any); ok {
 					if status, _ := responseData["status"].(string); status != "" && status != "completed" {
@@ -3709,10 +3725,12 @@ func (s *AccountTestService) sendErrorAndEnd(c *gin.Context, errorMsg string) er
 	return fmt.Errorf("%s", errorMsg)
 }
 
-// RunTestBackground executes an account test in-memory (no real HTTP client),
-// capturing SSE output via httptest.NewRecorder, then parses the result.
+// RunTestBackground captures an account test's SSE in memory, then parses the
+// result. Grok recovery evidence is returned for the runner to apply after save.
 func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
 	startedAt := time.Now()
+	recovery := &grokTestRecovery{}
+	ctx = context.WithValue(ctx, grokTestRecoveryContextKey{}, recovery)
 
 	w := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(w)
@@ -3734,6 +3752,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 	}
 
 	return &ScheduledTestResult{
+		grokRecovery: recovery,
 		Status:       status,
 		ResponseText: responseText,
 		ErrorMessage: errMsg,

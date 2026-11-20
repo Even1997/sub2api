@@ -89,7 +89,12 @@ func TestIssue817QuotaSkipPreservesPending5xxExecution(t *testing.T) {
 				return err == nil && len(pending) == 0
 			}, 5*time.Second, 20*time.Millisecond, "trigger worker must finish and acknowledge its signal")
 			require.Equal(t, int32(1), calls.Load(), "pending 5xx signal must execute after quota-skipped cron before acknowledgement")
-			require.Equal(t, lastRun, skipped.LastRunAt, "zero-probe skip must preserve the previous executed round")
+			if lastRun == nil {
+				require.Nil(t, skipped.LastRunAt)
+			} else {
+				require.NotNil(t, skipped.LastRunAt)
+				require.True(t, lastRun.Equal(*skipped.LastRunAt), "zero-probe skip must preserve the previous executed round")
+			}
 			stored, err := results.ListByPlanID(ctx, f.plan.ID, 10)
 			require.NoError(t, err)
 			require.Len(t, stored, 1)

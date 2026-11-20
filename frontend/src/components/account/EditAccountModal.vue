@@ -2118,7 +2118,7 @@
         <div>
           <div class="mb-2 flex items-center justify-between gap-1">
             <label class="input-label mb-0" for="account-cost-multiplier">{{ t('admin.accounts.costMultiplier') }}</label>
-            <div v-if="account?.type === 'apikey' && !isNewAPIUpstream" class="flex shrink-0 items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+            <div v-if="account?.type === 'apikey'" class="flex shrink-0 items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
               <span>{{ t('admin.accounts.costMultiplierAutoSync') }}</span>
               <Toggle
                 v-model="costMultiplierAutoSync"
@@ -2137,8 +2137,10 @@
             required
             class="input"
             data-testid="account-cost-multiplier"
+            :disabled="isNewAPIUpstream && costMultiplierAutoSync"
           />
           <p class="input-hint">{{ t('admin.accounts.costMultiplierHint') }}</p>
+          <p v-if="isNewAPIUpstream" class="input-hint">{{ t('admin.accounts.upstreamBilling.newAPI.costManagedHint') }}</p>
         </div>
       </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -5238,7 +5240,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
   costMultiplier.value = readAccountCostMultiplier(newAccount.extra)
-  costMultiplierAutoSync.value = newAccount.extra?.upstream_billing_provider !== 'new_api' && newAccount.extra?.cost_multiplier_auto_sync !== false
+  costMultiplierAutoSync.value = newAccount.extra?.cost_multiplier_auto_sync !== false
   form.rate_multiplier = newAccount.rate_multiplier ?? 1
   form.status = (newAccount.status === 'active' || newAccount.status === 'inactive' || newAccount.status === 'error')
     ? newAccount.status
@@ -5266,8 +5268,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
-  costMultiplier.value = readAccountCostMultiplier(extra)
-  costMultiplierAutoSync.value = extra?.upstream_billing_provider !== 'new_api' && extra?.cost_multiplier_auto_sync !== false
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
@@ -7406,6 +7406,7 @@ const handleSubmit = async () => {
       costExtra.slot_reservation_enabled = slotReservationEnabled.value
       costExtra.slot_reservation_seconds = slotReservationSeconds.value
     }
+    delete costExtra.new_api_apply_usd_rate
     updatePayload.extra = costExtra
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

@@ -4,6 +4,8 @@
  * browser; use a new ID to announce the feature again in a later release.
  */
 export const NEW_FEATURE_NOTICES = {
+  newAPICostConversion: 'new-api-cost-conversion-20261119',
+  accountOpsBalanceNotification: 'account-ops-per-account-balance-notification-20261119',
   groupFreeUltrafast: 'group-free-ultrafast-initial-announcement',
   oauthAPIKeyDisposition: 'oauth-initial-apikey-disposition',
   matureProviders: 'mature-provider-operations-initial-announcement',
@@ -30,9 +32,11 @@ export const NEW_FEATURE_NOTICES = {
   qwenPlatform: 'qwen-platform-initial-announcement',
   qwenCache: 'qwen-cache-strict-session-initial-announcement',
   oauthDegradation429: 'oauth-degradation-429-conditions-initial-announcement',
+  oauthDegradationCandyRetest: 'oauth-degradation-candy-retest',
   oauthDegradationActions: 'oauth-degradation-actions-initial-announcement',
   openaiAPIKeyFallback: 'openai-apikey-fallback-initial-announcement',
   dashboardAccountConcurrency: 'dashboard-account-concurrency-initial-announcement',
+  ciallo: 'account-quality-ciallo-v1',
   qualityRetestRest: 'quality-retest-rest-initial-announcement',
   qualityOAuth401Cleanup: 'quality-oauth-401-cleanup-initial-announcement',
   keyRisk: 'key-risk-notices-acknowledgement-initial-announcement',

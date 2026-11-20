@@ -1277,6 +1277,9 @@ export interface UpstreamBalanceData {
   // headroom, depending on how the upstream bills the key.
   remaining?: number
   wallet_balance?: number
+  raw_wallet_balance?: number
+  raw_unit?: 'USD'
+  display_exchange_rate?: number
   // Subscription without any spending limit.
   unlimited?: boolean
   quota_limit?: number
@@ -1317,7 +1320,7 @@ export interface NewAPIUpstreamConfig {
   configured: boolean
   user_id?: number
   encryption_key_configured: boolean
-  accounts: Array<{ account_id: number; name: string; configured_user_id?: number }>
+  accounts: Array<{ account_id: number; name: string; configured_user_id?: number; cost_multiplier_scale?: number; cn_provider?: boolean; cost_auto_sync_enabled?: boolean; apply_usd_rate?: boolean }>
 }
 
 export interface NewAPIUpstreamConfigRequest {
@@ -1325,12 +1328,13 @@ export interface NewAPIUpstreamConfigRequest {
   access_token?: string
   account_ids: number[]
   token_selections?: Record<string, number>
+  apply_usd_rate?: Record<string, boolean>
 }
 
 export interface NewAPIUpstreamPreview {
   site_url: string
   user_id: number
-  wallet: { amount: number; unit: 'USD' }
+  wallet: { amount: number; unit: string }
   accounts: Array<{
     account_id: number
     name: string
@@ -1338,6 +1342,11 @@ export interface NewAPIUpstreamPreview {
     token_id?: number
     group?: string
     rate?: number
+    cost_multiplier_scale?: number
+    cn_provider?: boolean
+    cost_auto_sync_enabled?: boolean
+    apply_usd_rate?: boolean
+    cost_multiplier?: number
     error?: string
     token_options: Array<{ token_id: number; name: string; group: string; masked_key: string }>
   }>
@@ -1529,6 +1538,7 @@ export interface Account {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_provider?: 'new_api'
+    new_api_apply_usd_rate?: boolean
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
     codex_quota_overdraft_enabled?: boolean
@@ -2964,7 +2974,7 @@ export interface QualityJudgeConfig {
   prompt: string
 }
 export interface QualityJudgment {
-  kind?: 'llm' | 'jev'
+  kind?: 'llm' | 'jev' | 'ciallo'
   rules_version?: string
   latency_ms?: number
   verdict: 'correct' | 'incorrect' | 'unknown'
@@ -3049,7 +3059,8 @@ export interface PelicanTestConfig {
   quality_model_actions?: Record<string, string>
   trigger_source?: string
   quality?: QualityPolicy
-  question_kind?: 'candy' | 'pelican' | 'state_probe' | 'random_reasoning'
+  question_kind?: 'candy' | 'pelican' | 'state_probe' | 'random_reasoning' | 'ciallo'
+  ciallo?: { template_version: string; judge_version: string; protocol?: string }
   // Result-only identity of a runtime-generated question.
   random_question?: { id: string; family: 'paths' | 'weighted_xor'; version: string }
   quality_batch?: {

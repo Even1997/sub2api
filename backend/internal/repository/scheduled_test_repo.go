@@ -401,7 +401,7 @@ func (r *scheduledTestPlanRepository) ClaimPelican(ctx context.Context, plan *se
  AND (next_run_at <= $2 OR ($7 AND pelican_config->'quality'->>'trigger_on_upstream_5xx'='true'))
  AND (NOT $7 OR (pelican_config->'quality'->>'trigger_on_upstream_5xx'='true'
    AND EXISTS (SELECT 1 FROM accounts WHERE accounts.id=account_id AND type='oauth')
-   AND ($8::timestamptz IS NULL OR last_run_at IS NULL OR last_run_at <= $8 OR pelican_config->'quality'->>'action'='remove_models')))
+   AND ($8::timestamptz IS NULL OR last_run_at IS NULL OR last_run_at < $8 OR pelican_config->'quality'->>'action'='remove_models')))
  AND (running_until IS NULL OR running_until < $2) AND updated_at = $5 AND next_run_at = $6
  AND NOT EXISTS (SELECT 1 FROM account_quality_states rest WHERE rest.plan_id=scheduled_test_plans.id
  AND COALESCE((pelican_config->'quality'->>'retest_rest_minutes')::int,0)>0

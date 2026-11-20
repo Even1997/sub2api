@@ -2767,3 +2767,64 @@ func TestOpenAIGatewayService_OAuthPassthrough_AllowTimeoutHeadersWhenConfigured
 	require.Equal(t, "120000", upstream.lastReq.Header.Get("x-stainless-timeout"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-Test"))
 }
+
+func TestForwardGPT62InstructionsCachePrefix(t *testing.T) {
+	for _, tc := range []struct {
+		name, model, input, turn, first string
+		passthrough, native             bool
+	}{
+		{"sol developer", "gpt-6.2-sol", `[{"role":"developer","content":"stable"},{"role":"user","content":"hello"}]`, "", "stable", false, false},
+		{"mapped astra system", "public", `[{"role":"system","content":"stable"},{"role":"user","content":"hello"}]`, "this turn", "stable", false, false},
+		{"astra pro string", "gpt-6.2-astra-pro", `"hello"`, "", defaultCodexSynthInstructions("gpt-6.2-astra"), false, false},
+		{"empty turn", "gpt-6.2-sol", `[{"role":"user","content":"hello"}]`, "  ", defaultCodexSynthInstructions("gpt-6.2-sol"), false, false},
+		{"sol passthrough", "gpt-6.2-sol", `[{"role":"developer","content":"stable"},{"role":"user","content":"hello"}]`, "", "stable", true, false},
+		{"compact mapped from codex", "legacy-codex", `[{"role":"developer","content":"stable"},{"role":"user","content":"hello"}]`, "", "stable", true, false},
+		{"astra api key", "gpt-6.2-astra", `[{"role":"developer","content":"stable"},{"role":"user","content":"hello"}]`, "", "stable", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0")
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
+				Body: io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\ndata: [DONE]\n\n")),
+			}}
+			svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			acc := &Account{ID: 12, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: map[string]any{"access_token": "test", "model_mapping": map[string]any{"public": "gpt-6.2-astra"}},
+				Extra:       map[string]any{"openai_passthrough": tc.passthrough, "openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeOff},
+			}
+			if tc.model == "legacy-codex" {
+				c.Request.URL.Path = "/v1/responses/compact"
+				acc.Credentials["compact_model_mapping"] = map[string]any{tc.model: "gpt-6.2-sol"}
+				upstream.resp.Header.Set("Content-Type", "application/json")
+				upstream.resp.Body = io.NopCloser(strings.NewReader(`{"id":"cmp_1","usage":{"input_tokens":1,"output_tokens":1}}`))
+			}
+			if tc.native {
+				acc.Type = AccountTypeAPIKey
+				acc.Credentials = map[string]any{"api_key": "test"}
+			}
+			req := fmt.Sprintf(`{"model":%q,"input":%s,"stream":true`, tc.model, tc.input)
+			if tc.turn != "" {
+				req += fmt.Sprintf(`,"instructions":%q`, tc.turn)
+			}
+			_, err := svc.Forward(context.Background(), c, acc, []byte(req+"}"))
+			require.NoError(t, err)
+			wire := gjson.ParseBytes(upstream.lastBody)
+			require.Equal(t, tc.turn, wire.Get("instructions").String())
+			require.Equal(t, "developer", wire.Get("input.0.role").String())
+			require.Equal(t, tc.first, wire.Get("input.0.content").String())
+			require.Equal(t, "hello", wire.Get("input.1.content").String())
+			require.Len(t, wire.Get("input").Array(), 2)
+			if tc.native || tc.passthrough {
+				require.False(t, wire.Get("instructions").Exists())
+			}
+			if tc.model == "legacy-codex" {
+				require.Equal(t, "gpt-6.2-sol", wire.Get("model").String())
+			}
+			if tc.model == "public" {
+				require.Equal(t, "gpt-6.2-astra", wire.Get("model").String())
+			}
+		})
+	}
+}

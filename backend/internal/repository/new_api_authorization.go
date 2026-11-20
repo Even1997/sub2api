@@ -137,9 +137,35 @@ func (r *newAPIAuthorizationRepository) Save(ctx context.Context, p *service.New
 		if e != nil {
 			return e
 		}
-		_, e = tx.ExecContext(ctx, `UPDATE accounts SET extra=(COALESCE(extra,'{}'::jsonb)-'upstream_billing_probe') || jsonb_build_object('upstream_billing_provider','new_api','upstream_billing_site',$2::text,'upstream_billing_user_id',$3::bigint,'upstream_billing_probe_enabled',true,'upstream_billing_rate_sync_enabled',false),updated_at=NOW() WHERE id=$1`, b.Account.ID, p.SiteURL, p.UserID)
+		costSettings := map[string]any{}
+		if b.ApplyUSDRate != nil {
+			costSettings[service.NewAPIApplyUSDRateExtraKey] = *b.ApplyUSDRate
+		}
+		if b.CostMultiplier != nil {
+			costSettings[service.AccountCostMultiplierExtraKey] = *b.CostMultiplier
+		}
+		if err := service.ValidateAccountCostMultiplierExtra(costSettings); err != nil {
+			return err
+		}
+		costJSON, err := json.Marshal(costSettings)
+		if err != nil {
+			return err
+		}
+		// The account may have been edited while its upstream credentials were being verified.
+		expectedUSDRate, err := json.Marshal(b.Account.Extra[service.NewAPIApplyUSDRateExtraKey])
+		if err != nil {
+			return err
+		}
+		result, e := tx.ExecContext(ctx, `UPDATE accounts SET extra=(COALESCE(extra,'{}'::jsonb)-'upstream_billing_probe') || jsonb_build_object('upstream_billing_provider','new_api','upstream_billing_site',$2::text,'upstream_billing_user_id',$3::bigint,'upstream_billing_probe_enabled',true,'upstream_billing_rate_sync_enabled',false) || (CASE WHEN extra @> '{"cost_multiplier_auto_sync":false}'::jsonb THEN $4::jsonb-'cost_multiplier' ELSE $4::jsonb END),updated_at=NOW() WHERE id=$1 AND COALESCE(extra->'new_api_apply_usd_rate','null'::jsonb)=$5::jsonb`, b.Account.ID, p.SiteURL, p.UserID, string(costJSON), string(expectedUSDRate))
 		if e != nil {
 			return e
+		}
+		n, e := result.RowsAffected()
+		if e != nil {
+			return e
+		}
+		if n != 1 {
+			return service.ErrUpstreamBillingProbeIdentityChanged
 		}
 		changed = append(changed, b.Account.ID)
 	}
@@ -156,7 +182,7 @@ func (r *newAPIAuthorizationRepository) Unbind(ctx context.Context, id int64) er
 		return e
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, e = tx.ExecContext(ctx, `UPDATE accounts SET extra=COALESCE(extra,'{}'::jsonb)-'upstream_billing_provider'-'upstream_billing_site'-'upstream_billing_user_id'-'upstream_billing_probe',updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL`, id); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE accounts SET extra=COALESCE(extra,'{}'::jsonb)-'upstream_billing_provider'-'upstream_billing_site'-'upstream_billing_user_id'-'upstream_billing_probe'-'new_api_apply_usd_rate',updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL`, id); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM new_api_account_bindings WHERE account_id=$1`, id); e != nil {
@@ -183,7 +209,13 @@ func (r *newAPIAuthorizationRepository) WriteSnapshot(ctx context.Context, a *se
 	if e = matchNewAPIAccountTx(ctx, tx, a); e != nil {
 		return e
 	}
-	payload, e := json.Marshal(snap)
+	updates := map[string]any{service.UpstreamBillingProbeExtraKey: snap}
+	if service.NewAPICostSyncEnabled(a) {
+		if cost, ok := service.NewAPICostToSync(snap, service.NewAPICostScale(a)); ok {
+			updates[service.AccountCostMultiplierExtraKey] = cost
+		}
+	}
+	payload, e := json.Marshal(updates)
 	if e != nil {
 		return e
 	}
@@ -195,7 +227,11 @@ func (r *newAPIAuthorizationRepository) WriteSnapshot(ctx context.Context, a *se
 	if e != nil {
 		return e
 	}
-	result, e := tx.ExecContext(ctx, `UPDATE accounts a SET extra=COALESCE(extra,'{}'::jsonb)||jsonb_build_object('upstream_billing_probe',$1::jsonb),updated_at=NOW() WHERE a.id=$2 AND COALESCE(extra->'upstream_billing_probe','null'::jsonb)=$3::jsonb AND COALESCE(extra->'upstream_billing_probe_enabled','null'::jsonb)=$4::jsonb AND EXISTS(SELECT 1 FROM new_api_account_bindings b WHERE b.account_id=a.id AND b.authorization_id=$5 AND b.upstream_token_id=$6 AND b.account_fingerprint=$7)`, string(payload), a.ID, string(old), string(enabled), b.Profile.ID, b.TokenID, b.Fingerprint)
+	expectedUSDRate, e := json.Marshal(a.Extra[service.NewAPIApplyUSDRateExtraKey])
+	if e != nil {
+		return e
+	}
+	result, e := tx.ExecContext(ctx, `UPDATE accounts a SET extra=COALESCE(extra,'{}'::jsonb)||(CASE WHEN extra @> '{"cost_multiplier_auto_sync":false}'::jsonb THEN $1::jsonb-'cost_multiplier' ELSE $1::jsonb END),updated_at=NOW() WHERE a.id=$2 AND COALESCE(extra->'upstream_billing_probe','null'::jsonb)=$3::jsonb AND COALESCE(extra->'upstream_billing_probe_enabled','null'::jsonb)=$4::jsonb AND COALESCE(extra->'new_api_apply_usd_rate','null'::jsonb)=$8::jsonb AND EXISTS(SELECT 1 FROM new_api_account_bindings b WHERE b.account_id=a.id AND b.authorization_id=$5 AND b.upstream_token_id=$6 AND b.account_fingerprint=$7)`, string(payload), a.ID, string(old), string(enabled), b.Profile.ID, b.TokenID, b.Fingerprint, string(expectedUSDRate))
 	if e != nil {
 		return e
 	}

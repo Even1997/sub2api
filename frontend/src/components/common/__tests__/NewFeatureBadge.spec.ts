@@ -37,6 +37,7 @@ describe('NewFeatureBadge', () => {
     ['account operations multiple recipients', NEW_FEATURE_NOTICES.accountOpsMultipleEmails],
     ['account operations provider balance', NEW_FEATURE_NOTICES.accountOpsProviderBalance],
     ['account operations OAuth lifecycle', NEW_FEATURE_NOTICES.accountOpsOAuthLifecycle],
+    ['account balance notification', NEW_FEATURE_NOTICES.accountOpsBalanceNotification],
     ['OpenAI cache write TTL', NEW_FEATURE_NOTICES.openaiCacheWriteTTL12h],
     ['EasyPay refund code', NEW_FEATURE_NOTICES.easyPayRefundSuccessCode],
     ['payment provider fees', NEW_FEATURE_NOTICES.paymentProviderFees],
@@ -55,6 +56,7 @@ describe('NewFeatureBadge', () => {
     ['profit operations time ranges', NEW_FEATURE_NOTICES.profitOperationsTimeRanges],
     ['quality retest rest', NEW_FEATURE_NOTICES.qualityRetestRest],
     ['OAuth 401 quality cleanup', NEW_FEATURE_NOTICES.qualityOAuth401Cleanup],
+    ['Ciallo manual greeting test', NEW_FEATURE_NOTICES.ciallo],
     ['AI operations proposal cancellation', NEW_FEATURE_NOTICES.aiOpsProposalCancel],
     ['400 encrypted history recovery', NEW_FEATURE_NOTICES.openai400OmitEncryptedHistory],
   ])('keeps %s dismissal shared and persistent across feature announcements', async (_feature, noticeId) => {

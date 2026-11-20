@@ -23,7 +23,7 @@ func TestMiniMaxH3RoutesAreScopedToMiniMax(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 				w := httptest.NewRecorder()
 				router.ServeHTTP(w, req)
-				if platform == service.PlatformMiniMax || platform == service.PlatformGrok || platform == service.PlatformComposite {
+				if platform == service.PlatformMiniMax || platform == service.PlatformGrok || platform == service.PlatformComposite || platform == service.PlatformOpenAI {
 					require.NotContains(t, w.Body.String(), "not supported for this platform", path)
 				} else {
 					require.Equal(t, http.StatusNotFound, w.Code, path)

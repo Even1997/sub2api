@@ -628,7 +628,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
 	recovery := openAIAgentRecoveryFromContext(ctx)
-	if instructionsEmpty && account.UsesOpenAICodexProtocol() && !compatMessagesBridge && !nativeCNResponses && (recovery == nil || !recovery.omittedHistory) {
+	if instructionsEmpty && account.UsesOpenAICodexProtocol() && normalizeOpenAIGPT62Model(upstreamModel) == "" && !compatMessagesBridge && !nativeCNResponses && (recovery == nil || !recovery.omittedHistory) {
 		markPatchSet("instructions", defaultCodexSynthInstructions(upstreamModel))
 	}
 	if billingModel != requestedModel {
@@ -2105,6 +2105,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 
 	// Set headers specific to OAuth accounts (ChatGPT internal API)
 	if account.UsesOpenAICodexProtocol() {
+		req = req.WithContext(WithOpenAICodexHTTPRequest(req.Context()))
 		// Required: set Host for ChatGPT API (must use req.Host, not Header.Set)
 		req.Host = "chatgpt.com"
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, req.Header, account); err != nil {

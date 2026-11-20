@@ -7,6 +7,7 @@ import (
 
 // PelicanTestConfig stores intelligence test inputs; a missing kind preserves legacy HTML plans.
 type PelicanTestConfig struct {
+	Ciallo *CialloEvidence `json:"ciallo,omitempty"`
 	// Optional display name stored in the existing configuration JSON.
 	RuleName string `json:"rule_name,omitempty"`
 	// Filled only on saved result snapshots, never used to configure a rule.
@@ -37,6 +38,7 @@ type PelicanTestConfig struct {
 
 // ScheduledTestPlan represents a scheduled test plan domain model.
 type ScheduledTestPlan struct {
+	degradationRetest bool
 	// Populated only from the repository's one-shot manual trigger marker.
 	ManualQualityRun      bool              `json:"-"`
 	ManualQualityRunID    string            `json:"-"`
@@ -68,6 +70,9 @@ type ScheduledTestPlan struct {
 
 // ScheduledTestResult represents a single test execution result.
 type ScheduledTestResult struct {
+	// Attempt-local Grok recovery evidence; never accepted from or stored in JSON.
+	grokRecovery *grokTestRecovery
+
 	// Runtime-only; set solely from an actual own-credential OAuth HTTP 401.
 	DirectOAuth401        bool `json:"-"`
 	DirectOAuthRevoked401 bool `json:"-"`
