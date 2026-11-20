@@ -385,6 +385,10 @@ gateway:
   # 该模板作用于 `/v1/messages -> Responses/Codex` 转换链路，且发生在 Claude `system`
   # 已经被归一化为 Codex `instructions` 之后。
   #
+  # Explicit template output remains turn-scoped on GPT-6.2. For a cacheable
+  # stable prompt, supply it in the leading developer message instead.
+  # GPT-6.2 上模板输出属于本轮指令。需复用缓存的固定提示词可放在首条 developer 消息。
+  #
   # The template can reference:
   # 模板可引用：
   # - {{ .ExistingInstructions }} : converted client instructions/system

@@ -671,9 +671,7 @@ func prepareOpenAI409OAuthReplay(ctx context.Context, c *gin.Context, body map[s
 	// ChatGPT rejects this output-only metadata. Normalize before freezing the
 	// OAuth representation; the later ordinary transform must be idempotent.
 	normalizeOpenAIOAuthResponsesCompatibilityFields(body)
-	if isInstructionsEmpty(body) {
-		body["instructions"] = defaultCodexSynthInstructions(firstNonEmptyString(body["model"]))
-	}
+	applyInstructions(body)
 	extractSystemMessagesFromInput(body, false)
 	httpReplay := c != nil && c.Request != nil && c.Request.Method == http.MethodPost && GetOpenAIClientTransport(c) != OpenAIClientTransportWS
 	legacyCall, hasLegacyCall := body["function_call"]

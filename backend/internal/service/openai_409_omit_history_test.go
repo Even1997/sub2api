@@ -268,20 +268,25 @@ func TestOpenAI409RebuildRechecksOriginalDeliveryBeforeSend(t *testing.T) {
 }
 
 func TestOpenAI409OAuthReplayKeepsOriginalSnapshotAndFinalControls(t *testing.T) {
-	for _, mode := range []string{"unchanged", "tools_removed", "insert_instructions", "replace_instructions"} {
+	for _, mode := range []string{"unchanged", "gpt62_turn", "tools_removed", "insert_instructions", "replace_instructions"} {
 		t.Run(mode, func(t *testing.T) {
 			svc := &OpenAIGatewayService{cfg: &config.Config{}, settingService: NewSettingService(&codexPolicyMigrationRepoStub{values: map[string]string{SettingKeyOpenAI409OmitEncryptedHistoryEnabled: "true"}}, nil)}
-			issue715LearnRoute(t, svc, &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, issue715OpaqueBody)
-			body := strings.TrimSuffix(issue715OpaqueBody, "]}") + `,{"role":"system","content":"keep existing results"},{"role":"user","content":"complete the existing task"}],"tools":[{"type":"function","name":"record","parameters":{"type":"object"}}]}`
-			if mode == "replace_instructions" {
+			model := "gpt-6-astra"
+			if mode == "gpt62_turn" {
+				model = "gpt-6.2-astra"
+			}
+			opaque := strings.Replace(issue715OpaqueBody, "gpt-6-astra", model, 1)
+			issue715LearnRoute(t, svc, &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, opaque)
+			body := strings.TrimSuffix(opaque, "]}") + `,{"role":"system","content":"keep existing results"},{"role":"user","content":"complete the existing task"}],"tools":[{"type":"function","name":"record","parameters":{"type":"object"}}]}`
+			if mode == "replace_instructions" || mode == "gpt62_turn" {
 				var err error
 				body, err = sjson.Set(body, "instructions", "Original instruction: preserve completed tools")
 				require.NoError(t, err)
 			}
 			c, _ := newTurnStateTestContext(t, 715, "fixture-session")
 			c.Set("api_key", &APIKey{ID: 715, GroupID: int64Ptr(715)})
-			ctx := svc.WithOpenAIAgentMessageRecovery(context.Background(), c, []byte(body), "fixture-session", "gpt-6-astra")
-			next, clean, changed, err := svc.TryRebuildOpenAI409History(ctx, c, []byte(body), "fixture-session", "gpt-6-astra", openAIAgentRecoveryError("owner_unavailable"))
+			ctx := svc.WithOpenAIAgentMessageRecovery(context.Background(), c, []byte(body), "fixture-session", model)
+			next, clean, changed, err := svc.TryRebuildOpenAI409History(ctx, c, []byte(body), "fixture-session", model, openAIAgentRecoveryError("owner_unavailable"))
 			require.NoError(t, err)
 			require.True(t, changed)
 			r := openAIAgentRecoveryFromContext(next)
@@ -299,7 +304,12 @@ func TestOpenAI409OAuthReplayKeepsOriginalSnapshotAndFinalControls(t *testing.T)
 			require.NoError(t, prepareOpenAI409OAuthReplay(next, c, decoded, codexOAuthTransformOptions{}))
 			require.Equal(t, originalInput, r.inputDigest)
 			require.Equal(t, originalControls, r.replayControlsDigest)
-			require.Equal(t, "keep existing results\n\n"+defaultCodexSynthInstructions("gpt-6-astra"), decoded["instructions"])
+			if mode == "gpt62_turn" {
+				require.Equal(t, "Original instruction: preserve completed tools", decoded["instructions"])
+				require.Contains(t, extractPromptLikeInstructionsFromInput(decoded), "keep existing results")
+			} else {
+				require.Equal(t, "keep existing results\n\n"+defaultCodexSynthInstructions(model), decoded["instructions"])
+			}
 			transformed := applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{PreserveReadableReplay: true})
 			require.NoError(t, transformed.Error)
 			wire, err := json.Marshal(decoded)

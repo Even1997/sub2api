@@ -278,13 +278,6 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 		result.Modified = true
 	}
 
-	// instructions 处理逻辑：根据是否是 Codex CLI 分别调用不同方法
-	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI) {
-		result.Modified = true
-	}
-	if isCodexSparkModel(normalizedModel) && applyCodexSparkImageUnsupportedInstructions(reqBody) {
-		result.Modified = true
-	}
 	// gpt-5.3-codex-spark rejects the image_generation tool upstream (HTTP 400,
 	// param=tools); Codex CLI advertises it by default, so strip it for spark.
 	if isCodexSparkModel(normalizedModel) && stripCodexSparkImageGenerationTools(reqBody) {
@@ -327,6 +320,13 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 		result.Modified = true
 	}
 
+	// String input has now been normalized to a message list.
+	if !opts.SkipDefaultInstructions && applyInstructions(reqBody) {
+		result.Modified = true
+	}
+	if isCodexSparkModel(normalizedModel) && applyCodexSparkImageUnsupportedInstructions(reqBody) {
+		result.Modified = true
+	}
 	// Runs after input filtering so it sees the final replayed history. The
 	// compact endpoint has its own wire shape and is left untouched.
 	if !opts.IsCompact && (!opts.PreserveHTTPNamespaceSearchHistory || !preserveOpenAIHTTPNamespaceSearchHistory(reqBody)) && ensureOpenAIOAuthWebSearchToolForHistory(reqBody, opts.ResponsesLite) {
@@ -1302,6 +1302,8 @@ func extractSystemMessagesFromInput(reqBody map[string]any, omitPromoted bool) b
 		return false
 	}
 
+	model, _ := reqBody["model"].(string)
+	keepInInput := normalizeOpenAIGPT62Model(model) != ""
 	var systemTexts []string
 	filteredInput := make([]any, 0, len(input))
 	modified := false
@@ -1312,6 +1314,14 @@ func extractSystemMessagesFromInput(reqBody map[string]any, omitPromoted bool) b
 			continue
 		}
 
+		if keepInInput {
+			// GPT-6.2 treats top-level instructions as turn-scoped. Keep the
+			// original message order, including mixed and structured content.
+			m["role"] = "developer"
+			filteredInput = append(filteredInput, item)
+			modified = true
+			continue
+		}
 		if omitPromoted {
 			if losslessText, lossless := extractLosslessTextFromContent(m["content"]); lossless {
 				if losslessText != "" {
@@ -1477,12 +1487,30 @@ func applyCodexClientMetadata(reqBody map[string]any, account *Account) bool {
 	}
 }
 
-// applyInstructions 处理 instructions 字段：仅在 instructions 为空时填充默认值。
-func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
+// applyInstructions supplies missing Codex guidance. On GPT-6.2 only input
+// messages form a reusable prefix; top-level instructions belong to this turn.
+func applyInstructions(reqBody map[string]any) bool {
 	if !isInstructionsEmpty(reqBody) {
 		return false
 	}
 	model, _ := reqBody["model"].(string)
+	if normalizeOpenAIGPT62Model(model) != "" {
+		_, wasString := reqBody["instructions"].(string)
+		ensureCodexOAuthInstructionsField(reqBody)
+		input, _ := reqBody["input"].([]any)
+		if len(input) == 0 || reqBody["previous_response_id"] != nil || reqBody["conversation"] != nil {
+			return !wasString
+		}
+		for _, item := range input {
+			msg, _ := item.(map[string]any)
+			if msg["role"] == "developer" || msg["role"] == "system" {
+				return !wasString
+			}
+		}
+		prefix := map[string]any{"type": "message", "role": "developer", "content": defaultCodexSynthInstructions(model)}
+		reqBody["input"] = append([]any{prefix}, input...)
+		return true
+	}
 	reqBody["instructions"] = defaultCodexSynthInstructions(model)
 	return true
 }
