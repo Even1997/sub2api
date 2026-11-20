@@ -4,6 +4,7 @@
  * browser; use a new ID to announce the feature again in a later release.
  */
 export const NEW_FEATURE_NOTICES = {
+  accountOpsBalanceNotification: 'account-ops-per-account-balance-notification-20261119',
   groupFreeUltrafast: 'group-free-ultrafast-initial-announcement',
   oauthAPIKeyDisposition: 'oauth-initial-apikey-disposition',
   matureProviders: 'mature-provider-operations-initial-announcement',

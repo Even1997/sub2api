@@ -13,22 +13,23 @@ import (
 const accountOpsSettingsKey = "account_ops_notifications_v1"
 
 type AccountOpsConfig struct {
-	Enabled               bool                    `json:"enabled"`
-	Recipient             string                  `json:"recipient"`
-	EmailName             string                  `json:"email_name,omitempty"`
-	BalanceLow            bool                    `json:"balance_low"`
-	WeeklyQuota           bool                    `json:"weekly_quota"`
-	CooldownMinutes       int                     `json:"cooldown_minutes"`
-	Webhooks              []AccountOpsWebhook     `json:"webhooks"`
-	Groups                []AccountOpsGroup       `json:"groups"`
-	GroupsInitialized     bool                    `json:"groups_initialized,omitempty"`
-	UngroupedAccountIDs   []int64                 `json:"ungrouped_account_ids,omitempty"`
-	BalanceThresholds     []AccountOpsBalanceRule `json:"balance_thresholds"`
-	QuotaThresholds       []AccountOpsQuotaRule   `json:"quota_thresholds"`
-	ErrorCloseEnabled     bool                    `json:"error_close_enabled"`
-	ErrorCloseConsecutive int                     `json:"error_close_consecutive"`
-	ErrorCloseNotifyEmail bool                    `json:"error_close_notify_email"`
-	ErrorCloseCodes       []string                `json:"error_close_codes,omitempty"`
+	Enabled                      bool                    `json:"enabled"`
+	Recipient                    string                  `json:"recipient"`
+	EmailName                    string                  `json:"email_name,omitempty"`
+	BalanceLow                   bool                    `json:"balance_low"`
+	WeeklyQuota                  bool                    `json:"weekly_quota"`
+	CooldownMinutes              int                     `json:"cooldown_minutes"`
+	Webhooks                     []AccountOpsWebhook     `json:"webhooks"`
+	Groups                       []AccountOpsGroup       `json:"groups"`
+	GroupsInitialized            bool                    `json:"groups_initialized,omitempty"`
+	UngroupedAccountIDs          []int64                 `json:"ungrouped_account_ids,omitempty"`
+	BalanceThresholds            []AccountOpsBalanceRule `json:"balance_thresholds"`
+	QuotaThresholds              []AccountOpsQuotaRule   `json:"quota_thresholds"`
+	ErrorCloseEnabled            bool                    `json:"error_close_enabled"`
+	ErrorCloseConsecutive        int                     `json:"error_close_consecutive"`
+	ErrorCloseNotifyEmail        bool                    `json:"error_close_notify_email"`
+	ErrorCloseCodes              []string                `json:"error_close_codes,omitempty"`
+	BalanceLowDisabledAccountIDs []int64                 `json:"balance_low_disabled_account_ids,omitempty"`
 }
 
 func defaultAccountOpsConfig() AccountOpsConfig {
@@ -193,7 +194,7 @@ func (s *AccountOpsService) Observe(account *Account, status int, headers http.H
 		return
 	}
 	kind, signal := classifyAccountOpsFailure(account.Platform, status, headers, body)
-	if !c.Allows(kind) {
+	if !c.AllowsAccount(kind, account.ID) {
 		return
 	}
 	name := []rune(account.Name)
