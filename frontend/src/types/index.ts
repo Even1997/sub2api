@@ -2974,7 +2974,7 @@ export interface QualityJudgeConfig {
   prompt: string
 }
 export interface QualityJudgment {
-  kind?: 'llm' | 'jev'
+  kind?: 'llm' | 'jev' | 'ciallo'
   rules_version?: string
   latency_ms?: number
   verdict: 'correct' | 'incorrect' | 'unknown'
@@ -3059,7 +3059,8 @@ export interface PelicanTestConfig {
   quality_model_actions?: Record<string, string>
   trigger_source?: string
   quality?: QualityPolicy
-  question_kind?: 'candy' | 'pelican' | 'state_probe' | 'random_reasoning'
+  question_kind?: 'candy' | 'pelican' | 'state_probe' | 'random_reasoning' | 'ciallo'
+  ciallo?: { template_version: string; judge_version: string; protocol?: string }
   // Result-only identity of a runtime-generated question.
   random_question?: { id: string; family: 'paths' | 'weighted_xor'; version: string }
   quality_batch?: {
