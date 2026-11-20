@@ -813,7 +813,7 @@ const exportToCSV = async () => {
     const exportParams = buildUsageListParams(1, EXPORT_PAGE_SIZE)
     const allLogs = await fetchAllExportPages<UsageLog>({
       signal: controller.signal,
-      fetchPage: (page, pageSize) => usageAPI.query({ ...exportParams, page, page_size: pageSize }),
+      fetchPage: (page, pageSize, signal) => usageAPI.query({ ...exportParams, page, page_size: pageSize }, { signal }),
       onProgress: ({ fetched, total }) => {
         exportProgress.notice = ''
         exportProgress.current = fetched

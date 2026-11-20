@@ -847,7 +847,7 @@ describe('user UsageView', () => {
       sort_by: 'created_at',
       sort_order: 'desc',
       native_compaction_v2: true,
-    }))
+    }), { signal: expect.any(AbortSignal) })
     expect(clickSpy).toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalled()
     expect(csvContent.startsWith('\uFEFF')).toBe(true)
@@ -985,8 +985,8 @@ describe('user UsageView', () => {
     let resolveFirstPage!: (value: typeof pageResponse) => void
     const firstPage = new Promise<typeof pageResponse>((resolve) => { resolveFirstPage = resolve })
     query.mockClear()
-    query.mockImplementation((params, options) =>
-      !options && params.page === 1 ? firstPage : Promise.resolve(pageResponse)
+    query.mockImplementation((params) =>
+      params.page_size === EXPORT_PAGE_SIZE && params.page === 1 ? firstPage : Promise.resolve(pageResponse)
     )
     const originalCreateObjectURL = window.URL.createObjectURL
     const originalRevokeObjectURL = window.URL.revokeObjectURL
@@ -1021,8 +1021,10 @@ describe('user UsageView', () => {
       resolveFirstPage(fullFirstPage)
       await flushPromises()
 
-      const exportCalls = query.mock.calls.filter((call) => call.length === 1)
-      expect.soft(exportCalls).toEqual([[initialParams], [{ ...initialParams, page: 2 }]])
+      const exportCalls = query.mock.calls.filter(([params]) => params.page_size === EXPORT_PAGE_SIZE)
+      const signal = exportCalls[0][1].signal
+      expect(signal).toBeInstanceOf(AbortSignal)
+      expect(exportCalls).toEqual([[initialParams, { signal }], [{ ...initialParams, page: 2 }, { signal }]])
       expect.soft(filename).toBe('usage_2026-03-01_to_2026-03-08.csv')
       expect(showSuccess).toHaveBeenCalledWith('Export success')
       expect(showError).not.toHaveBeenCalled()
@@ -1045,8 +1047,8 @@ describe('user UsageView', () => {
     }
     let secondPageAttempts = 0
     query.mockClear()
-    query.mockImplementation((params, options) => {
-      if (options) return Promise.resolve({ items: [usageLog], total: EXPORT_PAGE_SIZE + 1, pages: 2 })
+    query.mockImplementation((params) => {
+      if (params.page_size !== EXPORT_PAGE_SIZE) return Promise.resolve({ items: [usageLog], total: EXPORT_PAGE_SIZE + 1, pages: 2 })
       if (params.page === 1) return Promise.resolve(fullFirstPage)
       secondPageAttempts++
       return secondPageAttempts === 1
@@ -1081,7 +1083,7 @@ describe('user UsageView', () => {
       await vi.advanceTimersByTimeAsync(2_000)
       await exporting
 
-      const exportPages = query.mock.calls.filter((call) => call.length === 1).map(([params]) => params.page)
+      const exportPages = query.mock.calls.filter(([params]) => params.page_size === EXPORT_PAGE_SIZE).map(([params]) => params.page)
       expect(exportPages).toEqual([1, 2, 2])
       expect(csvContent.split('\n')).toHaveLength(EXPORT_PAGE_SIZE + 2)
       expect(clickSpy).toHaveBeenCalledTimes(1)
@@ -1098,12 +1100,33 @@ describe('user UsageView', () => {
     }
   })
 
+  it('aborts the in-flight usage request when the export is cancelled', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+    let signal: AbortSignal | undefined
+    query.mockImplementationOnce((_params, options) => new Promise((_resolve, reject) => {
+      signal = options?.signal
+      signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true })
+    }))
+    try {
+      const exporting = (wrapper.vm as any).exportToCSV()
+      expect(signal).toBeInstanceOf(AbortSignal)
+      wrapper.findComponent(ExportProgressDialog).vm.$emit('cancel')
+      expect(signal?.aborted).toBe(true)
+      await exporting
+      expect(showInfo).toHaveBeenCalledWith('usage.exportCancelled')
+      expect(showError).not.toHaveBeenCalled()
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   it('cancels an export from the progress dialog without downloading or reporting a failure', async () => {
     const wrapper = mountUsageView()
     await flushPromises()
 
     query.mockClear()
-    query.mockImplementation((_params, options) => options
+    query.mockImplementation((params) => params.page_size !== EXPORT_PAGE_SIZE
       ? Promise.resolve({ items: [usageLog], total: 1, pages: 1 })
       : Promise.reject({ status: 429, code: 'RATE_LIMITED', retry_after_seconds: 30 }))
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
@@ -1118,7 +1141,7 @@ describe('user UsageView', () => {
       await vi.advanceTimersByTimeAsync(0)
       await exporting
 
-      expect(query.mock.calls.filter((call) => call.length === 1)).toHaveLength(1)
+      expect(query.mock.calls.filter(([params]) => params.page_size === EXPORT_PAGE_SIZE)).toHaveLength(1)
       expect(clickSpy).not.toHaveBeenCalled()
       expect(showError).not.toHaveBeenCalled()
       expect(showInfo).toHaveBeenCalledWith('usage.exportCancelled')

@@ -1412,6 +1412,10 @@ func extractPromptLikeInstructionsFromInput(reqBody map[string]any) string {
 // 按 model 选择真实 Codex CLI 的 base instructions，使合成请求在提示词层面贴近真实 Codex 行为；
 // 若内嵌 prompt 意外为空，回退到最小占位符以保证字段非空。
 func defaultCodexSynthInstructions(model string) string {
+	// Pro has no separate bundled prompt. Use the Astra family prompt.
+	if normalizeOpenAIGPT62Model(model) == "gpt-6.2-astra-pro" {
+		model = "gpt-6.2-astra"
+	}
 	if instructions := strings.TrimSpace(openai.CodexBaseInstructionsForModel(model)); instructions != "" {
 		return instructions
 	}

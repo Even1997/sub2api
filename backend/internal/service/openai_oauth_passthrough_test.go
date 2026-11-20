@@ -2775,7 +2775,7 @@ func TestForwardGPT62InstructionsCachePrefix(t *testing.T) {
 	}{
 		{"sol developer", "gpt-6.2-sol", `[{"role":"developer","content":"stable"},{"role":"user","content":"hello"}]`, "", "stable", false, false},
 		{"mapped astra system", "public", `[{"role":"system","content":"stable"},{"role":"user","content":"hello"}]`, "this turn", "stable", false, false},
-		{"astra pro string", "gpt-6.2-astra-pro", `"hello"`, "", defaultCodexSynthInstructions("gpt-6.2-astra-pro"), false, false},
+		{"astra pro string", "gpt-6.2-astra-pro", `"hello"`, "", defaultCodexSynthInstructions("gpt-6.2-astra"), false, false},
 		{"empty turn", "gpt-6.2-sol", `[{"role":"user","content":"hello"}]`, "  ", defaultCodexSynthInstructions("gpt-6.2-sol"), false, false},
 		{"sol passthrough", "gpt-6.2-sol", `[{"role":"developer","content":"stable"},{"role":"user","content":"hello"}]`, "", "stable", true, false},
 		{"compact mapped from codex", "legacy-codex", `[{"role":"developer","content":"stable"},{"role":"user","content":"hello"}]`, "", "stable", true, false},

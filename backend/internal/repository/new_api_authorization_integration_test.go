@@ -230,6 +230,9 @@ func TestNewAPIIntegrationConvertedCostAndConcurrentSettings(t *testing.T) {
 	// An in-flight ×7 result must not overwrite the new ×1 setting.
 	require.NoError(t, ar.UpdateExtra(ctx, a.ID, map[string]any{service.NewAPIApplyUSDRateExtraKey: false, service.AccountCostMultiplierExtraKey: 0.55}))
 	require.ErrorIs(t, r.WriteSnapshot(ctx, loaded, binding, snap), service.ErrUpstreamBillingProbeIdentityChanged)
+	profile, err := r.GetProfile(ctx, site, 7)
+	require.NoError(t, err)
+	require.ErrorIs(t, r.Save(ctx, profile, []service.NewAPIBindingSave{{Account: loaded, TokenID: 3, Group: "foreign", ApplyUSDRate: &enabled, CostMultiplier: &cost}}), service.ErrUpstreamBillingProbeIdentityChanged)
 	loaded, err = ar.GetByID(ctx, a.ID)
 	require.NoError(t, err)
 	require.Equal(t, 0.55, loaded.CostMultiplier())
@@ -247,7 +250,8 @@ func TestNewAPIIntegrationConvertedCostAndConcurrentSettings(t *testing.T) {
 	p, err := r.GetProfile(ctx, site, 7)
 	require.NoError(t, err)
 	enabled = false
-	require.NoError(t, r.Save(ctx, p, []service.NewAPIBindingSave{{Account: loaded, TokenID: 3, Group: "foreign", ApplyUSDRate: &enabled}}))
+	// The verified cost was computed before the administrator opted out.
+	require.NoError(t, r.Save(ctx, p, []service.NewAPIBindingSave{{Account: loaded, TokenID: 3, Group: "foreign", ApplyUSDRate: &enabled, CostMultiplier: &cost}}))
 	loaded, err = ar.GetByID(ctx, a.ID)
 	require.NoError(t, err)
 	require.Equal(t, 0.55, loaded.CostMultiplier())
