@@ -233,6 +233,15 @@
       </div>
     </div>
     <HourlyUsageDrawer :show="hourlyOpen" :initial-date="startDate === endDate ? startDate : today" :filters="normalizedFilters" @close="hourlyOpen = false" />
+    <ExportProgressDialog
+      :show="exportProgress.show"
+      :progress="exportProgress.progress"
+      :current="exportProgress.current"
+      :total="exportProgress.total"
+      estimated-time=""
+      :notice="exportProgress.notice"
+      @cancel="cancelExport"
+    />
   </AppLayout>
 
 </template>
@@ -257,6 +266,8 @@ import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatCompactNumber, formatReasoningEffort } from '@/utils/format'
+import ExportProgressDialog from '@/components/common/ExportProgressDialog.vue'
+import { EXPORT_PAGE_SIZE, fetchAllExportPages, isExportAbortError } from '@/utils/pagedExport'
 import { formatUsageCacheRate, showUsageCacheRate } from '@/utils/usageCacheRate'
 import { platformIconClass } from '@/utils/platformColors'
 import { showUpstreamResponseModelToUsers } from '@/utils/upstreamResponseModel'
@@ -334,6 +345,8 @@ const summaryMetrics = computed(() => [
   { label: t('usage.totalRequests'), value: usageStats.value ? usageStats.value.total_requests >= 1_000_000 ? formatCompactNumber(usageStats.value.total_requests) : usageStats.value.total_requests.toLocaleString() : '-', exactValue: usageStats.value?.total_requests.toLocaleString() },
   { label: t('usage.totalTokens'), value: usageStats.value ? formatCompactNumber(usageStats.value.total_tokens) : '-', exactValue: usageStats.value?.total_tokens.toLocaleString(), hint: t('usage.personal.tokensHint'), showHintIcon: true },
 ])
+const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0, notice: '' })
+let exportAbortController: AbortController | null = null
 const errorRows = ref<UserErrorRequest[]>([])
 const errorLoading = ref(false)
 const errorPage = ref(1)
@@ -783,22 +796,34 @@ const escapeCSVValue = (value: unknown): string => {
   return str
 }
 
+const cancelExport = () => exportAbortController?.abort()
+
 const exportToCSV = async () => {
+  if (exporting.value) return
   if (pagination.total === 0) {
     appStore.showWarning(t('usage.noDataToExport'))
     return
   }
+  const controller = new AbortController()
+  exportAbortController = controller
   exporting.value = true
-  appStore.showInfo(t('usage.preparingExport'))
+  Object.assign(exportProgress, { show: true, progress: 0, current: 0, total: pagination.total, notice: '' })
   try {
-    const allLogs: UsageLog[] = []
-    const pageSize = 100
-    const exportParams = buildUsageListParams(1, pageSize)
-    const totalPages = Math.ceil(pagination.total / pageSize)
-    for (let page = 1; page <= totalPages; page++) {
-      const response = await usageAPI.query({ ...exportParams, page })
-      allLogs.push(...response.items)
-    }
+    // Snapshot filters and sort once so every page belongs to the same query.
+    const exportParams = buildUsageListParams(1, EXPORT_PAGE_SIZE)
+    const allLogs = await fetchAllExportPages<UsageLog>({
+      signal: controller.signal,
+      fetchPage: (page, pageSize) => usageAPI.query({ ...exportParams, page, page_size: pageSize }),
+      onProgress: ({ fetched, total }) => {
+        exportProgress.notice = ''
+        exportProgress.current = fetched
+        exportProgress.total = total
+        exportProgress.progress = total > 0 ? Math.min(100, Math.round((fetched / total) * 100)) : 0
+      },
+      onRateLimited: ({ waitSeconds }) => {
+        exportProgress.notice = t('usage.exportRateLimitedWait', { seconds: waitSeconds })
+      },
+    })
     if (allLogs.length === 0) {
       appStore.showWarning(t('usage.noDataToExport'))
       return
@@ -858,10 +883,16 @@ const exportToCSV = async () => {
     window.URL.revokeObjectURL(url)
     appStore.showSuccess(t('usage.exportSuccess'))
   } catch (error) {
-    console.error('CSV Export failed:', error)
-    appStore.showError(t('usage.exportFailed'))
+    if (isExportAbortError(error)) {
+      appStore.showInfo(t('usage.exportCancelled'))
+    } else {
+      console.error('CSV Export failed:', error)
+      appStore.showError(t('usage.exportFailed'))
+    }
   } finally {
+    if (exportAbortController === controller) exportAbortController = null
     exporting.value = false
+    exportProgress.show = false
   }
 }
 
@@ -1068,6 +1099,7 @@ onMounted(() => {
 onUnmounted(() => {
   abortController?.abort()
   heatmapReqSeq++
+  exportAbortController?.abort()
   document.removeEventListener('click', handleColumnClickOutside)
 })
 
