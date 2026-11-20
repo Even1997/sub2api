@@ -1129,7 +1129,7 @@ func (s *AccountRepoSuite) TestGrokConfigurationEditRuntimeBoundary() {
 				stored.Platform = service.PlatformAnthropic
 				stored.Type = service.AccountTypeAPIKey
 				stored.RateLimitedAt, stored.RateLimitResetAt = nil, nil
-				s.Require().NoError(s.repo.Update(service.WithAccountPlatformChange(s.ctx), stored))
+				s.Require().NoError(s.repo.Update(s.ctx, stored))
 				stored, err = s.repo.GetByID(s.ctx, account.ID)
 				s.Require().NoError(err)
 				s.Require().Nil(stored.RateLimitedAt)

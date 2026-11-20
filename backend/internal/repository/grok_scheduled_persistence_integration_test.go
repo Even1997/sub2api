@@ -224,7 +224,7 @@ func TestIssue817GrokScheduledRecoveryRequiresSavedResult(t *testing.T) {
 					}
 				}
 			}
-			scheduled := service.ProvideScheduledTestService(plans, results, nil, nil)
+			scheduled := service.ProvideScheduledTestService(plans, results, nil, nil, nil)
 			runner, _ := service.NewGrokConnectivityRunnerForTesting(scheduled, accounts, &issue817GrokHTTP{client: server.Client(), target: target})
 			_, negativeExecutor = service.NewGrokConnectivityRunnerForTesting(scheduled, NewAccountRepository(integrationEntClient, integrationDB, nil),
 				&issue817GrokHTTP{client: server.Client(), target: target, negative: true})
