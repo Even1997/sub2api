@@ -786,7 +786,7 @@ watch(() => [props.show, props.account?.id] as const, ([show]) => {
     questionSnapshot.value = null
     questionError.value = ''
     prompt.value = questionPrompt('candy')
-    modelId.value = 'gpt-6-astra'
+    modelId.value = defaultModel.value
     reasoningEffort.value = 'medium'
     parallelCount.value = 1
     runs.value = []

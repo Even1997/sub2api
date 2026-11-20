@@ -5268,8 +5268,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
-  costMultiplier.value = readAccountCostMultiplier(extra)
-  costMultiplierAutoSync.value = extra?.upstream_billing_provider !== 'new_api' && extra?.cost_multiplier_auto_sync !== false
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
