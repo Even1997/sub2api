@@ -1534,6 +1534,7 @@ func (s *UsageLogRepoSuite) TestGetAccountUsageStats() {
 	base := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
 
 	// Create logs on different days
+	duration := 180
 	log1 := &service.UsageLog{
 		UserID:       user.ID,
 		APIKeyID:     apiKey.ID,
@@ -1543,6 +1544,7 @@ func (s *UsageLogRepoSuite) TestGetAccountUsageStats() {
 		OutputTokens: 200,
 		TotalCost:    0.5,
 		ActualCost:   0.4,
+		DurationMs:   &duration,
 		CreatedAt:    base.Add(12 * time.Hour),
 	}
 	_, err := s.repo.Create(s.ctx, log1)
@@ -1572,6 +1574,7 @@ func (s *UsageLogRepoSuite) TestGetAccountUsageStats() {
 	s.Require().Equal(int64(2), resp.Summary.TotalRequests)
 	s.Require().Equal(int64(450), resp.Summary.TotalTokens)
 	s.Require().Len(resp.Models, 2)
+	s.Require().Equal(180.0, resp.Summary.AvgDurationMs, "missing durations do not count as zero")
 }
 
 func (s *UsageLogRepoSuite) TestGetAccountUsageStats_EmptyRange() {
@@ -1585,6 +1588,7 @@ func (s *UsageLogRepoSuite) TestGetAccountUsageStats_EmptyRange() {
 	s.Require().NoError(err, "GetAccountUsageStats empty")
 
 	s.Require().Len(resp.History, 0)
+	s.Require().Zero(resp.Summary.AvgDurationMs)
 	s.Require().Equal(int64(0), resp.Summary.TotalRequests)
 }
 

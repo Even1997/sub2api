@@ -263,7 +263,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// 倍率自省不需要订阅数据；/v1/usage 仍保留原有订阅读取行为。
 		if routingState != nil {
 			subscription = routingState.CurrentSubscription()
-		} else if isSubscriptionType && subscriptionService != nil && !billingInfoRequest {
+		} else if isSubscriptionType && subscriptionService != nil && !billingInfoRequest && !pelicanReadRequest {
 			sub, subErr := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
 				apiKey.User.ID,

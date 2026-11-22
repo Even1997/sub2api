@@ -45,6 +45,14 @@ func RegisterGatewayRoutes(
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize, bodyBudget)
 	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize, bodyBudget)
 	imageAdmission := middleware.ExcelBPSImageAdmission()
+	groupBodyLimit := func(c *gin.Context) {
+		switch c.FullPath() {
+		case "/v1/alpha/search", "/v1/embeddings", "/backend-api/codex/alpha/search":
+			textBodyLimit(c)
+		default:
+			bodyLimit(c)
+		}
+	}
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	var captureTraffic gin.HandlerFunc
@@ -248,7 +256,7 @@ func RegisterGatewayRoutes(
 
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
-	gateway.Use(traffic, bodyLimit)
+	gateway.Use(traffic, groupBodyLimit)
 	gateway.Use(clientRequestID)
 	gateway.Use(opsErrorLogger)
 	gateway.Use(endpointNorm)
@@ -301,7 +309,7 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.Responses(c)
 		}))
-		gateway.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
+		gateway.POST("/alpha/search", h.OpenAIGateway.AlphaSearch)
 		gateway.GET("/responses", func(c *gin.Context) {
 			h.OpenAIGateway.ResponsesWebSocket(c)
 		})
@@ -313,7 +321,7 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.ChatCompletions(c)
 		})
-		gateway.POST("/embeddings", textBodyLimit, func(c *gin.Context) {
+		gateway.POST("/embeddings", func(c *gin.Context) {
 			if !isOpenAIOnlyEndpointGatewayPlatform(c) {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 				c.JSON(http.StatusNotFound, gin.H{
@@ -486,13 +494,13 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodGet, "/models/:model", bodyLimit, h.Gateway.Models)
 	rootRoute(http.MethodPost, "/messages/count_tokens", bodyLimit, countTokensHandler)
 	codexDirect := r.Group("/backend-api/codex")
-	codexDirect.Use(traffic, bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, groupModelAllowlist, rejectConflictingFields, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly, groupStreamingPolicy, groupAntiDistillation, apiKeyLongContext, compositeTarget, apiKeyLongContext, requireGroupAnthropic)
+	codexDirect.Use(traffic, groupBodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, groupModelAllowlist, rejectConflictingFields, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly, groupStreamingPolicy, groupAntiDistillation, apiKeyLongContext, compositeTarget, apiKeyLongContext, requireGroupAnthropic)
 	{
 		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
 		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)
 		codexDirect.POST("/responses", responsesHandler)
 		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(responsesHandler))
-		codexDirect.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
+		codexDirect.POST("/alpha/search", h.OpenAIGateway.AlphaSearch)
 		codexDirect.GET("/responses", func(c *gin.Context) {
 			h.OpenAIGateway.ResponsesWebSocket(c)
 		})

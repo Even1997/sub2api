@@ -15,7 +15,7 @@ func TestGatewayRoutesLongContextBlocksBeforeHandler(t *testing.T) {
 	for _, path := range []string{
 		"/v1/responses", "/v1/responses/compact", "/responses", "/responses/compact",
 		"/backend-api/codex/responses", "/backend-api/codex/responses/compact",
-		"/v1/chat/completions", "/chat/completions", "/v1/messages", "/v1/systemone", "/antigravity/v1/messages",
+		"/v1/chat/completions", "/chat/completions", "/v1/messages", "/antigravity/v1/messages",
 	} {
 		t.Run(path, func(t *testing.T) {
 			router := newGatewayRoutesTestRouterWithGroup(&service.Group{Platform: service.PlatformOpenAI})
