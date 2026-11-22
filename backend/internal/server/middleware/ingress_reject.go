@@ -18,6 +18,8 @@ import (
 type IngressRejectReason string
 
 const (
+	IngressRejectConflictingRequestFields IngressRejectReason = "conflicting_request_fields"
+
 	IngressRejectQueryAPIKeyDeprecated  IngressRejectReason = "query_api_key_deprecated"
 	IngressRejectAPIKeyRequired         IngressRejectReason = "api_key_required"
 	IngressRejectInvalidAPIKey          IngressRejectReason = "invalid_api_key"
@@ -33,8 +35,8 @@ const (
 	IngressRejectModelNotAllowed        IngressRejectReason = "model_not_allowed"
 	IngressRejectNonStreamingDisabled   IngressRejectReason = "non_streaming_disabled"
 	IngressRejectStreamRequired         IngressRejectReason = "stream_required"
-	IngressRejectLongContextDisabled IngressRejectReason = "long_context_disabled"
-	IngressRejectCodexClientRequired IngressRejectReason = "codex_client_required"
+	IngressRejectLongContextDisabled    IngressRejectReason = "long_context_disabled"
+	IngressRejectCodexClientRequired    IngressRejectReason = "codex_client_required"
 	IngressRejectSubagentsBlocked       IngressRejectReason = "subagents_blocked"
 )
 

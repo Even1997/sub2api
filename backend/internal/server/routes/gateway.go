@@ -65,6 +65,7 @@ func RegisterGatewayRoutes(
 	// 分组级模型白名单准入：在 apiKeyAuth 之后、compositeTarget 之前，
 	// 保证校验发生在合成路由改写与调度之前，且只看客户端书写的模型名。
 	groupModelAllowlist := middleware.GroupModelAllowlist()
+	rejectConflictingFields := middleware.RejectConflictingRequestFields()
 	apiKeyModelPolicy := middleware.APIKeyModelPolicy()
 	groupStreamingPolicy := middleware.GroupStreamingPolicy()
 	apiKeyLongContext := middleware.APIKeyLongContextPolicy(h.Gateway.CheckAPIKeyLongContext)
@@ -255,7 +256,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(captureTraffic)
 	gateway.Use(imageAdmission)
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
-	gateway.Use(groupModelAllowlist, apiKeyModelPolicy)
+	gateway.Use(groupModelAllowlist, rejectConflictingFields, apiKeyModelPolicy)
 	gateway.Use(groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly)
 	gateway.Use(groupStreamingPolicy)
 	// Enforce the key policy before target resolution and again after model rewriting.
@@ -430,7 +431,7 @@ func RegisterGatewayRoutes(
 	gemini.Use(endpointNorm)
 	gemini.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
 	gemini.Use(captureTraffic)
-	gemini.Use(groupModelAllowlist)
+	gemini.Use(groupModelAllowlist, rejectConflictingFields)
 	gemini.Use(groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly)
 	gemini.Use(groupStreamingPolicy)
 	gemini.Use(compositeGeminiTarget)
@@ -468,7 +469,7 @@ func RegisterGatewayRoutes(
 	// 根路径别名共用中间件链：白名单准入在 apiKeyAuth 之后、compositeTarget
 	// 之前，避免逐条路由手工维护链导致漏挂。
 	rootRoute := func(method, path string, limit gin.HandlerFunc, handler gin.HandlerFunc) {
-		r.Handle(method, path, traffic, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, groupModelAllowlist, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly, groupStreamingPolicy, groupAntiDistillation, apiKeyLongContext, compositeTarget, apiKeyLongContext, requireGroupAnthropic, handler)
+		r.Handle(method, path, traffic, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, groupModelAllowlist, rejectConflictingFields, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly, groupStreamingPolicy, groupAntiDistillation, apiKeyLongContext, compositeTarget, apiKeyLongContext, requireGroupAnthropic, handler)
 	}
 	for _, prefix := range []string{"/api/v3", "/v3", "/v1", ""} {
 		rootRoute(http.MethodPost, prefix+"/contents/generations/tasks", bodyLimit, h.OpenAIGateway.SeedanceTasks)
@@ -485,7 +486,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodGet, "/models/:model", bodyLimit, h.Gateway.Models)
 	rootRoute(http.MethodPost, "/messages/count_tokens", bodyLimit, countTokensHandler)
 	codexDirect := r.Group("/backend-api/codex")
-	codexDirect.Use(traffic, bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, groupModelAllowlist, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly, groupStreamingPolicy, groupAntiDistillation, apiKeyLongContext, compositeTarget, apiKeyLongContext, requireGroupAnthropic)
+	codexDirect.Use(traffic, bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), captureTraffic, imageAdmission, groupModelAllowlist, rejectConflictingFields, apiKeyModelPolicy, groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly, groupStreamingPolicy, groupAntiDistillation, apiKeyLongContext, compositeTarget, apiKeyLongContext, requireGroupAnthropic)
 	{
 		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
 		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)
@@ -611,7 +612,7 @@ func RegisterGatewayRoutes(
 	antigravityV1.Use(middleware.ForcePlatform(service.PlatformAntigravity))
 	antigravityV1.Use(gin.HandlerFunc(apiKeyAuth))
 	antigravityV1.Use(captureTraffic)
-	antigravityV1.Use(groupModelAllowlist, apiKeyModelPolicy)
+	antigravityV1.Use(groupModelAllowlist, rejectConflictingFields, apiKeyModelPolicy)
 	antigravityV1.Use(groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly)
 	antigravityV1.Use(groupStreamingPolicy)
 	antigravityV1.Use(apiKeyLongContext)
@@ -631,7 +632,7 @@ func RegisterGatewayRoutes(
 	antigravityV1Beta.Use(middleware.ForcePlatform(service.PlatformAntigravity))
 	antigravityV1Beta.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
 	antigravityV1Beta.Use(captureTraffic)
-	antigravityV1Beta.Use(groupModelAllowlist)
+	antigravityV1Beta.Use(groupModelAllowlist, rejectConflictingFields)
 	antigravityV1Beta.Use(groupCodexCLIOnly, groupBlockSubagents, groupStreamOnly)
 	antigravityV1Beta.Use(groupStreamingPolicy)
 	antigravityV1Beta.Use(apiKeyLongContext)

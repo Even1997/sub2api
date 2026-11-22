@@ -44,6 +44,7 @@ export const NEW_FEATURE_NOTICES = {
   keyRisk: 'key-risk-notices-acknowledgement-initial-announcement',
   keyRiskSources: 'key-risk-per-key-source-restriction-initial-announcement',
   mistralBudgetUsage: 'mistral-budget-usage-initial-announcement',
+  exaSearch: 'exa-search-provider',
   deepSeekSearch: 'deepseek-search-provider-initial-announcement',
   groupAntiDistillation: 'group-openai-anti-distillation-initial-announcement',
   channelPricingTransfer: 'channel-pricing-import-export-initial-announcement',
