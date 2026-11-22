@@ -649,3 +649,35 @@ func TestAdminServiceBulkUpdateAccounts_ValidatesFilterResolvedOpenAITargets(t *
 	require.Equal(t, []int64{7}, repo.getByIDsIDs)
 	require.Zero(t, repo.bulkUpdateCalls)
 }
+
+func TestAdminServiceBulkUpdateAccounts_AutoResetCredit(t *testing.T) {
+	parent := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	other := &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	for _, tc := range []struct {
+		name   string
+		target *Account
+		extra  map[string]any
+		want   map[string]any
+		reason string
+	}{
+		{"enable", other, map[string]any{OpenAIAutoResetCreditEnabledExtraKey: true, OpenAIAutoResetCredit5hThresholdExtraKey: 0, OpenAIAutoResetCredit7dThresholdExtraKey: 0.9, OpenAIAutoResetCreditStateExtraKey: "stale"}, map[string]any{OpenAIAutoResetCreditEnabledExtraKey: true, OpenAIAutoResetCredit5hThresholdExtraKey: 0.0, OpenAIAutoResetCredit7dThresholdExtraKey: 0.9}, ""},
+		{"disable preserves thresholds", other, map[string]any{OpenAIAutoResetCreditEnabledExtraKey: false}, map[string]any{OpenAIAutoResetCreditEnabledExtraKey: false}, ""},
+		{"invalid threshold", other, map[string]any{OpenAIAutoResetCredit5hThresholdExtraKey: 0.0009}, nil, "OPENAI_AUTO_RESET_CREDIT_THRESHOLD_INVALID"},
+		{"mixed types", &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, map[string]any{OpenAIAutoResetCreditEnabledExtraKey: true}, nil, "OPENAI_BULK_TARGET_INVALID"},
+		{"shadow", &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth, ParentAccountID: &parent.ID}, map[string]any{OpenAIAutoResetCreditEnabledExtraKey: false}, nil, "OPENAI_BULK_TARGET_INVALID"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{parent, tc.target}}
+			svc := &adminServiceImpl{accountRepo: repo}
+			_, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{AccountIDs: []int64{1, 2}, Extra: tc.extra})
+			if tc.reason != "" {
+				requireApplicationErrorReason(t, err, tc.reason)
+				require.Zero(t, repo.bulkUpdateCalls)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, []int64{1, 2}, repo.bulkUpdateIDs)
+			require.Equal(t, tc.want, repo.lastBulkUpdate.Extra)
+		})
+	}
+}

@@ -1264,7 +1264,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	// Managed probe/session state may only enter through dedicated typed endpoints.
 	input.Extra = MergeOpenAICodexTicketExtra(input.Extra, nil)
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
-	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
+	delete(input.Extra, OpenAIAutoResetCreditStateExtraKey)
 	delete(input.Extra, OpenAITwoFAAdmissionExtraKey)
 	delete(input.Extra, OAuthDegradationActionExtraKey)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)

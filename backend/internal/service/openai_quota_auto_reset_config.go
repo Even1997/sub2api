@@ -61,21 +61,28 @@ func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow 
 	normalized := cloneOpenAIAutoResetExtra(extra)
 	delete(normalized, OpenAIAutoResetCreditStateExtraKey)
 
-	_, hasEnabled := normalized[OpenAIAutoResetCreditEnabledExtraKey]
-	_, has5h := normalized[OpenAIAutoResetCredit5hThresholdExtraKey]
-	_, has7d := normalized[OpenAIAutoResetCredit7dThresholdExtraKey]
-	if !hasEnabled && !has5h && !has7d {
-		return normalized, nil
+	changed, err := normalizeAutoResetCreditFields(normalized)
+	if err != nil {
+		return nil, err
 	}
-	if platform != PlatformOpenAI || accountType != AccountTypeOAuth || isShadow {
+	if changed && (platform != PlatformOpenAI || accountType != AccountTypeOAuth || isShadow) {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_ACCOUNT_INVALID", "automatic reset credits are only supported for OpenAI OAuth parent accounts")
 	}
+	return normalized, nil
+}
 
+func normalizeAutoResetCreditFields(extra map[string]any) (bool, error) {
+	rawEnabled, hasEnabled := extra[OpenAIAutoResetCreditEnabledExtraKey]
+	_, has5h := extra[OpenAIAutoResetCredit5hThresholdExtraKey]
+	_, has7d := extra[OpenAIAutoResetCredit7dThresholdExtraKey]
+	if !hasEnabled && !has5h && !has7d {
+		return false, nil
+	}
 	enabled := false
 	if hasEnabled {
-		value, ok := normalized[OpenAIAutoResetCreditEnabledExtraKey].(bool)
+		value, ok := rawEnabled.(bool)
 		if !ok {
-			return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_ENABLED_INVALID", "auto_reset_credit_enabled must be a boolean")
+			return true, infraerrors.New(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_ENABLED_INVALID", "auto_reset_credit_enabled must be a boolean")
 		}
 		enabled = value
 	}
@@ -85,17 +92,17 @@ func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow 
 	} {
 		if !present {
 			if enabled {
-				normalized[key] = openAIAutoResetCreditDefaultThreshold
+				extra[key] = openAIAutoResetCreditDefaultThreshold
 			}
 			continue
 		}
-		value, ok := parseOpenAIAutoResetThreshold(normalized[key])
+		value, ok := parseOpenAIAutoResetThreshold(extra[key])
 		if !ok || !isValidOpenAIAutoResetThreshold(value) {
-			return nil, infraerrors.Newf(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_THRESHOLD_INVALID", "%s must be 0 (disabled) or between 0.001 and 1.0", key)
+			return true, infraerrors.Newf(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_THRESHOLD_INVALID", "%s must be 0 (disabled) or between 0.001 and 1.0", key)
 		}
-		normalized[key] = value
+		extra[key] = value
 	}
-	return normalized, nil
+	return true, nil
 }
 
 func stripOpenAIAutoResetCreditManagedExtra(extra map[string]any, stripConfig bool) map[string]any {

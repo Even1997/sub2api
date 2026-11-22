@@ -751,6 +751,7 @@ type AccountBulkEditTarget =
   | {
       mode: 'selected'
       accountIds: number[]
+      hasShadow?: boolean
       selectedPlatforms: AccountPlatform[]
       selectedTypes: AccountType[]
     }
@@ -2783,6 +2784,7 @@ const openBulkEditSelected = () => {
   bulkEditTarget.value = {
     mode: 'selected',
     accountIds: [...selIds.value],
+    hasShadow: accounts.value.some(a => isSelected(a.id) && a.parent_account_id != null),
     selectedPlatforms: [...selPlatforms.value],
     selectedTypes: [...selTypes.value]
   }
@@ -2799,10 +2801,12 @@ const openBulkEditFiltered = async () => {
   const requestVersion = selectionRequestVersion.value
   try {
     if (filters.quota_window) {
-      const accountIds = await fetchAllAccountIds(
-        (page, pageSize, requestFilters) => adminAPI.accounts.list(page, pageSize, requestFilters),
-        filters
-      )
+      let hasShadow = false
+      const accountIds = await fetchAllAccountIds(async (page, pageSize, requestFilters) => {
+        const result = await adminAPI.accounts.list(page, pageSize, requestFilters)
+        hasShadow ||= result.items.some(a => a.parent_account_id != null)
+        return result
+      }, filters)
       if (requestVersion !== selectionRequestVersion.value) return
       if (selIds.value.length > 0) {
         openBulkEditSelected()
@@ -2815,6 +2819,7 @@ const openBulkEditFiltered = async () => {
       bulkEditTarget.value = {
         mode: 'selected',
         accountIds,
+        hasShadow,
         selectedPlatforms: ['openai'],
         selectedTypes: ['oauth']
       }
@@ -2842,6 +2847,7 @@ const openBulkEditFiltered = async () => {
     bulkEditTarget.value = {
       mode: 'selected',
       accountIds,
+      hasShadow: rows.some(a => a.parent_account_id != null),
       selectedPlatforms,
       selectedTypes
     }

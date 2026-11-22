@@ -100,6 +100,62 @@ function mountModal(extraProps: Record<string, unknown> = {}) {
 }
 
 describe('BulkEditAccountModal', () => {
+  describe('automatic reset credits', () => {
+    const oauth = { selectedPlatforms: ['openai'], selectedTypes: ['oauth'] }
+    const submit = async (wrapper: ReturnType<typeof mountModal>) => {
+      await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+    }
+
+    it('applies the selected thresholds, preserves them when disabling, and resets on reopen', async () => {
+      const wrapper = mountModal(oauth)
+      const mode = wrapper.get('#bulk-auto-reset-credit')
+      await mode.setValue('enable')
+      expect(wrapper.get<HTMLInputElement>('#bulk-auto-reset-5h').element.value).toBe('100')
+      await wrapper.get('#bulk-auto-reset-5h').setValue(0)
+      await wrapper.get('#bulk-auto-reset-7d').setValue(90)
+      await submit(wrapper)
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], {
+        extra: { auto_reset_credit_enabled: true, auto_reset_credit_5h_threshold: 0, auto_reset_credit_7d_threshold: 0.9 }
+      })
+      await mode.setValue('disable')
+      await submit(wrapper)
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], { extra: { auto_reset_credit_enabled: false } })
+      await wrapper.setProps({ show: false })
+      await wrapper.setProps({ show: true })
+      expect(wrapper.get<HTMLSelectElement>('#bulk-auto-reset-credit').element.value).toBe('keep')
+      await wrapper.get('#bulk-edit-cost-multiplier-enabled').setValue(true)
+      await submit(wrapper)
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], { extra: { cost_multiplier: 0.1 } })
+      wrapper.unmount()
+    })
+
+    it.each(['', -1, 0.05, 101])('rejects invalid threshold %s', async value => {
+      const wrapper = mountModal(oauth)
+      await wrapper.get('#bulk-auto-reset-credit').setValue('enable')
+      await wrapper.get('#bulk-auto-reset-7d').setValue(value)
+      await submit(wrapper)
+      expect(showError).toHaveBeenCalledWith('admin.accounts.autoResetCredit.thresholdInvalid')
+      expect(adminAPI.accounts.bulkUpdate).not.toHaveBeenCalled()
+      wrapper.unmount()
+    })
+
+    it.each([
+      { ...oauth, selectedTypes: ['oauth', 'apikey'] },
+      { ...oauth, selectedPlatforms: ['anthropic'] },
+      { ...oauth, target: { mode: 'selected', hasShadow: true } }
+    ])('omits reset settings if the selection becomes ineligible', async props => {
+      const wrapper = mountModal(oauth)
+      await wrapper.get('#bulk-auto-reset-credit').setValue('enable')
+      await wrapper.setProps(props as Parameters<typeof wrapper.setProps>[0])
+      expect(wrapper.find('#bulk-auto-reset-credit').exists()).toBe(false)
+      await wrapper.get('#bulk-edit-cost-multiplier-enabled').setValue(true)
+      await submit(wrapper)
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], { extra: { cost_multiplier: 0.1 } })
+      wrapper.unmount()
+    })
+  })
+
   describe('OAuth reserved slots', () => {
     const oauthProps = { selectedPlatforms: ['openai'], selectedTypes: ['oauth'] }
     const submit = async (wrapper: ReturnType<typeof mountModal>) => {

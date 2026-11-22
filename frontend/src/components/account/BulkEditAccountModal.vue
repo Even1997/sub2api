@@ -45,6 +45,31 @@
         </fieldset>
       </div>
 
+      <div v-if="canEditAutoResetCredit" class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between gap-4">
+          <label class="input-label mb-0" for="bulk-auto-reset-credit">{{ t('admin.accounts.autoResetCredit.title') }}</label>
+          <select id="bulk-auto-reset-credit" v-model="autoResetCreditMode" class="input w-auto">
+            <option value="keep">{{ t('autoConfig.account.unset') }}</option>
+            <option value="enable">{{ t('autoConfig.account.on') }}</option>
+            <option value="disable">{{ t('autoConfig.account.off') }}</option>
+          </select>
+        </div>
+        <p class="input-hint">{{ t('admin.accounts.autoResetCredit.hint') }}</p>
+        <template v-if="autoResetCreditMode === 'enable'">
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="input-label" for="bulk-auto-reset-5h">{{ t('admin.accounts.autoResetCredit.threshold5h') }}</label>
+              <input id="bulk-auto-reset-5h" v-model.number="autoResetCredit5h" class="input" type="number" min="0" max="100" step="0.1" required />
+            </div>
+            <div>
+              <label class="input-label" for="bulk-auto-reset-7d">{{ t('admin.accounts.autoResetCredit.threshold7d') }}</label>
+              <input id="bulk-auto-reset-7d" v-model.number="autoResetCredit7d" class="input" type="number" min="0" max="100" step="0.1" required />
+            </div>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.autoResetCredit.thresholdHint') }}</p>
+        </template>
+      </div>
+
       <!-- Excel / BPS protocol (ChatGPT OAuth only) -->
       <div v-if="allOpenAIOAuthOnly && globalBpsEnabled" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1772,6 +1797,7 @@ interface Props {
     accountIds?: number[]
     filters?: Record<string, unknown>
     previewCount?: number
+    hasShadow?: boolean
     selectedPlatforms?: AccountPlatform[]
     selectedTypes?: AccountType[]
   }
@@ -1924,6 +1950,11 @@ const autoPauseOnExpired = ref(true)
 const enableGroups = ref(false)
 const enableExcelBPS = ref(false)
 const enableSlotReservation = ref(false)
+const canEditAutoResetCredit = computed(() => allOpenAIOAuthOnly.value && !props.target?.hasShadow)
+const autoResetCreditMode = ref<'keep' | 'enable' | 'disable'>('keep')
+const updateAutoResetCredit = computed(() => canEditAutoResetCredit.value && autoResetCreditMode.value !== 'keep')
+const autoResetCredit5h = ref(100)
+const autoResetCredit7d = ref(100)
 const slotReservationEnabled = ref(false)
 const slotReservationSeconds = ref(60)
 const enableOpenAIRequestTimezone = ref(false)
@@ -2307,6 +2338,15 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.slot_reservation_seconds = slotReservationSeconds.value
   }
 
+  if (updateAutoResetCredit.value) {
+    const extra = ensureExtra()
+    extra.auto_reset_credit_enabled = autoResetCreditMode.value === 'enable'
+    if (autoResetCreditMode.value === 'enable') {
+      extra.auto_reset_credit_5h_threshold = autoResetCredit5h.value / 100
+      extra.auto_reset_credit_7d_threshold = autoResetCredit7d.value / 100
+    }
+  }
+
   if (enableExcelBPS.value && allOpenAIOAuthOnly.value) {
     const extra = ensureExtra()
     extra.openai_excel_bps = excelBPSEnabled.value
@@ -2568,6 +2608,7 @@ const handleSubmit = async () => {
   const hasAnyFieldEnabled =
     enableBaseUrl.value ||
     (enableSlotReservation.value && allOAuth.value) ||
+    updateAutoResetCredit.value ||
     (enableExcelBPS.value && allOpenAIOAuthOnly.value) ||
     (enableOpenAIRequestTimezone.value && allOpenAI.value) ||
     enableOpenAIPassthrough.value ||
@@ -2602,6 +2643,12 @@ const handleSubmit = async () => {
 
   if (!hasAnyFieldEnabled) {
     appStore.showError(t('admin.accounts.bulkEdit.noFieldsSelected'))
+    return
+  }
+
+  if (updateAutoResetCredit.value && autoResetCreditMode.value === 'enable' &&
+      [autoResetCredit5h.value, autoResetCredit7d.value].some(v => !Number.isFinite(v) || (v !== 0 && v < 0.1) || v > 100)) {
+    appStore.showError(t('admin.accounts.autoResetCredit.thresholdInvalid'))
     return
   }
 
@@ -2767,6 +2814,9 @@ watch(
       enableGroups.value = false
       enableExcelBPS.value = false
       enableSlotReservation.value = false
+      autoResetCreditMode.value = 'keep'
+      autoResetCredit5h.value = 100
+      autoResetCredit7d.value = 100
       slotReservationEnabled.value = false
       slotReservationSeconds.value = 60
       enableOpenAIRequestTimezone.value = false

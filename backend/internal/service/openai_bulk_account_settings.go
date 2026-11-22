@@ -10,6 +10,7 @@ import (
 )
 
 type bulkOpenAISettings struct {
+	autoResetCredit         bool
 	requestTimezone         bool
 	excelBPS                bool
 	longContextBilling      bool
@@ -20,7 +21,7 @@ type bulkOpenAISettings struct {
 }
 
 func (s bulkOpenAISettings) any() bool {
-	return s.requestTimezone || s.excelBPS || s.longContextBilling || s.endpointCapabilities || s.responsesMode
+	return s.autoResetCredit || s.requestTimezone || s.excelBPS || s.longContextBilling || s.endpointCapabilities || s.responsesMode
 }
 
 func normalizeBulkOpenAISettings(input *BulkUpdateAccountsInput) (bulkOpenAISettings, error) {
@@ -35,6 +36,10 @@ func normalizeBulkOpenAISettings(input *BulkUpdateAccountsInput) (bulkOpenAISett
 		}
 	}
 	var err error
+	settings.autoResetCredit, err = normalizeAutoResetCreditFields(input.Extra)
+	if err != nil {
+		return settings, err
+	}
 	settings.excelBPS, err = normalizeBulkExcelBPSExtra(input.Extra)
 	if err != nil {
 		return settings, err
@@ -260,6 +265,9 @@ func validateBulkOpenAISettingsTargets(
 			return 0, invalidBulkOpenAITarget(accountID, "account does not exist")
 		}
 
+		if settings.autoResetCredit && !isOpenAIAutoResetCreditAccount(account) {
+			return 0, invalidBulkOpenAITarget(accountID, "automatic reset credits require an OpenAI OAuth parent account")
+		}
 		if settings.requestTimezone {
 			if err := ValidateOpenAIRequestTimezoneExtra(account.Platform, input.Extra); err != nil {
 				return 0, err
