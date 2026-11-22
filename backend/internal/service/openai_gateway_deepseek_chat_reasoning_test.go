@@ -75,9 +75,15 @@ func TestEnsureDeepSeekChatReasoningPlaceholders(t *testing.T) {
 		require.Equal(t, string(withPlain), string(got), "已有明文时必须原样返回")
 	})
 
-	t.Run("non_deepseek_upstream_unchanged", func(t *testing.T) {
+	t.Run("deepseek_model_on_compatible_relay", func(t *testing.T) {
 		got := ensureDeepSeekChatReasoningPlaceholders(otherOpenAI, missing)
-		require.Equal(t, string(missing), string(got))
+		require.Equal(t, deepSeekChatReasoningPlaceholderText, gjson.GetBytes(got, "messages.1.reasoning_content").String())
+	})
+
+	t.Run("non_deepseek_upstream_unchanged", func(t *testing.T) {
+		body := bytes.ReplaceAll(missing, []byte("deepseek-chat"), []byte("gpt-5"))
+		got := ensureDeepSeekChatReasoningPlaceholders(otherOpenAI, body)
+		require.Equal(t, body, got)
 		require.False(t, gjson.GetBytes(got, "messages.1.reasoning_content").Exists())
 	})
 
