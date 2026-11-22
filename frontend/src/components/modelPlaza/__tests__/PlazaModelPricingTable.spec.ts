@@ -1,3 +1,4 @@
+import { defaultPlazaCurrencySettings } from '@/utils/plazaCurrency'
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PlazaModelPricingTable from '../PlazaModelPricingTable.vue'
@@ -44,6 +45,7 @@ function mountTable(
   rateMultiplier: number,
   userRateMultiplier?: number | null,
   extraProps?: {
+    priceDisplay?: import('@/utils/plazaCurrency').PlazaPriceDisplay
     imageRateIndependent?: boolean
     imageRateMultiplier?: number | null
     videoRateIndependent?: boolean

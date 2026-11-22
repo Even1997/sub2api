@@ -543,36 +543,32 @@
           {{ geminiAuthTypeLabel }}
         </span>
         <!-- Help icon -->
-        <span
-          class="group relative cursor-help"
-        >
-          <svg
-            class="h-3.5 w-3.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-              clip-rule="evenodd"
-            />
-          </svg>
-          <span
-            class="pointer-events-none absolute left-0 top-full z-50 mt-1 w-80 whitespace-normal break-words rounded bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-gray-700"
-          >
-            <div class="font-semibold mb-1">{{ t('admin.accounts.gemini.quotaPolicy.title') }}</div>
-            <div class="mb-2 text-gray-300">{{ t('admin.accounts.gemini.quotaPolicy.note') }}</div>
-            <div class="space-y-1">
-              <div><strong>{{ geminiQuotaPolicyChannel }}:</strong></div>
-              <div class="pl-2">• {{ geminiQuotaPolicyLimits }}</div>
-              <div class="mt-2">
-                <a :href="geminiQuotaPolicyDocsUrl" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline">
-                  {{ t('admin.accounts.gemini.quotaPolicy.columns.docs') }} →
-                </a>
-              </div>
+        <HelpTooltip v-if="!isGeminiVertex" class="!ml-0" width-class="w-80">
+          <template #trigger>
+            <svg
+              class="h-3.5 w-3.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </template>
+          <div class="font-semibold mb-1">{{ t('admin.accounts.gemini.quotaPolicy.title') }}</div>
+          <div class="mb-2 text-gray-300">{{ t('admin.accounts.gemini.quotaPolicy.note') }}</div>
+          <div class="space-y-1">
+            <div><strong>{{ geminiQuotaPolicyChannel }}:</strong></div>
+            <div class="pl-2">• {{ geminiQuotaPolicyLimits }}</div>
+            <div class="mt-2">
+              <a :href="geminiQuotaPolicyDocsUrl" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline">
+                {{ t('admin.accounts.gemini.quotaPolicy.columns.docs') }} →
+              </a>
             </div>
-          </span>
-        </span>
+          </div>
+        </HelpTooltip>
       </div>
 
       <!-- Usage data or unlimited flow -->
@@ -743,7 +739,7 @@
 
       <!-- No data at all -->
       <div
-        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible"
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible && !account.opencode_go_usage?.eligible"
         class="text-xs text-gray-400"
       >-</div>
     </div>
@@ -775,6 +771,7 @@ import {
   cnBalanceCellVisible as cnBalanceCellVisibleFn,
   isMultiProtocolApiKeyPlatform
 } from './credentialsBuilder'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import OpenCodeGoUsageCell from './OpenCodeGoUsageCell.vue'
 
 // Module-level cache shared across all AccountUsageCell instances

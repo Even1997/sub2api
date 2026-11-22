@@ -14,8 +14,10 @@ import (
 )
 
 type usageBillingRepository struct {
-	db        *sql.DB
-	admission billingAdmission
+	db           *sql.DB
+	admission    billingAdmission
+	stagedLanes  stagedBillingLanes
+	recoveryScan usageBillingRecoveryScan
 }
 
 func NewUsageBillingRepository(_ *dbent.Client, sqlDB *sql.DB) service.UsageBillingRepository {
@@ -472,12 +474,7 @@ func userExistsForBilling(ctx context.Context, tx *sql.Tx, userID int64) (bool, 
 	return true, nil
 }
 
-func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) (bool, error) {
-	// In-flight requests still owe their usage after the key is soft-deleted.
-	// Bill the retained row by ID, but never change a deleted key's status or
-	// report it as newly exhausted. Authentication must continue to exclude it.
-	var exhausted bool
-	err := tx.QueryRowContext(ctx, `
+const usageBillingAPIKeyQuotaUpdate = `
 		UPDATE api_keys
 		SET quota_used = quota_used + $1,
 			status = CASE
@@ -489,7 +486,14 @@ func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID 
 				ELSE status
 			END,
 			updated_at = NOW()
-		WHERE id = $2
+		WHERE id = $2`
+
+func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) (bool, error) {
+	// In-flight requests still owe their usage after the key is soft-deleted.
+	// Bill the retained row by ID, but never change a deleted key's status or
+	// report it as newly exhausted. Authentication must continue to exclude it.
+	var exhausted bool
+	err := tx.QueryRowContext(ctx, usageBillingAPIKeyQuotaUpdate+`
 		RETURNING deleted_at IS NULL AND quota > 0 AND quota_used >= quota AND quota_used - $1 < quota
 	`, amount, apiKeyID, service.StatusAPIKeyActive, service.StatusAPIKeyQuotaExhausted).Scan(&exhausted)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -66,8 +66,12 @@ func (s *GatewayService) ForwardAsResponses(
 	clientStream := responsesReq.Stream
 
 	// 3. Convert Responses → Anthropic
-	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
+	anthropicReq, err := apicompat.ResponsesToAnthropicRequestWithOptions(&responsesReq, apicompat.ResponsesToAnthropicOptions{StrictMedia: true})
 	if err != nil {
+		var mediaErr *apicompat.AnthropicMediaError
+		if errors.As(err, &mediaErr) {
+			writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		}
 		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
 	}
 

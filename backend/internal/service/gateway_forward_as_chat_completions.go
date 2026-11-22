@@ -51,13 +51,25 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	includeUsage := ccReq.StreamOptions != nil && ccReq.StreamOptions.IncludeUsage
 
 	// 2. Convert CC → Responses → Anthropic (chained conversion)
+	if err := apicompat.ValidateChatCompletionsAnthropicMedia(&ccReq); err != nil {
+		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
 	responsesReq, err := chatCompletionsToResponses(s.cfg, &ccReq)
 	if err != nil {
 		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 	}
 
-	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(responsesReq)
+	if err := apicompat.PreserveChatCompletionsAnthropicToolMedia(&ccReq, responsesReq); err != nil {
+		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", "Failed to convert tool media")
+		return nil, err
+	}
+	anthropicReq, err := apicompat.ResponsesToAnthropicRequestWithOptions(responsesReq, apicompat.ResponsesToAnthropicOptions{StrictMedia: true})
 	if err != nil {
+		var mediaErr *apicompat.AnthropicMediaError
+		if errors.As(err, &mediaErr) {
+			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		}
 		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
 	}
 

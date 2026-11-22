@@ -1,3 +1,4 @@
+import { defaultPlazaCurrencySettings } from '@/utils/plazaCurrency'
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PlazaGroupSection from '../PlazaGroupSection.vue'

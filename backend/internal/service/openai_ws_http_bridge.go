@@ -826,6 +826,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	tokenEventCount := 0
 	terminalEventCount := 0
 	replayCollector := &openAIWSToolCallReplayCollector{}
+	var deliveredOutput openAIWSHTTPBridgeOutputHistory
+	preserveOAuthOutput := account.IsOpenAIOAuth() && openAIWSPlaintextBridgeAccount(account)
 	firstEventType := ""
 	lastEventType := ""
 	upstreamTerminalEvent := ""
@@ -893,6 +895,18 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			result.wsReplayInputExists = true
 		}
 		result.wsAccountFailoverReplayInput = replayCollector.AllItems()
+		if preserveOAuthOutput {
+			// Both continuation and account-failover history must exclude failed,
+			// incomplete and undelivered turns, including disconnect usage drains.
+			result.wsReplayInput = nil
+			result.wsReplayInputExists = false
+			result.wsAccountFailoverReplayInput = nil
+			if deliveredOutput.completed && !clientDisconnected && ctx.Err() == nil && deliveredOutput.responseID == responseID {
+				result.wsReplayInput = slices.Clone(deliveredOutput.output)
+				result.wsReplayInputExists = true
+				result.wsAccountFailoverReplayInput = slices.Clone(deliveredOutput.output)
+			}
+		}
 		if imageCount > 0 {
 			result.ImageCount = imageCount
 			result.ImageSize = imageSizeTier
@@ -1163,6 +1177,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 						)
 					}
 					wroteDownstream = true
+					if preserveOAuthOutput {
+						deliveredOutput.delivered(message)
+					}
 				}
 			}
 		}

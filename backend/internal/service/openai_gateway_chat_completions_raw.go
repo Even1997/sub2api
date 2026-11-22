@@ -327,7 +327,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
-	scanner := s.newUpstreamSSEScanner(resp.Body)
+	scanner := newDeepSeekChatSSEPrefixScanner(s.newUpstreamSSEScanner(resp.Body), account, upstreamModel)
 
 	var usage OpenAIUsage
 	var firstTokenMs *int
