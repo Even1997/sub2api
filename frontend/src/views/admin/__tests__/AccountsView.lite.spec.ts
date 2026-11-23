@@ -493,6 +493,20 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
+  it('warns only on repeated manual refresh of the same account and still sends it', async () => {
+    refreshCredentials.mockResolvedValue({ account: fullAccount })
+    const wrapper = mountView(false)
+    await flushPromises()
+    const menu = wrapper.findComponent(AccountActionMenu)
+    for (const row of [listRow, { ...listRow, id: 43 }, listRow]) {
+      menu.vm.$emit('refresh-token', row)
+      await flushPromises()
+    }
+    expect(refreshCredentials.mock.calls.map(([id]) => id)).toEqual([42, 43, 42])
+    expect(showWarning.mock.calls.filter(([key]) => key === 'admin.accounts.refreshTokenFrequentWarning')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('shows an error and keeps the modal closed when detail loading fails', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     getById.mockRejectedValueOnce(new Error('detail failed'))
