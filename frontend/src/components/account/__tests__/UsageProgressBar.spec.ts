@@ -22,6 +22,21 @@ describe('UsageProgressBar', () => {
     vi.useRealTimers()
   })
 
+  it('hides a window estimate when the clock passes its reset', async () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '5h', color: 'indigo', utilization: 25, estimatedTotalCost: 8,
+        windowStats: { requests: 1, tokens: 100, cost: 2 },
+        resetsAt: '2026-03-17T00:01:00Z'
+      }
+    })
+    const estimate = '[data-test="estimated-total-cost"]'
+    expect(wrapper.find(estimate).exists()).toBe(true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(wrapper.find(estimate).exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('showNowWhenIdle=true 且利用率为 0 但有未来 resetsAt 时显示倒计时', () => {
     const wrapper = mount(UsageProgressBar, {
       props: {

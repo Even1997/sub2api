@@ -23,7 +23,7 @@
           U ${{ formatUserCost }}
         </span>
         <span
-          v-if="estimatedTotalCost != null"
+          v-if="estimatedTotalCost != null && (!resetsAt || Date.parse(resetsAt) > now.getTime())"
           data-test="estimated-total-cost"
           class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
           :title="t('admin.accounts.usageWindow.estimatedTotalCostTooltip')"
