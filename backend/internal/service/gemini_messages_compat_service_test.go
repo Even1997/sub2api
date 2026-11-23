@@ -990,7 +990,10 @@ func TestConvertClaudeMessagesToGeminiGenerateContent_ExtractsToolResultImages(t
 	require.True(t, ok)
 	parts, ok := content["parts"].([]any)
 	require.True(t, ok)
-	require.Len(t, parts, 4)
+	// Gemini 拒绝 functionResponse 之后仍带其它 part 的轮次
+	//（"Requests ending with a model turn are not supported."），
+	// 工具结果图片因此被拆到紧随其后的独立 user 轮。
+	require.Len(t, parts, 2)
 
 	firstPart, ok := parts[0].(map[string]any)
 	require.True(t, ok)
@@ -1009,13 +1012,20 @@ func TestConvertClaudeMessagesToGeminiGenerateContent_ExtractsToolResultImages(t
 	require.True(t, ok)
 	require.Equal(t, "[image attached below]", secondResponseBody["content"])
 
-	firstImagePart, ok := parts[2].(map[string]any)
+	imageContent, ok := contents[2].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", imageContent["role"])
+	imageParts, ok := imageContent["parts"].([]any)
+	require.True(t, ok)
+	require.Len(t, imageParts, 2)
+
+	firstImagePart, ok := imageParts[0].(map[string]any)
 	require.True(t, ok)
 	firstImage, ok := firstImagePart["inlineData"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "image/png", firstImage["mimeType"])
 	require.Equal(t, "aGVsbG8=", firstImage["data"])
-	secondImagePart, ok := parts[3].(map[string]any)
+	secondImagePart, ok := imageParts[1].(map[string]any)
 	require.True(t, ok)
 	secondImage, ok := secondImagePart["inlineData"].(map[string]any)
 	require.True(t, ok)
@@ -1525,4 +1535,17 @@ func parseAnthropicContentBlockEvents(t *testing.T, raw string) []anthropicConte
 		})
 	}
 	return events
+}
+
+func TestConvertClaudeMessagesToGeminiSplitsUserTextAfterToolResult(t *testing.T) {
+	messages := []any{map[string]any{"role": "user", "content": []any{
+		map[string]any{"type": "tool_result", "tool_use_id": "tool-1", "content": "42"},
+		map[string]any{"type": "text", "text": "continue"},
+	}}}
+	got, err := convertClaudeMessagesToGeminiContents(messages, map[string]string{"tool-1": "lookup"}, false)
+	require.NoError(t, err)
+	require.Equal(t, []any{
+		map[string]any{"role": "user", "parts": []any{map[string]any{"functionResponse": map[string]any{"name": "lookup", "response": map[string]any{"content": "42"}}}}},
+		map[string]any{"role": "user", "parts": []any{map[string]any{"text": "continue"}}},
+	}, got)
 }
