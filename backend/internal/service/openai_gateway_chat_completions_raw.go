@@ -329,6 +329,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 	scanner := newDeepSeekChatSSEPrefixScanner(s.newUpstreamSSEScanner(resp.Body), account, upstreamModel)
 
+	searchCount := 0
 	var usage OpenAIUsage
 	var firstTokenMs *int
 	firstResponseEnabled := s.settingService.IsStreamFirstResponseEnabled(c)
@@ -433,6 +434,11 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
+			if account != nil && account.IsGrok() {
+				if count, ok := grokSearchCountFromUsage(gjson.Get(payload, "usage")); ok {
+					searchCount = count
+				}
+			}
 			if u := extractCCStreamUsage(payload); u != nil {
 				regionalUsagePayload = []byte(payload)
 				mergeOpenAIProtectionUsageEvidence(usage, u)
@@ -482,6 +488,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
+			SearchCount:                   searchCount,
 			RequestID:                     requestID,
 			UpstreamHeaders:               resp.Header,
 			Usage:                         usage,
@@ -659,6 +666,10 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		regionalMeterObserveUsage(c.Request.Context(), respBody, "json")
 	}
 
+	var searchCount int
+	if account != nil && account.IsGrok() {
+		searchCount, _ = grokSearchCountFromUsage(gjson.GetBytes(respBody, "usage"))
+	}
 	var usage OpenAIUsage
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
 		usage = parsedUsage
@@ -689,6 +700,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	_, _ = c.Writer.Write(respBody)
 
 	return &OpenAIForwardResult{
+		SearchCount:                   searchCount,
 		RequestID:                     requestID,
 		UpstreamHeaders:               resp.Header,
 		Usage:                         usage,

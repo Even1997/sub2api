@@ -980,6 +980,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		payload = string(restoreCodexToolNamesFromContext(c, []byte(payload)))
 		if countSearch {
 			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
+			searchCount = grokSearchCountWithTerminalUsage(searchCount, []byte(payload))
 		}
 
 		var event apicompat.ResponsesStreamEvent
