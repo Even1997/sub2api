@@ -2,6 +2,10 @@ export default {
   common: {
     qwenPlatformHint: 'Qwen 使用 OpenAI 兼容接口，按独立平台统计。已有 OpenAI 账号和分组不会自动迁移。',
     qwenCache: {
+      videoProtocol: '万相视频协议',
+      videoRelay: 'OpenAI 兼容（上游返回计费秒数）',
+      videoFixed: '固定时长（不支持参考视频）',
+      videoPriceHint: '开启前，请先为分组放行 wan3.0-video，并在视频价卡中配置分辨率对应的每秒价格。',
       title: 'Qwen 缓存与会话',
       enable: '开启官方 Responses 会话缓存',
       cacheHint: '启用后使用 Responses 转发并开启上游会话缓存；客户端需通过 previous_response_id 续接。缓存写入可能计费，命中以实际用量为准。关闭后沿用原协议设置。',

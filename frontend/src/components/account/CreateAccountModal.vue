@@ -273,7 +273,7 @@
       </div>
 
       <QwenPlatformNotice :user-id="authStore.user?.id" />
-      <QwenCacheSettings v-if="form.platform === 'qwen'" v-model:session-cache="qwenSessionCache" v-model:strict-affinity="qwenStrictAffinity" :user-id="authStore.user?.id" @base-url="setQwenBaseUrl" />
+      <QwenCacheSettings v-if="form.platform === 'qwen'" v-model:video-protocol="qwenVideoProtocol" v-model:session-cache="qwenSessionCache" v-model:strict-affinity="qwenStrictAffinity" :user-id="authStore.user?.id" @base-url="setQwenBaseUrl" />
 
       <!-- Account Type Selection (Anthropic) -->
       <div v-if="form.platform === 'anthropic'">
@@ -5049,6 +5049,7 @@ const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const headerOverrideEnabled = ref(false)
+const qwenVideoProtocol = ref('')
 const qwenSessionCache = ref(false)
 const qwenStrictAffinity = ref(false)
 const setQwenBaseUrl = (value: string) => {
@@ -6130,6 +6131,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
 
 // Methods
 const resetForm = () => {
+  qwenVideoProtocol.value = ''
   qwenSessionCache.value = false
   qwenStrictAffinity.value = false
   initialChannelId.value = 0
@@ -6765,7 +6767,7 @@ const handleSubmit = async () => {
   }
 
   if (form.platform === 'qwen') {
-    applyQwenCacheSettings(credentials, qwenSessionCache.value, qwenStrictAffinity.value)
+    applyQwenCacheSettings(credentials, qwenSessionCache.value, qwenStrictAffinity.value, qwenVideoProtocol.value)
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）

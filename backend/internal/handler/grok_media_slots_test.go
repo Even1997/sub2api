@@ -119,6 +119,7 @@ func (s *grokMediaSlotsCache) assertReleased(t *testing.T) {
 }
 
 type grokMediaSlotBindings struct {
+	usage chan *service.UsageLog
 	testutil.StubGatewayCache
 	owner   int64
 	writes  int
@@ -211,6 +212,11 @@ func newGrokMediaSlotHandler(t *testing.T, oauth, mismatch bool, platforms ...st
 			accounts[i].Credentials["base_url"] = "https://ark.cn-beijing.volces.com/api/v3"
 			accounts[i].Credentials["openai_capabilities"] = []string{"seedance"}
 		}
+		if accounts[i].Platform == service.PlatformQwen {
+			accounts[i].Credentials["qwen_video_protocol"] = "dashscope"
+			accounts[i].Credentials["base_url"] = "https://dashscope.example/api/v1"
+			accounts[i].Credentials["model_mapping"] = map[string]any{"wan3.0-video": "wan3.0-video"}
+		}
 		if oauth {
 			accounts[i].Type = service.AccountTypeOAuth
 			accounts[i].Credentials["refresh_token"] = "test-refresh"
@@ -234,7 +240,16 @@ func newGrokMediaSlotHandler(t *testing.T, oauth, mismatch bool, platforms ...st
 		_, err := provider.GetAccessToken(context.Background(), &accounts[1])
 		require.NoError(t, err)
 	}
-	gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, bindings, cfg, nil, concurrency, nil, nil, nil, upstream, nil, nil, provider, nil, nil, nil, nil, nil)
+	var resolver *service.ModelPricingResolver
+	var usage service.UsageLogRepository
+	var deferred *service.DeferredService
+	if accounts[0].Platform == service.PlatformQwen {
+		resolver = service.NewModelPricingResolver(nil, nil)
+		bindings.usage = make(chan *service.UsageLog, 3)
+		usage = &openAIWSUsageHandlerUsageLogRepoStub{created: bindings.usage}
+		deferred = &service.DeferredService{}
+	}
+	gateway := service.NewOpenAIGatewayService(repo, usage, nil, nil, nil, nil, bindings, cfg, nil, concurrency, nil, nil, nil, upstream, deferred, nil, provider, resolver, nil, nil, nil, nil)
 	groupID := int64(24)
 	require.NoError(t, gateway.BindGrokMediaVideoRequestAccount(context.Background(), &groupID, "task", 10, 20, 1))
 	bindings.writes = 0
@@ -410,7 +425,7 @@ func TestGrokMediaVideoCompletionStillClaimsBillingOnce(t *testing.T) {
 	result := &service.OpenAIForwardResult{ResponseID: "poll-trace", Model: "grok-imagine-video",
 		VideoCount: 1, VideoDurationSeconds: 6}
 	for i := range 20 {
-		bill := prepareGrokVideoCompletionBilling(c.Request.Context(), h, zap.NewNop(), key, subject, "task", result)
+		bill := prepareGrokVideoCompletionBilling(c.Request.Context(), h, zap.NewNop(), key, subject, "task", result, nil)
 		if i == 0 {
 			require.NotNil(t, bill)
 			require.Equal(t, service.StableGrokVideoBillingRequestID("task"), bill.RequestID)
@@ -419,4 +434,69 @@ func TestGrokMediaVideoCompletionStillClaimsBillingOnce(t *testing.T) {
 		}
 	}
 	require.Len(t, bindings.billed, 1)
+}
+
+func TestWanCreateAndBoundLookup(t *testing.T) {
+	h, slots, bindings, upstream := newGrokMediaSlotHandler(t, false, false, service.PlatformQwen)
+	ctx := context.Background()
+	price := .125
+	c, w := grokMediaSlotContext(ctx, true)
+	key, _ := middleware2.GetAPIKeyFromContext(c)
+	key.Group.Platform = service.PlatformQwen
+	key.Group.ModelPricing = []service.ChannelModelPricing{{Models: []string{"wan3.0-video"}, BillingMode: service.BillingModeVideo, PerRequestPrice: &price}}
+	c.Request = httptest.NewRequest("POST", "/v1/videos", strings.NewReader(`{"model":"wan3.0-video","prompt":"fixture","duration":26,"resolution":"720p"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	upstream.call = func(req *http.Request, id int64) (*http.Response, error) {
+		require.Equal(t, "enable", req.Header.Get("X-DashScope-Async"))
+		require.Equal(t, "/api/v1/services/aigc/video-generation/video-synthesis", req.URL.Path)
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"output":{"task_id":"provider-id","task_status":"PENDING"}}`))}, nil
+	}
+	h.OpenAIVideoGeneration(c)
+	require.Equal(t, 200, w.Code, w.Body.String())
+	var created struct{ ID string }
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	require.Contains(t, created.ID, "video_proxy_")
+	require.NotContains(t, w.Body.String(), "provider-id")
+	pending, err := h.gatewayService.LoadGrokVideoPendingBilling(ctx, created.ID, 10, 20)
+	require.NoError(t, err)
+	require.NotNil(t, pending)
+	require.Equal(t, 26, pending.VideoDurationSeconds)
+	require.Equal(t, .125, *pending.WanUnitPrice)
+	group := key.Group
+	group.VideoRateIndependent, group.VideoRateMultiplier = true, .5
+	price = 9 // an administrator changes the price after task submission
+	lookup := func(keyID int64, content bool) *httptest.ResponseRecorder {
+		c, w := grokMediaSlotContext(ctx, false)
+		key, _ := middleware2.GetAPIKeyFromContext(c)
+		key.ID = keyID
+		key.Group = group
+		c.Params = gin.Params{{Key: "request_id", Value: created.ID}}
+		if content {
+			h.OpenAIVideoContent(c)
+		} else {
+			h.OpenAIVideoStatus(c)
+		}
+		c.Writer.WriteHeaderNow() // Gin commits a header-only redirect when the handler returns.
+		return w
+	}
+	require.Equal(t, http.StatusNotFound, lookup(21, false).Code)
+	require.Equal(t, 1, upstream.calls)
+	upstream.call = func(req *http.Request, id int64) (*http.Response, error) {
+		require.Equal(t, "/api/v1/tasks/provider-id", req.URL.Path)
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"output":{"task_id":"provider-id","task_status":"SUCCEEDED","video_url":"https://media.example/out"},"usage":{"duration":27.25,"SR":720}}`))}, nil
+	}
+	poll := lookup(20, false)
+	require.Equal(t, 200, poll.Code, poll.Body.String())
+	require.Contains(t, poll.Body.String(), "27.25")
+	download := lookup(20, true)
+	require.Equal(t, "https://media.example/out", download.Header().Get("Location"))
+	require.Equal(t, 307, download.Result().StatusCode)
+	require.Len(t, bindings.billed, 1)
+	require.Len(t, bindings.usage, 1)
+	log := <-bindings.usage
+	require.NotNil(t, log.VideoDurationSeconds)
+	require.Equal(t, 28, *log.VideoDurationSeconds)
+	require.Equal(t, 27.25*.125, log.TotalCost)
+	require.Equal(t, 27.25*.125*.5, log.ActualCost)
+	slots.assertReleased(t)
 }

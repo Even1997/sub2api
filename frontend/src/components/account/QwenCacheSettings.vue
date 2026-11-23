@@ -19,6 +19,14 @@
       <button type="button" class="btn btn-secondary btn-sm" data-testid="qwen-payg-url" @click="emit('baseUrl', 'https://maas.qianwenaiapi.com/compatible-mode/v1')">{{ t('common.qwenCache.payg') }}</button>
     </div>
     <p class="input-hint">{{ t('common.qwenCache.endpointHint') }}</p>
+    <label class="input-label" for="qwen-video-protocol">{{ t('common.qwenCache.videoProtocol') }}</label>
+    <select id="qwen-video-protocol" class="input" :value="videoProtocol" @change="emit('update:videoProtocol', ($event.target as HTMLSelectElement).value)">
+      <option value="">{{ t('common.disabled') }}</option>
+      <option value="dashscope">DashScope</option>
+      <option value="openai">{{ t('common.qwenCache.videoRelay') }}</option>
+      <option value="fixed_duration">{{ t('common.qwenCache.videoFixed') }}</option>
+    </select>
+    <p class="input-hint">{{ t('common.qwenCache.videoPriceHint') }}</p>
   </div>
 </template>
 
@@ -27,10 +35,11 @@ import { useI18n } from 'vue-i18n'
 import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
 import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
 
-defineProps<{ sessionCache: boolean; strictAffinity: boolean; userId?: number }>()
+defineProps<{ sessionCache: boolean; strictAffinity: boolean; videoProtocol?: string; userId?: number }>()
 const emit = defineEmits<{
   'update:sessionCache': [value: boolean]
   'update:strictAffinity': [value: boolean]
+  'update:videoProtocol': [value: string]
   baseUrl: [value: string]
 }>()
 const { t } = useI18n()

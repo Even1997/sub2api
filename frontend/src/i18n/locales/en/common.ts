@@ -2,6 +2,10 @@ export default {
   common: {
     qwenPlatformHint: 'Qwen uses OpenAI-compatible APIs with separate platform statistics. Existing OpenAI accounts and groups are not migrated automatically.',
     qwenCache: {
+      videoProtocol: 'Wan video protocol',
+      videoRelay: 'OpenAI compatible (supplier reports billed seconds)',
+      videoFixed: 'Fixed duration (no reference video)',
+      videoPriceHint: 'Allow wan3.0-video for the group and configure a per-second video price for each supported resolution before enabling.',
       title: 'Qwen cache and sessions',
       enable: 'Enable official Responses session cache',
       cacheHint: 'Uses Responses forwarding with upstream session caching. Clients must continue with previous_response_id. Cache writes may be billed; actual usage determines hits. Disabling restores the configured protocol.',

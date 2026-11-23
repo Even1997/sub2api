@@ -1728,6 +1728,14 @@ export default {
       priorityHint: '优先级越小的账号优先使用',
       billingRateMultiplier: '账号计费倍率',
       costMultiplier: '成本倍率',
+      probePenalty: {
+        title: '探针惩罚',
+        hint: '对经此 Claude 账号完成的按量请求设置最低扣费；正常短请求也适用。默认关闭。',
+        minimum: '请求最低扣费（$ 站内额度）',
+        downstream: '低于门槛时补差，并向下游返回计费等效 Token，原始用量另行保留。下游按自己的价卡收费；相同价卡和倍率下仅有不足一个输出 Token 单价的取整差额。',
+        invalid: '请输入 0 到 1000 之间、最多 8 位小数的金额；启用时必须大于 0。',
+        adjustment: '探针惩罚补差',
+      },
       costMultiplierHint: '默认 0.1。开启「跟随上游」时，成功探测会按当时有效倍率更新此值；关闭后可手填实际成本，失败、过期或不支持的探测始终保留已保存值。0 表示零成本；独立于账号计费和用户扣费，修改后重估近期利润，不改历史账单。',
       costMultiplierAutoSync: '跟随上游',
       slotReservation: {

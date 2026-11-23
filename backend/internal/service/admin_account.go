@@ -516,6 +516,9 @@ func (s *adminServiceImpl) resolveCreateProxyID(ctx context.Context, input *Crea
 }
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	if err := ValidateAccountProbePenaltyExtra(accountExtra); err != nil {
+		return nil, err
+	}
 	if err := ValidateOpenAIRequestTimezoneExtra(input.Platform, accountExtra); err != nil {
 		return nil, err
 	}
@@ -600,6 +603,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		return nil, err
 	}
 	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
+		return nil, err
+	}
+	if err := ValidateAccountProbePenaltyExtra(input.Extra); err != nil {
 		return nil, err
 	}
 	if err := s.ApplyOAuthAutoConfig(ctx, input); err != nil {
@@ -743,7 +749,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	// An omitted status does not own authentication state. Explicit status edits
 	// override any inherited preservation marker just as scheduling intent does.
 	ctx = withAccountStatusPreservation(ctx, input.Status == "")
+	ctx = withAccountExtraUpdateFields(ctx, input.Extra)
 	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
+		return nil, err
+	}
+	if err := ValidateAccountProbePenaltyExtra(input.Extra); err != nil {
 		return nil, err
 	}
 	if err := ValidateGroupAllowedModels(input.GroupAllowedModels); err != nil {
@@ -1147,6 +1157,9 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	if err := ValidateAccountCostMultiplierExtra(updates); err != nil {
 		return err
 	}
+	if err := ValidateAccountProbePenaltyExtra(updates); err != nil {
+		return err
+	}
 	if hasExcelBPSProxyUpdates(updates) {
 		account, err := s.accountRepo.GetByID(ctx, id)
 		if err != nil {
@@ -1259,6 +1272,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		return nil, err
 	}
 	if err := ValidateAccountCostMultiplierExtra(input.Extra); err != nil {
+		return nil, err
+	}
+	if err := ValidateAccountProbePenaltyExtra(input.Extra); err != nil {
 		return nil, err
 	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.

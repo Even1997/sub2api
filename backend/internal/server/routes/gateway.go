@@ -153,7 +153,7 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.GrokVideoGeneration(c)
 			return
 		}
-		if platform == service.PlatformOpenAI && strings.TrimPrefix(c.FullPath(), "/v1") == "/videos" {
+		if (platform == service.PlatformOpenAI || platform == service.PlatformQwen) && strings.TrimPrefix(c.FullPath(), "/v1") == "/videos" {
 			h.OpenAIGateway.OpenAIVideoGeneration(c)
 			return
 		}
@@ -178,7 +178,7 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.GrokVideoStatus(c)
 			return
 		}
-		if platform == service.PlatformOpenAI && strings.TrimPrefix(c.FullPath(), "/v1") == "/videos/:request_id" {
+		if (platform == service.PlatformOpenAI || platform == service.PlatformQwen) && strings.TrimPrefix(c.FullPath(), "/v1") == "/videos/:request_id" {
 			h.OpenAIGateway.OpenAIVideoStatus(c)
 			return
 		}
@@ -203,7 +203,7 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.GrokVideoContent(c)
 			return
 		}
-		if platform == service.PlatformOpenAI && (strings.TrimPrefix(c.FullPath(), "/v1") == "/videos/:request_id/content" || strings.TrimPrefix(c.FullPath(), "/v1") == "/videos/:request_id/download") {
+		if (platform == service.PlatformOpenAI || platform == service.PlatformQwen) && (strings.TrimPrefix(c.FullPath(), "/v1") == "/videos/:request_id/content" || strings.TrimPrefix(c.FullPath(), "/v1") == "/videos/:request_id/download") {
 			h.OpenAIGateway.OpenAIVideoContent(c)
 			return
 		}

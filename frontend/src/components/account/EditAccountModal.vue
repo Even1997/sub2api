@@ -12,7 +12,7 @@
       class="space-y-5"
     >
       <QwenPlatformNotice v-if="account?.platform === 'qwen'" :user-id="authStore.user?.id" />
-      <QwenCacheSettings v-if="account.platform === 'qwen' && account.type === 'apikey'" v-model:session-cache="qwenSessionCache" v-model:strict-affinity="qwenStrictAffinity" :user-id="authStore.user?.id" @base-url="setQwenBaseUrl" />
+      <QwenCacheSettings v-if="account.platform === 'qwen' && account.type === 'apikey'" v-model:video-protocol="qwenVideoProtocol" v-model:session-cache="qwenSessionCache" v-model:strict-affinity="qwenStrictAffinity" :user-id="authStore.user?.id" @base-url="setQwenBaseUrl" />
       <div v-if="account.credentials?.oauth_initial_selected_models != null" data-testid="initial-model-scope-snapshot" class="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
         <div class="flex items-start gap-2"><p>{{ t('autoConfig.selection.accountHint') }}</p><NewFeatureBadge :notice-id="NEW_FEATURE_NOTICES.oauthInitialModelSelection" :user-id="authStore.user?.id" /></div>
         <label class="mt-2 flex items-center gap-2"><input v-model="releaseInitialModelSelection" data-testid="release-initial-model-selection" type="checkbox" />{{ t('autoConfig.selection.takeOver') }}</label>
@@ -2143,6 +2143,7 @@
           <p v-if="isNewAPIUpstream" class="input-hint">{{ t('admin.accounts.upstreamBilling.newAPI.costManagedHint') }}</p>
         </div>
       </div>
+      <ProbePenaltySettings v-if="props.account?.platform === 'anthropic'" v-model:enabled="probePenaltyEnabled" v-model:minimum="probePenaltyMinimum" />
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
@@ -3851,6 +3852,7 @@ import { DEFAULT_BPS_RECOVERY_INTERVAL_MINUTES, MAX_BPS_RECOVERY_INTERVAL_MINUTE
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import NewFeatureBadge from '@/components/common/NewFeatureBadge.vue'
+import ProbePenaltySettings from './ProbePenaltySettings.vue'
 import OpenAIProxySettings from '@/components/account/OpenAIProxySettings.vue'
 import { NEW_FEATURE_NOTICES } from '@/constants/newFeatureNotices'
 
@@ -4405,6 +4407,7 @@ const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const headerOverrideEnabled = ref(false)
+const qwenVideoProtocol = ref('')
 const qwenSessionCache = ref(false)
 const qwenStrictAffinity = ref(false)
 const setQwenBaseUrl = (value: string) => {
@@ -5112,6 +5115,8 @@ const mixedChannelWarningMessageText = computed(() => {
   return mixedChannelWarningRawMessage.value
 })
 
+const probePenaltyEnabled = ref(false)
+const probePenaltyMinimum = ref(0.001)
 const slotReservationEnabled = ref(false)
 const slotReservationSeconds = ref(60)
 const costMultiplier = ref(DEFAULT_ACCOUNT_COST_MULTIPLIER)
@@ -5239,6 +5244,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   slotReservationSeconds.value = Number(newAccount.extra?.slot_reservation_seconds ?? 60)
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
+  const penalty = newAccount.extra?.probe_penalty as { enabled?: boolean; minimum_charge?: number } | undefined
+  probePenaltyEnabled.value = penalty?.enabled === true
+  probePenaltyMinimum.value = penalty?.minimum_charge ?? 0.001
   costMultiplier.value = readAccountCostMultiplier(newAccount.extra)
   costMultiplierAutoSync.value = newAccount.extra?.cost_multiplier_auto_sync !== false
   form.rate_multiplier = newAccount.rate_multiplier ?? 1
@@ -5528,6 +5536,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   loadAccountSchedulingThresholdOverride(newAccount.platform, credentials)
 
   // Load header override state for eligible account platforms/types
+  qwenVideoProtocol.value = typeof credentials?.qwen_video_protocol === 'string' ? credentials.qwen_video_protocol : ''
   qwenSessionCache.value = credentials?.qwen_session_cache_enabled === true
   qwenStrictAffinity.value = credentials?.qwen_strict_session_affinity === true
   headerOverrideEnabled.value = false
@@ -6553,7 +6562,7 @@ const handleSubmit = async () => {
       }
 
       if (props.account.platform === 'qwen') {
-        applyQwenCacheSettings(newCredentials, qwenSessionCache.value, qwenStrictAffinity.value)
+        applyQwenCacheSettings(newCredentials, qwenSessionCache.value, qwenStrictAffinity.value, qwenVideoProtocol.value)
       }
 
       // Handle API key
@@ -7397,6 +7406,19 @@ const handleSubmit = async () => {
       costExtra.cost_multiplier_auto_sync = costMultiplierAutoSync.value
     } else {
       delete costExtra.cost_multiplier_auto_sync
+    }
+    if (props.account.platform === 'anthropic') {
+      const minimum = probePenaltyMinimum.value
+      if (!Number.isFinite(minimum) || minimum < 0 || minimum > 1000 || (probePenaltyEnabled.value && minimum <= 0) || Math.abs(minimum * 1e8 - Math.round(minimum * 1e8)) > 0.00001) {
+        appStore.showError(t('admin.accounts.probePenalty.invalid'))
+        return
+      }
+      const original = props.account.extra?.probe_penalty as { enabled?: boolean; minimum_charge?: number } | undefined
+      if (probePenaltyEnabled.value !== (original?.enabled === true) || minimum !== (original?.minimum_charge ?? 0.001)) {
+        costExtra.probe_penalty = { enabled: probePenaltyEnabled.value, minimum_charge: minimum }
+      } else {
+        delete costExtra.probe_penalty
+      }
     }
     if (props.account.type === 'oauth') {
       if (!Number.isInteger(slotReservationSeconds.value) || slotReservationSeconds.value < 1 || slotReservationSeconds.value > 3600) {

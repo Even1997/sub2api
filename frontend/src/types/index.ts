@@ -2149,6 +2149,7 @@ export interface CustomerCacheCostDetail {
 
 export interface CustomerCostDetails {
   cache_cost_details?: CustomerCacheCostDetail[]
+  probe_penalty?: { minimum_charge: number; adjustment: number; actual_cost: number; original_output_tokens: number; billing_output_tokens: number; output_token_price: number }
   version: number
   free_fast: boolean
   free_ultrafast?: boolean

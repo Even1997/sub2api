@@ -1659,6 +1659,14 @@ export default {
       priorityHint: 'Lower value accounts are used first',
       billingRateMultiplier: 'Billing Rate Multiplier',
       costMultiplier: 'Cost multiplier',
+      probePenalty: {
+        title: 'Probe penalty',
+        hint: 'Set a minimum charge for completed token-billed requests through this Claude account. Ordinary short requests are also affected. Disabled by default.',
+        minimum: 'Minimum charge per request ($ credit)',
+        downstream: 'Below the minimum, charge the difference and return billing-equivalent tokens while retaining original usage. Downstream gateways apply their own prices; matching prices and multipliers differ by less than one output token price due to rounding.',
+        invalid: 'Enter an amount from 0 to 1000 with up to 8 decimal places. A positive amount is required when enabled.',
+        adjustment: 'Probe penalty adjustment',
+      },
       costMultiplierHint: 'Default 0.1. With Follow upstream enabled, a successful probe updates this saved value using the effective rate at probe time. Turn it off to enter actual cost; failed, expired, or unsupported probes preserve the saved value. Zero is valid, billing stays independent, and changes do not rewrite historical bills.',
       costMultiplierAutoSync: 'Follow upstream',
       slotReservation: {

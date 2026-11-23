@@ -14,19 +14,19 @@
 | [#961](https://github.com/ranxi2001/sub2api/pull/961) | 沿用 Even 已移植 | 保留请求回放的本地搜索规则，以及拒绝后不重新发送请求的压缩策略（fd9a0c58f、63b9bc173）。 |
 | [#963](https://github.com/ranxi2001/sub2api/pull/963) | 沿用 Even 已移植 | 质量确认和 Ciallo 检测分别见 1f3682660、1cc1590fc。 |
 | [#966](https://github.com/ranxi2001/sub2api/pull/966) | 保留本地续接策略 | 上游扩展 OAuth 工具结果的续接条件；保留本地的会话绑定和已交付历史证据。不声明两种协议等价。 |
-| [#967](https://github.com/ranxi2001/sub2api/pull/967) | 未合入 | Wan 视频的报价、任务 ID、状态轮询及调度是同一条链。本地 ForwardOpenAIVideo 的接口和结算路径不同，未开放 Wan 视频。 |
-| [#968](https://github.com/ranxi2001/sub2api/pull/968) | 未合入 | Wan 视频的报价、任务 ID、状态轮询及调度是同一条链。本地 ForwardOpenAIVideo 的接口和结算路径不同，未开放 Wan 视频。 |
+| [#967](https://github.com/ranxi2001/sub2api/pull/967) | 已适配 | Qwen API Key 支持 DashScope、OpenAI 格式中继及固定时长协议；创建时保存每秒报价，查询与下载共用本地任务归属及一次结算。 |
+| [#968](https://github.com/ranxi2001/sub2api/pull/968) | 已适配 | Qwen API Key 支持 DashScope、OpenAI 格式中继及固定时长协议；创建时保存每秒报价，查询与下载共用本地任务归属及一次结算。 |
 | [#969](https://github.com/ranxi2001/sub2api/pull/969) | 不适用原补丁 | Even 的利润查询没有上游的 priced 查询结构及报表缓存共享请求机制，保留按当前配置估算的查询。 |
-| [#970](https://github.com/ranxi2001/sub2api/pull/970) | 未合入 | Wan 视频的报价、任务 ID、状态轮询及调度是同一条链。本地 ForwardOpenAIVideo 的接口和结算路径不同，未开放 Wan 视频。 |
+| [#970](https://github.com/ranxi2001/sub2api/pull/970) | 已适配 | Qwen API Key 支持 DashScope、OpenAI 格式中继及固定时长协议；创建时保存每秒报价，查询与下载共用本地任务归属及一次结算。 |
 | [#965](https://github.com/ranxi2001/sub2api/pull/965) | 未合入 | 新的跨平台 gateway 账号涉及调度、请求平台归属、模型同步和采购成本快照（迁移 392）。本地按账号的采购成本和复合路由仍生效。 |
 | [#964](https://github.com/ranxi2001/sub2api/pull/964) | 未合入 | 上游的 OAuth 429 独立观测需要四项迁移；387、389、390 已由本地不同功能占用。保留本地探测和恢复逻辑。 |
 | [#972](https://github.com/ranxi2001/sub2api/pull/972) | 已适配 | 运维筛选/平台告警、测试标签、DeepSeek 内容拒绝分类及官方参考价、模型冷却处理。 |
 | [#976](https://github.com/ranxi2001/sub2api/pull/976) | 已适配 | 运维筛选/平台告警、测试标签、DeepSeek 内容拒绝分类及官方参考价、模型冷却处理。 |
-| [#974](https://github.com/ranxi2001/sub2api/pull/974) | 未合入 | 上游引入 Claude 探针惩罚扣费及并发编辑修正；保留本地定价和账号设置，不新增此类扣费。 |
+| [#974](https://github.com/ranxi2001/sub2api/pull/974) | 已适配 | Claude 账号可选请求最低扣费（默认关闭）；三个入口均按持久化回执返回用量，保留原始用量，账号设置并发更新按字段合并。 |
 | [#973](https://github.com/ranxi2001/sub2api/pull/973) | 未合入 | 上游的 OAuth 429 独立观测需要四项迁移；387、389、390 已由本地不同功能占用。保留本地探测和恢复逻辑。 |
 | [#975](https://github.com/ranxi2001/sub2api/pull/975) | 部分移植 | HTTP 和 WebSocket 重复字段校验、文本入口读体上限、Exa 搜索、Claude 测试采样、图片意图预筛和复制模型 ID。该 PR 共 207 个文件；其余协议、刷新及配置改动不视为已合。 |
 | [#977](https://github.com/ranxi2001/sub2api/pull/977) | 已适配 | 运维筛选/平台告警、测试标签、DeepSeek 内容拒绝分类及官方参考价、模型冷却处理。 |
-| [#978](https://github.com/ranxi2001/sub2api/pull/978) | 未合入 | 上游引入 Claude 探针惩罚扣费及并发编辑修正；保留本地定价和账号设置，不新增此类扣费。 |
+| [#978](https://github.com/ranxi2001/sub2api/pull/978) | 已适配 | Claude 账号可选请求最低扣费（默认关闭）；三个入口均按持久化回执返回用量，保留原始用量，账号设置并发更新按字段合并。 |
 | [#979](https://github.com/ranxi2001/sub2api/pull/979) | 已适配 | 运维筛选/平台告警、测试标签、DeepSeek 内容拒绝分类及官方参考价、模型冷却处理。 |
 | [#980](https://github.com/ranxi2001/sub2api/pull/980) | 已适配 | 模型广场支持展示币种、汇率与官方价格覆盖，保留 Even 的时段价和缓存价格。 |
 | [#983](https://github.com/ranxi2001/sub2api/pull/983) | 已适配 | 运维筛选/平台告警、测试标签、DeepSeek 内容拒绝分类及官方参考价、模型冷却处理。 |
@@ -67,6 +67,8 @@
 ## 验收与边界
 
 - 在独立工作树保留账号批量自动重置卡：默认不修改，设置只接受 OpenAI OAuth 主账号，允许单独停用 5h 或 7d 窗口。没有对在线账号执行操作。
+- [Wan 视频](qwen-wan-video.md)默认不启用；提交时锁定每秒单价，完成后用上游计费秒数结算，查询与下载共用一张账单。固定时长协议不接受参考视频。
+- [Claude 账号最低扣费](features/account-probe-penalty.md)默认关闭。开启后也适用于普通的低金额 Token 请求；采购成本和原始 Token 不变。
 - PostgreSQL 18 和 Redis 使用独立实例。结算回归覆盖并发领取、重复结算、事务回滚、软删除 Key、一次自动充值及恢复公平性；账号用量另测含 NULL 时长和空时间段。
 - 前端组件测试覆盖账号批量编辑、用量显示、设置保存、展示币种和复制模型 ID；没有对接真实支付、外部模型或 Exa 账号。
 - 没有增加数据库迁移、修改发布工作流或覆盖线上数据。为未移植的账务与调度功能，本记录不提供生产兼容性结论。

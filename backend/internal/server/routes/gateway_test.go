@@ -302,28 +302,32 @@ func TestGatewayRoutesCompositeChatCompletionsWithGrokModelUsesOpenAIGateway(t *
 	}
 }
 
-func TestGatewayRoutesOpenAICanonicalVideosAreAllowed(t *testing.T) {
-	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+func TestGatewayRoutesOpenAIAndQwenCanonicalVideosAreAllowed(t *testing.T) {
+	for _, platform := range []string{service.PlatformOpenAI, service.PlatformQwen} {
+		t.Run(platform, func(t *testing.T) {
+			router := newGatewayRoutesTestRouter(platform)
 
-	for _, tc := range []struct {
-		method string
-		path   string
-		body   string
-	}{
-		{http.MethodPost, "/v1/videos", `{"model":"video3.0","prompt":"waves"}`},
-		{http.MethodPost, "/videos", `{"model":"video3.0","prompt":"waves"}`},
-		{http.MethodGet, "/v1/videos/request-123", ""},
-		{http.MethodGet, "/videos/request-123", ""},
-		{http.MethodGet, "/v1/videos/request-123/content", ""},
-		{http.MethodGet, "/videos/request-123/content", ""},
-	} {
-		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
+			for _, tc := range []struct {
+				method string
+				path   string
+				body   string
+			}{
+				{http.MethodPost, "/v1/videos", `{"model":"video3.0","prompt":"waves"}`},
+				{http.MethodPost, "/videos", `{"model":"video3.0","prompt":"waves"}`},
+				{http.MethodGet, "/v1/videos/request-123", ""},
+				{http.MethodGet, "/videos/request-123", ""},
+				{http.MethodGet, "/v1/videos/request-123/content", ""},
+				{http.MethodGet, "/videos/request-123/content", ""},
+			} {
+				req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
 
-		router.ServeHTTP(w, req)
-		require.NotEqual(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
-		require.NotContains(t, w.Body.String(), "Videos API is not supported for this platform")
+				router.ServeHTTP(w, req)
+				require.NotEqual(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
+				require.NotContains(t, w.Body.String(), "Videos API is not supported for this platform")
+			}
+		})
 	}
 }
 

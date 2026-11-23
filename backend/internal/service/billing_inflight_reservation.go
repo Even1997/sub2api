@@ -380,6 +380,7 @@ type InflightEstimateRequest struct {
 	// 视频：分辨率与时长（秒）。
 	VideoResolution      string
 	VideoDurationSeconds int
+	WanBaseCost          *float64
 	MiniMaxH3BaseCost    *float64
 	// 音频：模式（tts/stt/realtime）与计量单位（百万字符/小时/分钟）。
 	AudioMode  string
@@ -489,7 +490,7 @@ func inflightBillingModelCandidates(ctx context.Context, deps inflightEstimateDe
 	return primary, fallbacks, upstreamInput
 }
 
-func (d inflightEstimateDeps) rates(ctx context.Context, apiKey *APIKey) (text, image float64) {
+func (d inflightEstimateDeps) baseRate(ctx context.Context, apiKey *APIKey) float64 {
 	rate := 1.0
 	if d.cfg != nil && d.cfg.Default.RateMultiplier > 0 {
 		rate = d.cfg.Default.RateMultiplier
@@ -500,7 +501,11 @@ func (d inflightEstimateDeps) rates(ctx context.Context, apiKey *APIKey) (text, 
 			rate = d.userGroupRate(ctx, apiKey.User.ID, *apiKey.GroupID, rate)
 		}
 	}
-	return computePeakAwareMultipliers(apiKey, rate, timezone.Now())
+	return rate
+}
+
+func (d inflightEstimateDeps) rates(ctx context.Context, apiKey *APIKey) (text, image float64) {
+	return computePeakAwareMultipliers(apiKey, d.baseRate(ctx, apiKey), timezone.Now())
 }
 
 func tokenCounts(cfg config.InflightReservationConfig, bodyBytes, maxTokens int) (int, int) {
@@ -647,6 +652,10 @@ func (d inflightEstimateDeps) estimate(ctx context.Context, apiKey *APIKey, req 
 	if req.Model == "" || (req.Kind == InflightEstimateAudio && req.AudioUnits <= 0) {
 		// 非计量请求（媒体状态查询、custom-voices 等）：无需预留，也不算「无法定价」。
 		return 0, true
+	}
+	if req.WanBaseCost != nil {
+		cost := *req.WanBaseCost * resolveVideoRateMultiplier(apiKey, d.baseRate(ctx, apiKey))
+		return cost, cost == 0 || validCost(cost)
 	}
 	textRate, imageRate := d.rates(ctx, apiKey)
 	if textRate <= 0 && imageRate <= 0 {

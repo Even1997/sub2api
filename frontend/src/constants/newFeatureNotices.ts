@@ -79,4 +79,5 @@ export const NEW_FEATURE_NOTICES = {
   bpsAccountSearch: 'bps-account-search-initial-announcement',
   bpsAccountMultiProxy: 'bps-account-multi-proxy-request-routing',
   openaiAccountMultiProxy: '2026-11-16-openai-account-multi-proxy',
+  accountProbePenalty: 'account-claude-probe-penalty-initial-announcement',
 } as const

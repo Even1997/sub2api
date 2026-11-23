@@ -82,6 +82,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
+	if targetPlatform == service.PlatformOpenAI && !endpoint.IsSeedance() && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformQwen {
+		targetPlatform = service.PlatformQwen
+	}
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
@@ -124,6 +127,19 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 
 	contentType := c.GetHeader("Content-Type")
 	requestInfo := service.ParseGrokMediaRequest(contentType, body)
+	var wanUnitPrice *float64
+	if targetPlatform == service.PlatformQwen && endpoint == service.GrokMediaEndpointVideosGenerations {
+		requestInfo, err = service.ParseWanVideoRequest(contentType, body)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+		wanUnitPrice = h.gatewayService.WanVideoUnitPrice(c.Request.Context(), apiKey, requestInfo.Model, requestInfo.Resolution)
+		if wanUnitPrice == nil {
+			h.errorResponse(c, http.StatusBadRequest, "video_price_missing", "Configure a Wan price for this resolution")
+			return
+		}
+	}
 	var miniMaxH3BaseCost *float64
 	if endpoint.IsMiniMaxH3() {
 		requestInfo = service.GrokMediaRequestInfo{}
@@ -232,6 +248,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 
 	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
 	inflightEstimate := grokMediaInflightEstimate(endpoint, routingModel, requestInfo, body)
+	if wanUnitPrice != nil {
+		base := *wanUnitPrice * float64(requestInfo.WanReservationSeconds)
+		inflightEstimate.WanBaseCost = &base
+	}
 	inflightEstimate.MiniMaxH3BaseCost = miniMaxH3BaseCost
 	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, inflightEstimate)
 	if inflightErr != nil {
@@ -249,6 +269,8 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		sessionSeed = []byte(requestID)
 	}
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, sessionSeed)
+	var wanTask *service.GrokVideoPendingBilling
+	var upstreamWanID string
 	boundLookupAccountID := int64(0)
 	if endpoint.IsVideoLookupRequest() {
 		sessionHash = service.GrokMediaVideoRequestSessionHash(requestID, subject.UserID, apiKey.ID)
@@ -259,6 +281,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			reqLog.Info("grok_media.video_lookup_owner_binding_missing", zap.Error(err))
 			h.errorResponse(c, http.StatusNotFound, "not_found_error", "Video request not found")
 			return
+		}
+		if targetPlatform == service.PlatformQwen {
+			task, err := h.gatewayService.LoadGrokVideoPendingBilling(c.Request.Context(), requestID, subject.UserID, apiKey.ID)
+			if err != nil || task == nil || task.UpstreamTaskID == "" || task.WanUnitPrice == nil || *task.WanUnitPrice <= 0 {
+				h.errorResponse(c, http.StatusNotFound, "not_found_error", "Video request not found")
+				return
+			}
+			upstreamWanID = task.UpstreamTaskID
+			wanTask = task
+			requestInfo.DurationSeconds, requestInfo.Resolution = task.VideoDurationSeconds, task.VideoResolution
 		}
 	}
 	// Grok 媒体（图片/视频生成与视频查询）按媒体倍率计费，不在 token 利润门
@@ -464,7 +496,13 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 		writerSizeBeforeForward := c.Writer.Size()
+		var wanCreation *service.WanVideoCreation
 		result, err := func() (*service.OpenAIForwardResult, error) {
+			if targetPlatform == service.PlatformQwen {
+				r, creation, e := h.gatewayService.ForwardWanVideo(requestCtx, c, account, endpoint, requestID, upstreamWanID, body, requestInfo)
+				wanCreation = creation
+				return r, e
+			}
 			defer releaseAccount()
 			if endpoint.IsSeedance() {
 				return h.gatewayService.ForwardSeedance(requestCtx, c, account, endpoint, requestID, body)
@@ -584,6 +622,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					zap.String("request_id", result.ResponseID),
 					zap.Error(err),
 				)
+				if wanCreation != nil {
+					h.errorResponse(c, http.StatusServiceUnavailable, "video_task_storage_unavailable", "Could not save video task")
+					return
+				}
 			}
 			// Defer billing until status polling observes video.url. Persist create-time
 			// model/duration/resolution so status can still price if upstream omits them.
@@ -599,6 +641,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				// Wall-clock start for usage duration_ms: create accepted → first done discovery.
 				CreatedAt: videoCreateStartedAt,
 			}
+			if wanCreation != nil {
+				pending.WanUnitPrice = wanUnitPrice
+				pending.UpstreamTaskID = wanCreation.UpstreamTaskID
+			}
 			if err := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.UserID, apiKey.ID, pending); err != nil {
 				reqLog.Warn("grok_media.store_video_pending_billing_failed_retrying",
 					zap.Int64("account_id", account.ID),
@@ -613,7 +659,14 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 						zap.String("request_id", result.ResponseID),
 						zap.Error(err2),
 					)
+					if wanCreation != nil {
+						h.errorResponse(c, http.StatusServiceUnavailable, "video_task_storage_unavailable", "Could not save video quote")
+						return
+					}
 				}
+			}
+			if wanCreation != nil {
+				wanCreation.WriteResponse()
 			}
 		}
 		// Status poll OR content download can observe official done+video.url.
@@ -628,7 +681,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			}
 		} else if endpoint == service.GrokMediaEndpointVideoStatus || endpoint == service.GrokMediaEndpointVideoContent {
 			taskID := strings.TrimSpace(requestID)
-			if billResult := prepareGrokVideoCompletionBilling(requestCtx, h, reqLog, apiKey, subject, taskID, result); billResult != nil {
+			if billResult := prepareGrokVideoCompletionBilling(requestCtx, h, reqLog, apiKey, subject, taskID, result, wanTask); billResult != nil {
 				recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, channelMapping, billResult.Model, body, taskID)
 			}
 		} else if shouldRecordGrokMediaUsage(endpoint, requestModel, result) {
@@ -667,7 +720,7 @@ func mediaRequiredCapability(endpoint service.GrokMediaEndpoint, targetPlatform 
 	if endpoint.IsSeedance() {
 		return service.OpenAIEndpointCapabilitySeedance
 	}
-	if targetPlatform == service.PlatformOpenAI {
+	if targetPlatform == service.PlatformOpenAI || targetPlatform == service.PlatformQwen {
 		return service.OpenAIEndpointCapabilityVideos
 	}
 	if endpoint.IsGenerationRequest() {
@@ -677,6 +730,9 @@ func mediaRequiredCapability(endpoint service.GrokMediaEndpoint, targetPlatform 
 }
 
 func mediaNoEligibleAccountError(endpoint service.GrokMediaEndpoint, targetPlatform string) (string, string) {
+	if targetPlatform == service.PlatformQwen {
+		return "qwen_video_unavailable", "No eligible Qwen video account"
+	}
 	if endpoint.IsMiniMaxH3() {
 		return "minimax_h3_no_eligible_account", "No eligible MiniMax-H3 accounts"
 	}
@@ -739,6 +795,7 @@ func prepareGrokVideoCompletionBilling(
 	subject middleware2.AuthSubject,
 	taskRequestID string,
 	statusResult *service.OpenAIForwardResult,
+	pending *service.GrokVideoPendingBilling,
 ) *service.OpenAIForwardResult {
 	if h == nil || h.gatewayService == nil || apiKey == nil || statusResult == nil {
 		return nil
@@ -753,9 +810,15 @@ func prepareGrokVideoCompletionBilling(
 	}
 	// Load create-time snapshot before claim so we can fail-closed without burning the claim
 	// when Redis lost pending and status cannot price the job.
-	pending, loadErr := h.gatewayService.LoadGrokVideoPendingBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
-	if loadErr != nil {
-		reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", taskRequestID), zap.Error(loadErr))
+	if pending == nil {
+		var loadErr error
+		pending, loadErr = h.gatewayService.LoadGrokVideoPendingBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
+		if loadErr != nil {
+			reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", taskRequestID), zap.Error(loadErr))
+		}
+	}
+	if statusResult.WanBilledSeconds > 0 && (pending == nil || pending.WanUnitPrice == nil || *pending.WanUnitPrice <= 0) {
+		return nil
 	}
 	if pending == nil {
 		// Status omits resolution; without pending we would silently default to 480p and underbill.
@@ -784,6 +847,10 @@ func prepareGrokVideoCompletionBilling(
 	}
 	// Re-merge with pending: resolution is request-only; model/duration fill gaps.
 	merged := *statusResult
+	if statusResult.WanBilledSeconds > 0 {
+		cost := *pending.WanUnitPrice * statusResult.WanBilledSeconds
+		merged.WanBaseCost = &cost
+	}
 	if pending != nil {
 		if strings.TrimSpace(merged.Model) == "" {
 			merged.Model = firstNonEmptyString(pending.BillingModel, pending.Model, pending.OriginalModel)
@@ -824,7 +891,9 @@ func prepareGrokVideoCompletionBilling(
 	// Official default resolution is 480p when the create request omitted it.
 	merged.VideoResolution = service.NormalizeVideoBillingResolutionOrDefault(merged.VideoResolution)
 	// Official default duration is 8s when neither status nor create provided it.
-	merged.VideoDurationSeconds = service.NormalizeVideoBillingDurationSecondsOrDefault(merged.VideoDurationSeconds)
+	if merged.WanBaseCost == nil {
+		merged.VideoDurationSeconds = service.NormalizeVideoBillingDurationSecondsOrDefault(merged.VideoDurationSeconds)
+	}
 	// E2E latency for async video: create accept → this discovery of done+url.
 	// Bill on discovery (status/content), not after further client polls; duration
 	// must not be only the single discovery hop (~hundreds of ms).

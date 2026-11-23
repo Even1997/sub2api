@@ -57,19 +57,20 @@ func (e GrokMediaEndpoint) IsGenerationRequest() bool {
 }
 
 type GrokMediaRequestInfo struct {
-	Model           string
-	Prompt          string
-	N               int
-	Size            string
-	SizeTier        string
-	AspectRatio     string
-	ImageResolution string
-	Resolution      string
-	DurationSeconds int
-	InputImageURLs  []string
-	MaskImageURL    string
-	Uploads         []OpenAIImagesUpload
-	MaskUpload      *OpenAIImagesUpload
+	Model                 string
+	Prompt                string
+	N                     int
+	Size                  string
+	SizeTier              string
+	AspectRatio           string
+	ImageResolution       string
+	Resolution            string
+	DurationSeconds       int
+	WanReservationSeconds int
+	InputImageURLs        []string
+	MaskImageURL          string
+	Uploads               []OpenAIImagesUpload
+	MaskUpload            *OpenAIImagesUpload
 }
 
 func (r GrokMediaRequestInfo) ModerationBody() []byte {
@@ -403,7 +404,9 @@ func (s *OpenAIGatewayService) SelectMediaVideoRequestAccount(
 // first observes a completed video URL. Status may omit model/duration; we fall
 // back to this snapshot, then defaults.
 type GrokVideoPendingBilling struct {
-	BillingRequestID string `json:"billing_request_id,omitempty"`
+	BillingRequestID string   `json:"billing_request_id,omitempty"`
+	WanUnitPrice     *float64 `json:"wan_unit_price,omitempty"`
+	UpstreamTaskID   string   `json:"upstream_task_id,omitempty"`
 	// H3 prices requested seconds at submission; later edits cannot reprice a task.
 	MiniMaxH3BaseCost    *float64 `json:"minimax_h3_base_cost,omitempty"`
 	Model                string   `json:"model"`
@@ -491,7 +494,7 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	if pending.VideoResolution != "" && pending.MiniMaxH3BaseCost == nil {
 		pending.VideoResolution = NormalizeVideoBillingResolutionOrDefault(pending.VideoResolution)
 	}
-	if pending.VideoDurationSeconds > 0 {
+	if pending.VideoDurationSeconds > 0 && pending.WanUnitPrice == nil {
 		pending.VideoDurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(pending.VideoDurationSeconds)
 	}
 	// Always stamp create-accept time when missing so deferred duration_ms is E2E.
