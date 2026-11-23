@@ -24,7 +24,7 @@
 | [#976](https://github.com/ranxi2001/sub2api/pull/976) | 已适配 | 运维筛选/平台告警、测试标签、DeepSeek 内容拒绝分类及官方参考价、模型冷却处理。 |
 | [#974](https://github.com/ranxi2001/sub2api/pull/974) | 已适配 | Claude 账号可选请求最低扣费（默认关闭）；三个入口均按持久化回执返回用量，保留原始用量，账号设置并发更新按字段合并。 |
 | [#973](https://github.com/ranxi2001/sub2api/pull/973) | 未合入 | 上游的 OAuth 429 独立观测需要四项迁移；387、389、390 已由本地不同功能占用。保留本地探测和恢复逻辑。 |
-| [#975](https://github.com/ranxi2001/sub2api/pull/975) | 部分移植 | HTTP 和 WebSocket 重复字段校验、文本入口读体上限、Exa 搜索、Claude 测试采样、图片意图预筛和复制模型 ID。另移植 Antigravity 配额与转发使用同一端点、按有效时长计算 Token 速度、同账号 60 秒内重复手动刷新提醒、Grok 按上游搜索成功次数计费。该 PR 共 207 个文件，未整包合入。 |
+| [#975](https://github.com/ranxi2001/sub2api/pull/975) | 部分移植 | HTTP 和 WebSocket 重复字段校验、文本入口读体上限、Exa 搜索、Claude 测试采样、图片意图预筛和复制模型 ID。另移植 Antigravity 配额与转发使用同一端点、按有效时长计算 Token 速度、同账号 60 秒内重复手动刷新提醒、Grok 按上游搜索成功次数计费。另包含图片完成事件、Gemini 工具结果分轮、Antigravity 心跳、Claude 窗口成本估算和 Grok 五图编辑（见下）。该 PR 共 207 个文件，未整包合入。 |
 | [#977](https://github.com/ranxi2001/sub2api/pull/977) | 已适配 | 运维筛选/平台告警、测试标签、DeepSeek 内容拒绝分类及官方参考价、模型冷却处理。 |
 | [#978](https://github.com/ranxi2001/sub2api/pull/978) | 已适配 | Claude 账号可选请求最低扣费（默认关闭）；三个入口均按持久化回执返回用量，保留原始用量，账号设置并发更新按字段合并。 |
 | [#979](https://github.com/ranxi2001/sub2api/pull/979) | 已适配 | 运维筛选/平台告警、测试标签、DeepSeek 内容拒绝分类及官方参考价、模型冷却处理。 |
@@ -75,3 +75,9 @@
 - 两个同优先级可用账号的回归覆盖原账号并发槽占满、恢复和客户端取消，分别使用 0 和 2 的切号预算；另测明确配额耗尽仍可正常切号。
 - PostgreSQL 验证按总输出 / 总有效时长计算速度；Grok 使用模拟上游覆盖三种接口的流式与非流式回执，以及 Chat 直连路径。有效明细里的 0 优先；缺少有效明细保留原计数。
 - 重复手动刷新只提示，不拦截。账号页该项和部分刷新回归通过；该文件另有 5 条既有并发升级测试引用未定义的 getManagementCapabilities，在此轮改动前的测试文件复跑同样失败。
+
+## 后续迁移与审查
+
+- OpenAI 图片完成事件中的用量压成单行 JSON；Antigravity 对可接收注释的客户端保留 SSE 心跳分隔，对 Go/Python GenAI 过滤注释，保留数据和结束帧。Gemini 把末轮最后一个工具结果后面的文本或外置图片放到下一轮 user，保留原顺序。
+- Claude OAuth / Setup Token 的 5h、7d 窗口分别按上游重置时间统计本地账号成本。页面用「窗口账号成本 ÷ 实测使用比例」估算用满的成本；重置时间或实测使用率缺失时不估算，不改用户扣费、采购成本和模型专属窗口。
+- Grok 图片编辑按 [xAI 多图规范](https://docs.x.ai/developers/model-capabilities/images/multi-image-editing) 最多接受五张原图，遮罩不占名额。六张在选号前返回 400；混合上传按原顺序转发，第一张不会重复出现。第三方中继是否支持五图取决于其自身实现。
