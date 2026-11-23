@@ -374,6 +374,8 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
 						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
+							requestCtx = service.WithOpenAISameAccountRetry(requestCtx, account, failoverErr)
+							c.Request = c.Request.WithContext(service.WithOpenAISameAccountRetry(c.Request.Context(), account, failoverErr))
 							sameAccountRetryCount[account.ID]++
 							retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
 							reqLog.Warn("openai.images.pool_mode_same_account_retry",
@@ -391,6 +393,8 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 							continue
 						}
 					}
+					requestCtx = service.WithOpenAISameAccountRetry(requestCtx, nil, nil)
+					c.Request = c.Request.WithContext(service.WithOpenAISameAccountRetry(c.Request.Context(), nil, nil))
 					h.parkOpenAICapacityShedAccount(requestCtx, account, failoverErr)
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}

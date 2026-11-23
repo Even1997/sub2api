@@ -133,6 +133,10 @@ func newOpenAIResponsesFailoverTestHandlerWithSettingsAndCache(t *testing.T, ups
 }
 
 func newOpenAIResponsesFailoverTestHandlerWithUsage(t *testing.T, upstream service.HTTPUpstream, cache service.GatewayCache, settings *service.SettingService, usage service.UsageLogRepository, fixtureAccounts ...service.Account) *OpenAIGatewayHandler {
+	return newOpenAIResponsesFailoverTestHandlerWithConcurrency(t, upstream, cache, settings, usage, nil, fixtureAccounts...)
+}
+
+func newOpenAIResponsesFailoverTestHandlerWithConcurrency(t *testing.T, upstream service.HTTPUpstream, cache service.GatewayCache, settings *service.SettingService, usage service.UsageLogRepository, concurrency *service.ConcurrencyService, fixtureAccounts ...service.Account) *OpenAIGatewayHandler {
 	t.Helper()
 	accounts := []service.Account{
 		{
@@ -154,12 +158,15 @@ func newOpenAIResponsesFailoverTestHandlerWithUsage(t *testing.T, upstream servi
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	gatewayService := service.NewOpenAIGatewayService(
 		accountRepo, usage, nil, nil, nil, nil, cache, cfg,
-		nil, nil, service.NewBillingService(cfg, nil), nil, nil, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, settings, nil,
+		nil, concurrency, service.NewBillingService(cfg, nil), nil, nil, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, settings, nil,
 	)
 	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billingService.Stop)
+	if concurrency == nil {
+		concurrency = service.NewConcurrencyService(nil)
+	}
 	handler := NewOpenAIGatewayHandler(
-		gatewayService, service.NewConcurrencyService(nil), billingService,
+		gatewayService, concurrency, billingService,
 		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
 		nil, nil, nil, nil, cfg,
 	)

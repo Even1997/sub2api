@@ -1415,6 +1415,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
 						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
+							c.Request = c.Request.WithContext(service.WithOpenAISameAccountRetry(c.Request.Context(), account, failoverErr))
 							sameAccountRetryCount[account.ID]++
 							retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
 							reqLog.Warn("openai.pool_mode_same_account_retry",
@@ -1432,6 +1433,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 							continue
 						}
 					}
+					c.Request = c.Request.WithContext(service.WithOpenAISameAccountRetry(c.Request.Context(), nil, nil))
 					h.parkOpenAICapacityShedAccount(c.Request.Context(), account, failoverErr)
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
@@ -2055,6 +2057,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
 						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
+							c.Request = c.Request.WithContext(service.WithOpenAISameAccountRetry(c.Request.Context(), account, failoverErr))
 							sameAccountRetryCount[account.ID]++
 							retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
 							reqLog.Warn("openai_messages.pool_mode_same_account_retry",
@@ -2072,6 +2075,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 							continue
 						}
 					}
+					c.Request = c.Request.WithContext(service.WithOpenAISameAccountRetry(c.Request.Context(), nil, nil))
 					h.parkOpenAICapacityShedAccount(c.Request.Context(), account, failoverErr)
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
@@ -2883,7 +2887,14 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 	ctx := service.ContextWithSelectionProfitGate(c.Request.Context(), selection)
 	ctx = service.ContextWithSelectionPriorityRequest(ctx, selection)
 	c.Request = c.Request.WithContext(service.ContextWithSelectionPriorityRequest(c.Request.Context(), selection))
-	checkLatency := func(release func()) bool {
+	checkAdmission := func(release func()) bool {
+		if !service.OpenAISameAccountRetryAdmissible(ctx, selection.Account.ID) {
+			if release != nil {
+				release()
+			}
+			writeError(http.StatusServiceUnavailable, "temporarily_unavailable", "", "Same-account retry is no longer available")
+			return false
+		}
 		if denied := h.gatewayService.CheckPriorityLatencySelection(ctx, selection); denied != nil {
 			if release != nil {
 				release()
@@ -2894,7 +2905,7 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 		}
 		return true
 	}
-	if !checkLatency(selection.ReleaseFunc) {
+	if !checkAdmission(selection.ReleaseFunc) {
 		return nil, openAISlotAcquireFailed
 	}
 	account := selection.Account
@@ -2909,7 +2920,7 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 		}
 		account = latest
 		selection.Account = latest
-		if !checkLatency(selection.ReleaseFunc) {
+		if !checkAdmission(selection.ReleaseFunc) {
 			return nil, openAISlotAcquireFailed
 		}
 		// 调度器已抢槽路径无门时由选号内部完成 eager 绑定；门下选号内部
@@ -2951,7 +2962,7 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 		}
 		account = latest
 		selection.Account = latest
-		if !checkLatency(fastReleaseFunc) {
+		if !checkAdmission(fastReleaseFunc) {
 			return nil, openAISlotAcquireFailed
 		}
 		if err := h.gatewayService.BindStickySessionAfterProfitAdmission(ctx, groupID, sessionHash, account.ID); err != nil {
@@ -3010,7 +3021,7 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 	}
 	account = latest
 	selection.Account = latest
-	if !checkLatency(accountReleaseFunc) {
+	if !checkAdmission(accountReleaseFunc) {
 		return nil, openAISlotAcquireFailed
 	}
 	if err := h.gatewayService.BindStickySessionAfterProfitAdmission(ctx, groupID, sessionHash, account.ID); err != nil {

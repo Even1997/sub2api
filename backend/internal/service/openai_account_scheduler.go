@@ -533,6 +533,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		req.StrictSessionAffinity = req.StrictSessionAffinity || owner.QwenStrictSessionAffinity()
 	}
 
+	retry := openAISameAccountRetryFromContext(ctx)
 	start := time.Now()
 	latencyOwnerID := int64(0)
 	// 命名返回值保证 defer 写入的耗时同时返回给调用方。
@@ -553,6 +554,13 @@ func (s *defaultOpenAIAccountScheduler) Select(
 				}
 			}
 			denied := s.service.priorityLatencyAdmission(req, selection.Account)
+			if retry.accountID > 0 {
+				if !OpenAISameAccountRetryAdmissible(ctx, selection.Account.ID) {
+					denied = ErrNoAvailableAccounts
+				} else if plan := selection.WaitPlan; plan != nil {
+					plan.Timeout = min(plan.Timeout, time.Until(retry.deadline))
+				}
+			}
 			if recoveryErr := s.service.checkOpenAIAgentRecoveryAccount(ctx, selection.Account); recoveryErr != nil {
 				denied = recoveryErr
 			}
@@ -582,7 +590,13 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	if err := s.checkOpenAIAgentRecoveryCooldown(ctx, req, recovery); err != nil {
 		return nil, decision, err
 	}
+	if retry.accountID > 0 && !OpenAISameAccountRetryAdmissible(ctx, retry.accountID) {
+		return nil, decision, ErrNoAvailableAccounts
+	}
 	if req.StrictSessionAffinity {
+		if retry.accountID > 0 && req.StickyAccountID != retry.accountID {
+			return nil, decision, strictSessionUnavailable("session owner changed before retry")
+		}
 		return s.selectStrictSessionAccount(ctx, req)
 	}
 
@@ -652,10 +666,22 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			}
 		}
 	}
-	if recovery.ownerBindingRequired() || pointerOwner > 0 {
+	if recovery.ownerBindingRequired() || pointerOwner > 0 || retry.accountID > 0 {
 		ownerID := pointerOwner
 		if recovery.ownerBindingRequired() {
 			ownerID = recovery.owner.accountID
+		}
+		if retry.accountID > 0 {
+			if (ownerID > 0 && ownerID != retry.accountID) || (latencyOwnerID > 0 && latencyOwnerID != retry.accountID) {
+				return nil, decision, ErrNoAvailableAccounts
+			}
+			ownerID = retry.accountID
+			req.StickyAccountID = ownerID
+			req.StickyWeighted = false
+			req.PreserveStickyBinding = true
+			req.DisableStickyEscape = true
+			req.StrictSessionAffinity = true
+			req.PreviousResponseCanMove = false
 		}
 		if req.GuardianParentAccountID > 0 && req.GuardianParentAccountID != ownerID {
 			return nil, decision, openAIAgentRecoveryError("owner_unavailable")
@@ -671,6 +697,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			return nil, decision, err
 		}
 		if selection == nil || selection.Account == nil {
+			if retry.accountID > 0 {
+				return nil, decision, ErrNoAvailableAccounts
+			}
 			return nil, decision, openAIAgentRecoveryError("owner_unavailable")
 		}
 		// Reject a changed producer route before entering Forward. This also
@@ -807,7 +836,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	req OpenAIAccountScheduleRequest,
 ) (*AccountSelectionResult, bool, error) {
 	sessionHash := strings.TrimSpace(req.SessionHash)
-	if sessionHash == "" || s == nil || s.service == nil || (s.service.cache == nil && req.StickyAccountID <= 0) {
+	if (sessionHash == "" && openAISameAccountRetryFromContext(ctx).accountID <= 0) || s == nil || s.service == nil || (s.service.cache == nil && req.StickyAccountID <= 0) {
 		return nil, false, nil
 	}
 
@@ -929,7 +958,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			AccountRequestID: result.RequestID,
 		}), false, nil
 	}
-	if acquireErr == nil && result != nil && !result.Acquired && groupHasFocusAccount(req.routingGroup(), accountID) {
+	if acquireErr == nil && result != nil && !result.Acquired && groupHasFocusAccount(req.routingGroup(), accountID) && openAISameAccountRetryFromContext(ctx).accountID == 0 {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, false, nil
 	}
@@ -2967,7 +2996,8 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	// ownership or a response pointer needs to force the affinity scheduler.
 	recovery := openAIAgentRecoveryFromContext(ctx)
 	recoveryRouting := recovery != nil && (recovery.owner != nil || recovery.conflict || recovery.lookupErr != nil || recovery.previousResponseID != "")
-	scheduler := s.getOpenAIAccountScheduler(ctx, platform == PlatformQwen || s.strictOpenAISessionAffinity(groupID, platform, requiredImageCapability) || recoveryRouting || (platform == PlatformOpenAI && requiredImageCapability == "" && useUpstreamTokenCost && priorityApplies(priority, OpenAIAccountScheduleRequest{GroupID: groupID, RequestedModel: requestedModel, HistoryModel: observation.model})))
+	retry := openAISameAccountRetryFromContext(ctx)
+	scheduler := s.getOpenAIAccountScheduler(ctx, retry.accountID > 0 || platform == PlatformQwen || s.strictOpenAISessionAffinity(groupID, platform, requiredImageCapability) || recoveryRouting || (platform == PlatformOpenAI && requiredImageCapability == "" && useUpstreamTokenCost && priorityApplies(priority, OpenAIAccountScheduleRequest{GroupID: groupID, RequestedModel: requestedModel, HistoryModel: observation.model})))
 	if scheduler == nil {
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
 		if guardianParentAccountID > 0 {
@@ -3070,6 +3100,9 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 
 	reservedID := s.concurrencyService.reservedSessionAccount(ctx)
 	if reservedID > 0 {
+		if retry.accountID > 0 && reservedID != retry.accountID {
+			return nil, decision, ErrNoAvailableAccounts
+		}
 		stickyAccountID = reservedID
 	}
 	stickyWeighted := reservedID == 0 && s.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx)
