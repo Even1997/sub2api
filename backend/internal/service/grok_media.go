@@ -33,8 +33,16 @@ const (
 	GrokMediaEndpointVideoContent      GrokMediaEndpoint = "video_content"
 
 	// Official xAI Imagine image-edit limit.
-	grokMediaMaxEditSourceImages = 3
+	grokMediaMaxEditSourceImages = 5
 )
+
+type GrokMediaInputValidationError struct {
+	Reason string
+}
+
+func (e *GrokMediaInputValidationError) Error() string {
+	return e.Reason
+}
 
 func (e GrokMediaEndpoint) RequiresRequestBody() bool {
 	return !e.IsVideoLookupRequest()
@@ -68,6 +76,8 @@ type GrokMediaRequestInfo struct {
 	DurationSeconds       int
 	WanReservationSeconds int
 	InputImageURLs        []string
+	sourceCount           int   // Includes JSON file IDs; excludes the optional mask.
+	uploadPositions       []int // Source positions in mixed URL/file multipart requests.
 	MaskImageURL          string
 	Uploads               []OpenAIImagesUpload
 	MaskUpload            *OpenAIImagesUpload
@@ -171,11 +181,15 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 		switch {
 		case value.IsArray():
 			for _, item := range value.Array() {
+				info.sourceCount++
 				if imageURL := extractGrokMediaImageURL(item); imageURL != "" {
 					info.InputImageURLs = append(info.InputImageURLs, imageURL)
 				}
 			}
 		default:
+			if value.Type != gjson.Null {
+				info.sourceCount++
+			}
 			if imageURL := extractGrokMediaImageURL(value); imageURL != "" {
 				info.InputImageURLs = append(info.InputImageURLs, imageURL)
 			}
@@ -259,6 +273,8 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 				continue
 			}
 			if name == "image" || strings.HasPrefix(name, "image[") {
+				info.uploadPositions = append(info.uploadPositions, info.sourceCount)
+				info.sourceCount++
 				info.Uploads = append(info.Uploads, upload)
 			}
 			continue
@@ -286,6 +302,7 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			}
 		case "image", "image_url":
 			if value != "" {
+				info.sourceCount++
 				info.InputImageURLs = append(info.InputImageURLs, value)
 			}
 		case "mask", "mask_image_url":
@@ -1056,6 +1073,14 @@ func isGrokCLIProxyTarget(rawURL string) bool {
 	return err == nil && strings.EqualFold(parsed.Hostname(), "cli-chat-proxy.grok.com")
 }
 
+// ValidateEditSources counts input references, not the optional edit mask.
+func (info *GrokMediaRequestInfo) ValidateEditSources() error {
+	if info.sourceCount > grokMediaMaxEditSourceImages {
+		return &GrokMediaInputValidationError{Reason: fmt.Sprintf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)}
+	}
+	return nil
+}
+
 func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
 	if endpoint != GrokMediaEndpointImagesEdits {
 		return body, contentType, nil
@@ -1070,6 +1095,9 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 	}
 
 	info := ParseGrokMediaRequest(contentType, body)
+	if err := info.ValidateEditSources(); err != nil {
+		return nil, "", err
+	}
 	payload := make(map[string]any)
 	if info.Model != "" {
 		payload["model"] = info.Model
@@ -1090,27 +1118,24 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 		payload["aspect_ratio"] = info.AspectRatio
 	}
 
-	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))
-	for _, imageURL := range info.InputImageURLs {
-		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
-			images = append(images, grokMediaImageObject(imageURL))
+	images := make([]map[string]string, info.sourceCount)
+	for position, uploadIndex, urlIndex := 0, 0, 0; position < len(images); position++ {
+		if uploadIndex < len(info.uploadPositions) && info.uploadPositions[uploadIndex] == position {
+			dataURL, err := openAIImageUploadToDataURL(info.Uploads[uploadIndex])
+			if err != nil {
+				return nil, "", err
+			}
+			images[position] = grokMediaImageObject(dataURL)
+			uploadIndex++
+		} else {
+			images[position] = grokMediaImageObject(info.InputImageURLs[urlIndex])
+			urlIndex++
 		}
 	}
-	for _, upload := range info.Uploads {
-		dataURL, err := openAIImageUploadToDataURL(upload)
-		if err != nil {
-			return nil, "", err
-		}
-		images = append(images, grokMediaImageObject(dataURL))
-	}
-	if len(images) > grokMediaMaxEditSourceImages {
-		return nil, "", fmt.Errorf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)
-	}
-	if len(images) > 0 {
+	if len(images) == 1 {
 		payload["image"] = images[0]
-		if len(images) > 1 {
-			payload["images"] = images
-		}
+	} else if len(images) > 1 {
+		payload["images"] = images
 	}
 
 	maskImageURL := strings.TrimSpace(info.MaskImageURL)
@@ -1134,8 +1159,8 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 
 func normalizeGrokMediaJSONImageRefs(body []byte) ([]byte, error) {
 	info := ParseGrokMediaRequest("application/json", body)
-	if len(info.InputImageURLs) > grokMediaMaxEditSourceImages {
-		return nil, fmt.Errorf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)
+	if err := info.ValidateEditSources(); err != nil {
+		return nil, err
 	}
 	out := body
 	var err error

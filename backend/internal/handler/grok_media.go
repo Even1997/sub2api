@@ -127,6 +127,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 
 	contentType := c.GetHeader("Content-Type")
 	requestInfo := service.ParseGrokMediaRequest(contentType, body)
+	if endpoint == service.GrokMediaEndpointImagesEdits {
+		if err := requestInfo.ValidateEditSources(); err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+	}
 	var wanUnitPrice *float64
 	if targetPlatform == service.PlatformQwen && endpoint == service.GrokMediaEndpointVideosGenerations {
 		requestInfo, err = service.ParseWanVideoRequest(contentType, body)

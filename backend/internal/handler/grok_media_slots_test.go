@@ -3,12 +3,14 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -499,4 +501,48 @@ func TestWanCreateAndBoundLookup(t *testing.T) {
 	require.Equal(t, 27.25*.125, log.TotalCost)
 	require.Equal(t, 27.25*.125*.5, log.ActualCost)
 	slots.assertReleased(t)
+}
+
+func TestGrokImageEditAdmission(t *testing.T) {
+	for _, n := range []int{5, 6} {
+		for _, fileIDs := range []bool{false, true} {
+			h, slots, _, upstream := newGrokMediaSlotHandler(t, false, false)
+			upstream.call = func(req *http.Request, _ int64) (*http.Response, error) {
+				require.Equal(t, "/v1/images/edits", req.URL.Path)
+				var wire struct{ Images []map[string]string }
+				require.NoError(t, json.NewDecoder(req.Body).Decode(&wire))
+				require.Len(t, wire.Images, n)
+				if fileIDs {
+					require.Equal(t, "file_0", wire.Images[0]["file_id"])
+				}
+				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"data":[{"url":"https://example.test/result.png"}]}`))}, nil
+			}
+			var refs []map[string]string
+			for i := 0; i < n; i++ {
+				if fileIDs {
+					refs = append(refs, map[string]string{"type": "file", "file_id": "file_" + strconv.Itoa(i)})
+				} else {
+					refs = append(refs, map[string]string{"url": "https://example.test/in.png"})
+				}
+			}
+			body, err := json.Marshal(map[string]any{"model": "grok-imagine-image-2.0", "prompt": "edit", "images": refs})
+			require.NoError(t, err)
+			c, rec := grokMediaSlotContext(t.Context(), true)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			h.GrokImages(c)
+			if n == 5 {
+				require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+				require.Equal(t, 1, upstream.calls)
+			} else {
+				require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+				require.Contains(t, rec.Body.String(), "invalid_request_error")
+				require.Zero(t, upstream.calls)
+				require.Zero(t, slots.acquired)
+				require.Zero(t, slots.userAcquired)
+			}
+			slots.assertReleased(t)
+			require.Zero(t, h.gatewayService.SnapshotOpenAIAccountSchedulerMetrics().AccountSwitchTotal)
+		}
+	}
 }
