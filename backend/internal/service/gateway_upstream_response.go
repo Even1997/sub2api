@@ -370,19 +370,41 @@ func (s *GatewayService) anthropicModelNotFoundFailover(c *gin.Context, account 
 	if account == nil || account.Platform != PlatformAnthropic || resp == nil || resp.StatusCode != http.StatusNotFound || resp.Body == nil {
 		return nil
 	}
-	body, err := s.readUpstreamErrorBody(resp)
-	_ = resp.Body.Close()
-	resp.Body = io.NopCloser(bytes.NewReader(body))
-	if err != nil || !gjson.ValidBytes(body) {
+	body := inspectUpstreamErrorBody(resp, gatewayUpstreamErrorBodyReadLimit)
+	if !gjson.ValidBytes(body) {
 		return nil
 	}
-	message := extractUpstreamErrorMessage(body)
-	code := extractUpstreamErrorCode(body)
-	kind := gjson.GetBytes(body, "error.type").String()
+	// Providers sometimes return an object containing echoed request fields in
+	// detail or message. Only a string from an error field is provider evidence.
+	var message string
+	for _, path := range []string{"error.message", "detail", "message"} {
+		if field := gjson.GetBytes(body, path); field.Type == gjson.String && strings.TrimSpace(field.Str) != "" {
+			message = field.Str
+			break
+		}
+	}
+	code := gjson.GetBytes(body, "error.code").Str
+	kind := gjson.GetBytes(body, "error.type").Str
+	if nested := strings.TrimSpace(message); strings.HasPrefix(nested, "{") {
+		// A relay may serialize a second error envelope into the message. Do
+		// not match request fields alongside the nested provider error.
+		message = ""
+		if gjson.Valid(nested) {
+			message = gjson.Get(nested, "error.message").Str
+			if code == "" {
+				code = gjson.Get(nested, "error.code").Str
+			}
+			if kind == "" {
+				kind = gjson.Get(nested, "error.type").Str
+			}
+		}
+	}
 	if !IsOpsModelCapabilityRejection(resp.StatusCode, 0, message) &&
 		code != "model_not_found" && kind != "model_not_found" && code != "model_not_supported" && kind != "model_not_supported" {
 		return nil
 	}
+	_ = resp.Body.Close()
+	resp.Body = http.NoBody
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
 		ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),

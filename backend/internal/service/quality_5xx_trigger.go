@@ -42,10 +42,19 @@ func (s *quality5xxTrigger) signalIsCurrent(accountID int64, observedAt time.Tim
 	return !score.After(observedAt)
 }
 
+func (s *quality5xxTrigger) accepts(ctx context.Context, account *Account, status int) bool {
+	return s != nil && s.queue != nil && account != nil && account.ID > 0 && account.Type == AccountTypeOAuth &&
+		status >= 500 && status <= 599 && ctx.Value(qualityProbeContextKey{}) == nil
+}
+
 func (s *quality5xxTrigger) Observe(ctx context.Context, account *Account, status int) {
-	if s == nil || s.queue == nil || account == nil || account.ID <= 0 || account.Type != AccountTypeOAuth || status < 500 || status > 599 || ctx.Value(qualityProbeContextKey{}) != nil {
+	if !s.accepts(ctx, account, status) {
 		return
 	}
+	s.record(ctx, account)
+}
+
+func (s *quality5xxTrigger) record(ctx context.Context, account *Account) {
 	// Complete native account protection before retry/selection can continue.
 	// This has no dependency on worker slots or a running probe's lease.
 	if s.immediate != nil {
@@ -178,10 +187,16 @@ func (s *ScheduledTestRunnerService) runQualityTriggeredAccount(ctx context.Cont
 // Called immediately after real transport responses, before protocol retry or
 // status mapping. Stream failures also report their classified status separately.
 func (s *RateLimitService) observeQualityResponse(ctx context.Context, account *Account, response *http.Response, err error) {
-	if s == nil || err != nil || response == nil {
+	if s == nil || err != nil || response == nil || !s.qualityTrigger.accepts(ctx, account, response.StatusCode) {
 		return
 	}
-	s.observeQualityStatus(ctx, account, response.StatusCode)
+	// A relay can wrap a deterministic request rejection in HTTP 502. Keep
+	// genuine upstream failures eligible for immediate protection.
+	if response.StatusCode == http.StatusBadGateway &&
+		IsUpstreamContextRejection(response.StatusCode, inspectUpstreamErrorBody(response, contextErrorInspectionLimit)) {
+		return
+	}
+	s.qualityTrigger.record(ctx, account)
 }
 
 // Both transport status and semantic failure status feed the same coalescing

@@ -10,6 +10,40 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const contextErrorInspectionLimit = 64 << 10
+
+// A classifier may read ahead, but the normal error handler must still see
+// every byte and any transport error that followed the prefix.
+type inspectedUpstreamBody struct {
+	io.ReadCloser
+	prefix  *bytes.Reader
+	readErr error
+}
+
+func (b *inspectedUpstreamBody) Read(p []byte) (int, error) {
+	if b.prefix.Len() > 0 {
+		return b.prefix.Read(p)
+	}
+	if b.readErr != nil {
+		err := b.readErr
+		b.readErr = nil
+		return 0, err
+	}
+	return b.ReadCloser.Read(p)
+}
+
+func inspectUpstreamErrorBody(resp *http.Response, limit int64) []byte {
+	if resp.Body == nil {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	resp.Body = &inspectedUpstreamBody{ReadCloser: resp.Body, prefix: bytes.NewReader(body), readErr: err}
+	if err != nil || int64(len(body)) > limit {
+		return nil
+	}
+	return body
+}
+
 // Inspect deterministic context rejections before retry/cooldown policy. Keep
 // the original response available when it is not a recognized request error.
 func (s *GatewayService) interceptAnthropicContextRejection(c *gin.Context, account *Account, resp *http.Response) bool {
@@ -17,17 +51,11 @@ func (s *GatewayService) interceptAnthropicContextRejection(c *gin.Context, acco
 		(resp.StatusCode != 400 && resp.StatusCode != 422 && resp.StatusCode != 502) {
 		return false
 	}
-	original := resp.Body
-	const limit = 64 * 1024
-	body, err := io.ReadAll(io.LimitReader(original, limit+1))
-	resp.Body = struct {
-		io.Reader
-		io.Closer
-	}{io.MultiReader(bytes.NewReader(body), original), original}
-	if err != nil || len(body) > limit || !IsUpstreamContextRejection(resp.StatusCode, body) {
+	if !IsUpstreamContextRejection(resp.StatusCode, inspectUpstreamErrorBody(resp, contextErrorInspectionLimit)) {
 		return false
 	}
 	_ = resp.Body.Close()
+	resp.Body = http.NoBody
 	writeGatewayContextRejection(c, resp.StatusCode)
 	return true
 }

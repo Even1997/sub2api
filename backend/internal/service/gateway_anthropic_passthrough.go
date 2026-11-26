@@ -125,6 +125,10 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			return handleAnthropicRequestTooLarge(c, resp)
 		}
 
+		if s.interceptAnthropicContextRejection(c, account, resp) {
+			return nil, errGatewayContextRejection
+		}
+
 		// 透传分支禁止 400 请求体降级重试（该重试会改写请求体）
 		if failure := s.anthropicModelNotFoundFailover(c, account, resp); failure != nil {
 			return nil, failure

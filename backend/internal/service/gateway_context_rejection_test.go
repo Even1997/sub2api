@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -51,4 +52,17 @@ func TestAnthropicContextInspectionPreservesOtherResponses(t *testing.T) {
 		require.Equal(t, body, string(got))
 		require.NoError(t, resp.Body.Close())
 	}
+}
+
+func TestAnthropicContextInspectionPreservesReadError(t *testing.T) {
+	const body = `{"error":{"code":"context_length_exceeded"}}`
+	// A syntactically complete prefix is inconclusive after a transport failure.
+	r := iotest.TimeoutReader(strings.NewReader(body))
+	resp := &http.Response{StatusCode: 502, Body: io.NopCloser(r)}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	require.False(t, (&GatewayService{}).interceptAnthropicContextRejection(c, &Account{Platform: PlatformAnthropic}, resp))
+	got, err := io.ReadAll(resp.Body)
+	require.Equal(t, body, string(got))
+	require.ErrorIs(t, err, iotest.ErrTimeout)
+	require.NoError(t, resp.Body.Close())
 }

@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -98,7 +100,20 @@ func TestQuality5xxOnlyObservesActualHTTPFailures(t *testing.T) {
 	limiter.observeQualityResponse(ctx, account, nil, errors.New("network"))
 	limiter.observeQualityResponse(ctx, account, &http.Response{StatusCode: 200}, nil)
 	limiter.observeQualityResponse(ctx, account, &http.Response{StatusCode: 502}, errors.New("transport error"))
+	body := `{"error":{"code":"context_length_exceeded"}}`
+	resp := &http.Response{StatusCode: 502, Body: io.NopCloser(strings.NewReader(body))}
+	limiter.observeQualityResponse(ctx, account, resp, nil)
+	replayed, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, body, string(replayed))
 	require.Zero(t, client.ZCard(ctx, quality5xxPendingKey).Val())
+	require.NoError(t, resp.Body.Close())
+	other := &Account{ID: 22, Type: AccountTypeOAuth}
+	failed := &http.Response{StatusCode: 502, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"bad gateway"}}`))}
+	limiter.observeQualityResponse(ctx, other, failed, nil)
+	require.NoError(t, failed.Body.Close())
+	require.Equal(t, []string{"22"}, client.ZRange(ctx, quality5xxPendingKey, 0, -1).Val())
+	client.ZRem(ctx, quality5xxPendingKey, "22")
 	limiter.observeQualityResponse(ctx, account, &http.Response{StatusCode: 503}, nil)
 	limiter.observeQualityResponse(ctx, account, &http.Response{StatusCode: 200}, nil)
 	require.Equal(t, []string{"21"}, client.ZRange(ctx, quality5xxPendingKey, 0, -1).Val(), "successful retry must not erase initial 503")

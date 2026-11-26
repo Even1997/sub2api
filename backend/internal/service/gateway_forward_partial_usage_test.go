@@ -355,6 +355,9 @@ func TestAnthropicModelNotFoundFailover(t *testing.T) {
 		{"structured code", `{"error":{"code":"model_not_found","message":"Unknown model"}}`, true},
 		{"unknown resource", `{"error":{"type":"not_found_error","message":"Resource not found"}}`, false},
 		{"unknown endpoint", "404 page not found", false},
+		{"object detail with echoed input", `{"detail":{"input":"model_not_found"}}`, false},
+		{"wrapped explicit code", `{"error":{"message":"{\"error\":{\"code\":\"model_not_found\"}}"}}`, true},
+		{"wrapped unrelated error with echo", `{"error":{"message":"{\"error\":{\"message\":\"missing resource\"},\"input\":\"model_not_found\"}"}}`, false},
 	} {
 		for _, passthrough := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/passthrough=%v", tc.name, passthrough), func(t *testing.T) {
@@ -383,4 +386,33 @@ func TestAnthropicModelNotFoundFailover(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestAnthropicPassthroughWrappedContextRejection(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	account := newAnthropicAPIKeyAccountForTest()
+	upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadGateway, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"context_length_exceeded"}}`)),
+	}}
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(`{"model":"claude-3-5-sonnet-latest","messages":[{"role":"user","content":"test"}]}`)), PlatformAnthropic)
+	require.NoError(t, err)
+	_, err = newForwardPartialUsageServiceForTest(upstream).Forward(context.Background(), c, account, parsed)
+	require.ErrorIs(t, err, errGatewayContextRejection)
+	require.Equal(t, http.StatusBadRequest, c.Writer.Status())
+	require.True(t, IsOpsRequestScopedError(c))
+	events, _ := c.Get(OpsUpstreamErrorsKey)
+	require.Empty(t, events)
+}
+
+func TestAnthropicModelNotFoundInspectionPreservesUnmatchedBody(t *testing.T) {
+	body := strings.Repeat(" ", int(gatewayUpstreamErrorBodyReadLimit)) + "unknown resource"
+	resp := &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(strings.NewReader(body))}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	require.Nil(t, (&GatewayService{}).anthropicModelNotFoundFailover(c, &Account{Platform: PlatformAnthropic}, resp))
+	got, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Len(t, got, len(body))
+	require.Equal(t, body, string(got))
+	require.NoError(t, resp.Body.Close())
 }
