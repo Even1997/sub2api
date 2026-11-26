@@ -7,14 +7,13 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
 
-func TestAccountRateLimitedStatusIncludesCodexQuotaPause(t *testing.T) {
+func TestAccountRateLimitedStatusUsesFutureResetAcrossStatuses(t *testing.T) {
 	var capturedSQL string
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(captureEntQueryMatcher{actual: &capturedSQL}))
 	require.NoError(t, err)
@@ -25,7 +24,7 @@ func TestAccountRateLimitedStatusIncludesCodexQuotaPause(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectQuery("rate limited status").
-		WithArgs(service.StatusActive, sqlmock.AnyArg()).
+		WithArgs(sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 	_, err = client.Account.Query().Where(accountStatusPredicate("rate_limited")).Count(context.Background())

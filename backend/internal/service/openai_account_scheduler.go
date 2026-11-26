@@ -3238,7 +3238,7 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 	if account == nil {
 		return false
 	}
-	if !success && len(observedErr) > 0 && IsUpstreamModerationDenied(observedErr[0]) {
+	if !success && len(observedErr) > 0 && (IsUpstreamModerationDenied(observedErr[0]) || errors.Is(observedErr[0], errGatewayContextRejection)) {
 		return false
 	}
 	// A failed managed proxy acquisition says nothing about account health.

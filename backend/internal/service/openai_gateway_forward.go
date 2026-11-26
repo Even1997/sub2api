@@ -158,6 +158,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, markOpenAIInitialAdmissionError(admissionErr)
 	}
 	account = latest
+	body = normalizeQwenRequestEffort(account, body, "", "reasoning.effort")
 	if err := CheckUpstreamModeration(ctx, c, account); err != nil {
 		return nil, err
 	}
@@ -1195,7 +1196,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				wsLastFailureReason,
 				&agentTaskRecoveryTried,
 			)
-			if wsErr == nil {
+			if wsErr == nil || errors.Is(wsErr, errGatewayContextRejection) {
 				break
 			}
 			written := c != nil && c.Writer != nil && c.Writer.Written()
@@ -1322,17 +1323,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			return wsResult, nil
 		}
-		if !accelerateHTTPSSE {
+		contextRejected := errors.Is(wsErr, errGatewayContextRejection)
+		if !accelerateHTTPSSE && !contextRejected {
 			s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
 			return nil, wsErr
 		}
 		fallbackReason := ""
-		if accelerateHTTPSSE && !isControlledExperiment(ctx) {
+		if !contextRejected && accelerateHTTPSSE && !isControlledExperiment(ctx) {
 			fallbackReason = openAIWSSSEFallbackReason(ctx, c, wsErr)
 		}
 		if fallbackReason == "" {
 			s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
-			if accelerateHTTPSSE && wsResult != nil {
+			if wsResult != nil {
 				wsResult.UpstreamModel = upstreamModel
 				if wsResult.BillingModel == "" {
 					wsResult.BillingModel = billingModel
@@ -1343,10 +1345,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					wsResult.BillingModel = imageBillingModel
 				}
 			}
-			if accelerateHTTPSSE {
-				return wsResult, wsErr
-			}
-			return nil, wsErr
+			return wsResult, wsErr
 		}
 		// Discard the unused WS handshake header before HTTP commits its own.
 		c.Writer.Header().Del(openAIWSTurnStateHeader)

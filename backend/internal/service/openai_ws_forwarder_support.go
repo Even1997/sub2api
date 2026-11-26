@@ -227,6 +227,20 @@ func normalizeOpenAIWSTerminalEvent(eventType string) string {
 	}
 }
 
+// An explicit status keeps authentication, permissions and throttling attributed to the provider.
+func openAIWSFailureEventStatus(payload []byte) int {
+	prefix := "error"
+	if gjson.GetBytes(payload, "response.error").IsObject() {
+		prefix = "response.error"
+	}
+	for _, field := range []string{prefix + ".status_code", prefix + ".status", "status_code", "status"} {
+		if status := int(gjson.GetBytes(payload, field).Int()); status >= 400 && status <= 599 {
+			return status
+		}
+	}
+	return openAIWSErrorHTTPStatusFromRaw(gjson.GetBytes(payload, prefix+".code").Str, gjson.GetBytes(payload, prefix+".type").Str)
+}
+
 // markOpenAIWSClientVisibleFailure records only terminal/error protocol events
 // that were delivered to the client. Callers invoke it only after any hidden
 // failover/recovery decision and a successful downstream write.
@@ -248,16 +262,7 @@ func markOpenAIWSClientVisibleFailure(c *gin.Context, eventType string, payload 
 		errType = strings.TrimSpace(gjson.GetBytes(payload, prefix+".type").String())
 		message = strings.TrimSpace(gjson.GetBytes(payload, prefix+".message").String())
 	}
-	status := int(gjson.GetBytes(payload, prefix+".status_code").Int())
-	if status == 0 {
-		status = int(gjson.GetBytes(payload, prefix+".status").Int())
-	}
-	if status == 0 && eventType == "error" {
-		status = int(gjson.GetBytes(payload, "status").Int())
-	}
-	if status == 0 {
-		status = openAIWSErrorHTTPStatusFromRaw(code, errType)
-	}
+	status := openAIWSFailureEventStatus(payload)
 	if errType == "" {
 		errType = "upstream_error"
 	}
@@ -266,6 +271,10 @@ func markOpenAIWSClientVisibleFailure(c *gin.Context, eventType string, payload 
 	}
 	if message == "" {
 		message = "upstream websocket request failed"
+	}
+	if IsUpstreamContextRejection(status, payload) {
+		MarkOpsStreamErrorValue(c, OpsStreamError{ErrType: "invalid_request_error", Code: "context_length_exceeded", Message: message, IntendedStatus: http.StatusBadRequest, RequestScoped: true})
+		return
 	}
 	MarkOpsStreamFailure(c, errType, code, message, status)
 }
@@ -283,6 +292,9 @@ func openAIWSPayloadTransientStatus(payload []byte) int {
 	}
 	if status == 0 {
 		status = int(gjson.GetBytes(payload, "error.status").Int())
+	}
+	if IsUpstreamContextRejection(status, payload) {
+		return 0
 	}
 	if shouldCooldownOpenAITransientUpstreamError(status, payload) {
 		return status
@@ -360,7 +372,11 @@ func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx cont
 	if eventType != "error" {
 		return
 	}
-	s.rateLimitService.observeQualityStatus(ctx, account, openAIStreamFailureStatus(payload, extractOpenAISSEErrorMessage(payload)))
+	observedStatus := openAIStreamFailureStatus(payload, extractOpenAISSEErrorMessage(payload))
+	if IsUpstreamContextRejection(observedStatus, payload) {
+		return
+	}
+	s.rateLimitService.observeQualityStatus(ctx, account, observedStatus)
 	status := openAIWSPayloadTransientStatus(payload)
 	if status != 0 {
 		if status == http.StatusTooManyRequests {
@@ -377,6 +393,9 @@ func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx cont
 func (s *OpenAIGatewayService) handleOpenAIWSFailureAccountSideEffects(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) bool {
 	message := extractOpenAISSEErrorMessage(payload)
 	status := openAIStreamFailureStatus(payload, message)
+	if IsUpstreamContextRejection(status, payload) {
+		return false
+	}
 	s.rateLimitService.observeQualityStatus(ctx, account, status)
 	switch status {
 	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
@@ -846,6 +865,8 @@ func openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw string) int {
 		return http.StatusForbidden
 	case isOpenAIWSRateLimitError(codeRaw, errTypeRaw, ""):
 		return http.StatusTooManyRequests
+	case code == "context_length_exceeded", code == "context_too_large":
+		return http.StatusBadRequest
 	default:
 		return http.StatusBadGateway
 	}

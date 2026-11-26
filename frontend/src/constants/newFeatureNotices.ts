@@ -4,6 +4,7 @@
  * browser; use a new ID to announce the feature again in a later release.
  */
 export const NEW_FEATURE_NOTICES = {
+  monitorV3ComponentModels: 'channel-monitor-v3-component-models',
   modelPlazaCurrency: 'model-plaza-display-currency-20261121',
   newAPICostConversion: 'new-api-cost-conversion-20261119',
   accountOpsBalanceNotification: 'account-ops-per-account-balance-notification-20261119',

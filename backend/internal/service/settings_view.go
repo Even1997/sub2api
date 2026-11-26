@@ -626,6 +626,7 @@ func DefaultRectifierSettings() *RectifierSettings {
 		Enabled:                  true,
 		ThinkingSignatureEnabled: true,
 		ThinkingBudgetEnabled:    true,
+		APIKeySignatureEnabled:   true,
 	}
 }
 

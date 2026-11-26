@@ -116,10 +116,13 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	}
 
 	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
-	upstreamReq, _, err := s.buildNativeAnthropicUpstreamRequest(upstreamCtx, c, account, anthropicBody, apiKey, targetURL, body)
+	upstreamReq, forwardedBody, err := s.buildNativeAnthropicUpstreamRequest(upstreamCtx, c, account, anthropicBody, apiKey, targetURL, body)
 	releaseUpstreamCtx()
 	if err != nil {
 		return nil, fmt.Errorf("build upstream request: %w", err)
+	}
+	if account.Platform == PlatformQwen && qwenEffortModel(upstreamModel) {
+		reasoningEffort = nativeMessagesUsageEffort(account, forwardedBody, upstreamModel)
 	}
 
 	if _, err := s.admitOpenAITurn(ctx, c, account, upstreamModel, body); err != nil {

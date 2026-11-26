@@ -265,6 +265,9 @@ func isOpenAIContextWindowError(upstreamMsg string, upstreamBody []byte) bool {
 		if strings.Contains(lower, "maximum context length") || strings.Contains(lower, "max context length") {
 			return true
 		}
+		if strings.Contains(lower, "prompt is too long") || strings.Contains(lower, "maximum prompt length") {
+			return true
+		}
 		hasExceeded := strings.Contains(lower, "exceed") || strings.Contains(lower, "too large") || strings.Contains(lower, "too long")
 		if strings.Contains(lower, "context window") && hasExceeded {
 			return true
@@ -937,6 +940,10 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
 	body = s.redactAgentIdentitySensitiveBody(context.Background(), account, body)
+	if IsUpstreamContextRejection(resp.StatusCode, body) {
+		writeGatewayContextRejection(c, resp.StatusCode)
+		return nil, errGatewayContextRejection
+	}
 	if writeDeepSeekInputContentRejection(c, account, resp, body, writeError) {
 		return nil, fmt.Errorf("deepseek input content rejected")
 	}

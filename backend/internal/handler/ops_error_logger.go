@@ -1160,7 +1160,11 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		if marked, ok := service.GetOpsStreamError(c); ok && marked.RequestScoped &&
 			service.IsOpsContextLimitRejection(marked.IntendedStatus, 0, marked.Code+" "+marked.Message) {
 			logOpsStreamError(c, ops, status)
-			if opsStreamErrorsAllRequestScoped(service.GetOpsStreamErrors(c)) {
+			// Only distinct earlier attempts can have recovered. The current
+			// rejection may carry a successful HTTP handshake as its wire status.
+			history, _ := c.Get(service.OpsUpstreamErrorsKey)
+			attempts, _ := history.([]*service.OpsUpstreamErrorEvent)
+			if len(attempts) > 0 && opsStreamErrorsAllRequestScoped(service.GetOpsStreamErrors(c)) {
 				logOpsRecoveredUpstream(c, ops, status)
 			}
 			return

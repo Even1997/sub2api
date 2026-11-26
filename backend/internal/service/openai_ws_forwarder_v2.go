@@ -947,6 +947,13 @@ readLoop:
 		// is not client output, so a before_stream rule must not see it as mid-stream.
 		wsOutputStarted := wroteDownstream
 		if eventType == "error" || eventType == "response.failed" {
+			status := openAIWSFailureEventStatus(message)
+			if IsUpstreamContextRejection(status, message) {
+				if !clientDisconnected {
+					writeGatewayContextRejection(c, status)
+				}
+				return partialResultWithUsage(), errGatewayContextRejection
+			}
 			markOpenAICyberPolicyEvent(c, message, http.StatusOK, usage)
 		}
 

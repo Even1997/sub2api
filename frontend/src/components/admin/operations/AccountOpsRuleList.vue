@@ -99,6 +99,7 @@
       </table>
     </div>
     <details class="border-t border-gray-100 dark:border-dark-700" data-testid="failure-settings"><summary class="cursor-pointer px-5 py-3 text-sm text-gray-500">{{ t('accountOps.failureSettingsSummary') }}</summary><slot name="global-settings" /></details>
+    <p v-if="error" role="status" class="px-5 py-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
     <p v-if="loading" role="status" class="p-8 text-center text-sm text-gray-500">{{ t('common.loading') }}</p>
     <p v-else-if="!filtered.length && !error" class="p-8 text-center text-sm text-gray-500">{{ t('accountOps.noThresholdAccounts') }}</p>
   </section>

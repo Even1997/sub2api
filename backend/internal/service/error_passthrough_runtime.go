@@ -1,6 +1,9 @@
 package service
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/gin-gonic/gin"
+)
 
 const errorPassthroughServiceContextKey = "error_passthrough_service"
 
@@ -37,18 +40,31 @@ func applyErrorPassthroughRule(
 	defaultErrType string,
 	defaultErrMsg string,
 ) (status int, errType string, errMsg string, matched bool) {
+	status, errType, errMsg, _, matched = applyErrorPassthroughRuleWithRule(c, platform, upstreamStatus, responseBody, defaultStatus, defaultErrType, defaultErrMsg)
+	return
+}
+
+func applyErrorPassthroughRuleWithRule(
+	c *gin.Context,
+	platform string,
+	upstreamStatus int,
+	responseBody []byte,
+	defaultStatus int,
+	defaultErrType string,
+	defaultErrMsg string,
+) (status int, errType string, errMsg string, rule *model.ErrorPassthroughRule, matched bool) {
 	status = defaultStatus
 	errType = defaultErrType
 	errMsg = defaultErrMsg
 
 	svc := getBoundErrorPassthroughService(c)
 	if svc == nil {
-		return status, errType, errMsg, false
+		return status, errType, errMsg, nil, false
 	}
 
-	rule := svc.MatchRule(platform, upstreamStatus, responseBody)
+	rule = svc.MatchRule(platform, upstreamStatus, responseBody)
 	if rule == nil {
-		return status, errType, errMsg, false
+		return status, errType, errMsg, nil, false
 	}
 
 	status = upstreamStatus
@@ -68,5 +84,5 @@ func applyErrorPassthroughRule(
 
 	// 与现有 failover 场景保持一致：命中规则时统一返回 upstream_error。
 	errType = "upstream_error"
-	return status, errType, errMsg, true
+	return status, errType, errMsg, rule, true
 }
